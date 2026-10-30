@@ -122,6 +122,36 @@ router.post('/', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (req,
       });
     }
 
+    // Check if duplicate question already exists in this category for this creator
+    const existing = await dbGet(
+      `SELECT * FROM question_bank WHERE creator_id = ? AND question_text = ? AND category = ?`,
+      [userId, question_text.trim(), category]
+    );
+
+    if (existing) {
+      await dbRun(
+        `UPDATE question_bank SET
+          title = ?, question_type = ?, difficulty = ?, marks = ?,
+          explanation = ?, options_data = ?, settings = ?, updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [
+          title.trim() || existing.title,
+          question_type,
+          difficulty,
+          parseFloat(marks) || 1.0,
+          explanation || '',
+          JSON.stringify(options_data || []),
+          JSON.stringify(settings || {}),
+          existing.id
+        ]
+      );
+      const updated = await dbGet(`SELECT * FROM question_bank WHERE id = ?`, [existing.id]);
+      return res.json({
+        success: true,
+        data: { question: updated, updated: true }
+      });
+    }
+
     const id = generateUUID();
     await dbRun(
       `INSERT INTO question_bank (

@@ -377,6 +377,59 @@ router.post('/', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (req,
             );
           }
         }
+
+        // Auto-sync question to question bank if requested
+        if ((q.saveToBank === true || req.body.autoSaveQuestionsToBank === true) && q.question_text && q.question_text.trim()) {
+          const bankQText = q.question_text.trim();
+          const bankCat = (category || 'General').trim();
+          const bankDiff = difficulty || 'MEDIUM';
+          const payloadOptions = ['MCQ_SINGLE', 'MCQ_MULTI', 'TRUE_FALSE'].includes(qType)
+            ? (Array.isArray(q.options) ? q.options : [])
+            : (Array.isArray(q.answers) ? q.answers : []);
+
+          const existingBankQ = await dbGet(
+            `SELECT id FROM question_bank WHERE creator_id = ? AND question_text = ? AND category = ?`,
+            [userId, bankQText, bankCat]
+          );
+
+          if (!existingBankQ) {
+            const bankId = generateUUID();
+            await dbRun(
+              `INSERT INTO question_bank (
+                id, creator_id, title, question_text, question_type, category,
+                difficulty, tags, marks, explanation, options_data, settings
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                bankId,
+                userId,
+                bankQText.slice(0, 45) + (bankQText.length > 45 ? '...' : ''),
+                bankQText,
+                qType,
+                bankCat,
+                bankDiff,
+                JSON.stringify([]),
+                qMarks,
+                qExplanation,
+                JSON.stringify(payloadOptions),
+                qSettings
+              ]
+            );
+          } else {
+            await dbRun(
+              `UPDATE question_bank SET
+                question_type = ?, marks = ?, explanation = ?, options_data = ?, settings = ?, updated_at = CURRENT_TIMESTAMP
+               WHERE id = ?`,
+              [
+                qType,
+                qMarks,
+                qExplanation,
+                JSON.stringify(payloadOptions),
+                qSettings,
+                existingBankQ.id
+              ]
+            );
+          }
+        }
       }
     }
 
@@ -602,6 +655,59 @@ router.put('/:id', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (re
                 ansId, qId, String(ans.expected_answer || ''),
                 ans.is_case_sensitive ? 1 : 0,
                 parseFloat(ans.numeric_tolerance) || 0.0
+              ]
+            );
+          }
+        }
+
+        // Auto-sync question to question bank if requested
+        if ((q.saveToBank === true || req.body.autoSaveQuestionsToBank === true) && q.question_text && q.question_text.trim()) {
+          const bankQText = q.question_text.trim();
+          const bankCat = (updatedCat || existing.category || 'General').trim();
+          const bankDiff = updatedDiff || existing.difficulty || 'MEDIUM';
+          const payloadOptions = ['MCQ_SINGLE', 'MCQ_MULTI', 'TRUE_FALSE'].includes(qType)
+            ? (Array.isArray(q.options) ? q.options : [])
+            : (Array.isArray(q.answers) ? q.answers : []);
+
+          const existingBankQ = await dbGet(
+            `SELECT id FROM question_bank WHERE creator_id = ? AND question_text = ? AND category = ?`,
+            [userId, bankQText, bankCat]
+          );
+
+          if (!existingBankQ) {
+            const bankId = generateUUID();
+            await dbRun(
+              `INSERT INTO question_bank (
+                id, creator_id, title, question_text, question_type, category,
+                difficulty, tags, marks, explanation, options_data, settings
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                bankId,
+                userId,
+                bankQText.slice(0, 45) + (bankQText.length > 45 ? '...' : ''),
+                bankQText,
+                qType,
+                bankCat,
+                bankDiff,
+                JSON.stringify([]),
+                qMarks,
+                qExplanation,
+                JSON.stringify(payloadOptions),
+                qSettings
+              ]
+            );
+          } else {
+            await dbRun(
+              `UPDATE question_bank SET
+                question_type = ?, marks = ?, explanation = ?, options_data = ?, settings = ?, updated_at = CURRENT_TIMESTAMP
+               WHERE id = ?`,
+              [
+                qType,
+                qMarks,
+                qExplanation,
+                JSON.stringify(payloadOptions),
+                qSettings,
+                existingBankQ.id
               ]
             );
           }

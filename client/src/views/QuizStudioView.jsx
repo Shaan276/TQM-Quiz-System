@@ -60,6 +60,11 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
   const [selectedBankQIds, setSelectedBankQIds] = useState([]);
   const [bankLoading, setBankLoading] = useState(false);
 
+  // Bank Auto-save and sync states for new/written questions
+  const [autoSaveNewToBank, setAutoSaveNewToBank] = useState(true);
+  const [bankSavedMap, setBankSavedMap] = useState({});
+  const [savingBankQIdx, setSavingBankQIdx] = useState(null);
+
   // Autosave timer ref
   const autosaveTimerRef = useRef(null);
 
@@ -117,6 +122,7 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
             negativeMarksRatio: updatedQuiz.negative_marks_ratio,
             showExplanations: updatedQuiz.show_explanations,
             maxAttempts: updatedQuiz.max_attempts,
+            autoSaveQuestionsToBank: autoSaveNewToBank,
             questions: updatedQuestions
           })
         });
@@ -190,7 +196,9 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
       explanation: '',
       options: initialOptions,
       answers: initialAnswers,
-      settings: {}
+      settings: {},
+      saveToBank: autoSaveNewToBank,
+      bankSaved: false
     };
 
     const updated = [...questions];
@@ -226,7 +234,9 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
       id: 'clone_' + Date.now(),
       question_text: `${target.question_text} (Copy)`,
       options: target.options ? target.options.map(o => ({ ...o, id: undefined })) : [],
-      answers: target.answers ? target.answers.map(a => ({ ...a, id: undefined })) : []
+      answers: target.answers ? target.answers.map(a => ({ ...a, id: undefined })) : [],
+      saveToBank: autoSaveNewToBank,
+      bankSaved: false
     };
     const updated = [...questions];
     updated.splice(index + 1, 0, clone);
@@ -313,11 +323,12 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
 
   // Save SINGLE Question to Bank
   const handleSaveQuestionToBank = async (q, qIdx) => {
-    if (!q.question_text.trim()) {
-      alert('Question prompt cannot be empty');
+    if (!q.question_text || !q.question_text.trim()) {
+      showToast('Question prompt cannot be empty when saving to Bank', 'error');
       return;
     }
 
+    setSavingBankQIdx(qIdx);
     const payloadOptions = ['MCQ_SINGLE', 'MCQ_MULTI', 'TRUE_FALSE'].includes(q.question_type) ? (q.options || []) : (q.answers || []);
 
     try {
@@ -328,24 +339,28 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
           'Authorization': `Bearer ${accessToken}`
         },
         body: JSON.stringify({
-          title: q.question_text.slice(0, 45) + '...',
+          title: q.question_text.slice(0, 45) + (q.question_text.length > 45 ? '...' : ''),
           question_text: q.question_text.trim(),
           question_type: q.question_type,
           category: quiz.category || 'General',
           difficulty: quiz.difficulty || 'MEDIUM',
-          marks: q.marks,
+          marks: q.marks || 1.0,
           explanation: q.explanation || '',
           options_data: payloadOptions
         })
       });
       const data = await res.json();
       if (data.success) {
-        showToast(`Question #${qIdx + 1} saved to Question Bank under Subject: "${quiz.category}"!`);
+        setBankSavedMap(prev => ({ ...prev, [q.id || qIdx]: true }));
+        handleUpdateQuestion(qIdx, { saveToBank: true, bankSaved: true });
+        showToast(`Question #${qIdx + 1} saved to Question Bank under Subject: "${quiz.category || 'General'}"!`);
       } else {
         alert(data.error?.message || 'Failed to save question to bank');
       }
     } catch (err) {
       alert('Network communication error while saving to bank');
+    } finally {
+      setSavingBankQIdx(null);
     }
   };
 
@@ -633,9 +648,31 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
           </div>
         </div>
 
-        {/* Header Action: Save Whole Quiz to Bank */}
-        <div className="pt-2 border-t border-[#1B2A44] flex items-center justify-between text-xs text-[#94A3B8]">
-          <span>All edits automatically synchronized to cloud</span>
+        {/* Header Action: Auto-sync to Bank & Save Whole Quiz to Bank */}
+        <div className="pt-2 border-t border-[#1B2A44] flex flex-wrap items-center justify-between gap-3 text-xs text-[#94A3B8]">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="hidden sm:inline">All edits autosaved to cloud</span>
+            <span className="hidden sm:inline">&bull;</span>
+            <label className="flex items-center gap-2 cursor-pointer select-none bg-[#132238] hover:bg-[#1B2A44] px-2.5 py-1 rounded-lg border border-[#1F304E] text-xs transition-colors">
+              <input
+                type="checkbox"
+                checked={autoSaveNewToBank}
+                onChange={(e) => {
+                  setAutoSaveNewToBank(e.target.checked);
+                  showToast(e.target.checked 
+                    ? '⚡ Auto-sync enabled: Questions written in this quiz will automatically be added to Question Bank!' 
+                    : 'Auto-sync disabled: You can still save individual questions using "Save to Bank".'
+                  );
+                }}
+                className="rounded bg-[#1B2A44] border-[#2D436B] text-[#34D399] focus:ring-0 w-3.5 h-3.5 cursor-pointer"
+              />
+              <span className="font-semibold flex items-center gap-1.5 text-white">
+                <Database size={13} className="text-[#34D399]" />
+                Auto-add new questions to Question Bank
+              </span>
+            </label>
+          </div>
+
           <button
             type="button"
             onClick={handleSaveWholeQuizToBank}
@@ -906,15 +943,55 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
                   </button>
                 </div>
 
-                {/* Save this Question to Bank Button */}
-                <button
-                  type="button"
-                  onClick={() => handleSaveQuestionToBank(q, qIdx)}
-                  className="text-xs text-[#06B6D4] hover:underline flex items-center gap-1 font-semibold"
-                >
-                  <Database size={13} />
-                  Save to Bank
-                </button>
+                {/* Save this Question to Bank Actions */}
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-1.5 text-xs text-[#94A3B8] hover:text-[#34D399] cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={q.saveToBank !== false}
+                      onChange={(e) => {
+                        handleUpdateQuestion(qIdx, { saveToBank: e.target.checked });
+                      }}
+                      className="rounded bg-[#132238] border-[#1F304E] text-[#34D399] focus:ring-0 w-3.5 h-3.5 cursor-pointer"
+                    />
+                    <span>Save to Bank</span>
+                  </label>
+
+                  {bankSavedMap[q.id || qIdx] || q.bankSaved ? (
+                    <div className="flex items-center gap-1 text-xs text-[#34D399] font-bold bg-[#10B981]/15 px-2.5 py-1 rounded-lg border border-[#10B981]/30">
+                      <CheckCircle2 size={13} />
+                      Saved in Bank
+                      <button
+                        type="button"
+                        onClick={() => handleSaveQuestionToBank(q, qIdx)}
+                        className="text-[10px] text-[#06B6D4] hover:underline ml-1 font-semibold"
+                        title="Update Question Bank with latest edits"
+                      >
+                        (Update)
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleSaveQuestionToBank(q, qIdx)}
+                      disabled={savingBankQIdx === qIdx}
+                      className="text-xs text-[#06B6D4] hover:bg-[#06B6D4]/15 px-2.5 py-1 rounded-lg border border-[#06B6D4]/30 hover:underline flex items-center gap-1.5 font-semibold transition-all disabled:opacity-50"
+                      title="Save this question directly into Question Bank"
+                    >
+                      {savingBankQIdx === qIdx ? (
+                        <>
+                          <span className="w-3 h-3 border-2 border-[#06B6D4] border-t-transparent rounded-full animate-spin" />
+                          Saving to Bank...
+                        </>
+                      ) : (
+                        <>
+                          <Database size={13} />
+                          Add to Bank
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
               </div>
 
             </div>
