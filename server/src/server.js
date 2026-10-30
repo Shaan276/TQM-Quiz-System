@@ -5,6 +5,7 @@ const fs = require('fs');
 const config = require('./config');
 const { getDatabase, setDatabaseInstance } = require('./database');
 const { runMigrations } = require('./database/migrations');
+const { seedDemoAccounts } = require('./database/seeds');
 
 // Routes
 const authRoutes = require('./routes/auth');
@@ -98,7 +99,8 @@ if (require.main === module) {
     try {
       console.log('[Startup] Initializing Quiz System Database...');
       await runMigrations();
-      console.log('[Startup] Database migrations completed.');
+      await seedDemoAccounts();
+      console.log('[Startup] Database migrations and demo accounts ready.');
 
       const app = createApp();
       app.listen(config.port, () => {

@@ -23,7 +23,8 @@ export default function Sidebar({ activeRoute, setActiveRoute }) {
 
   const role = (user?.role || '').toUpperCase();
   const isSuperAdmin = role === 'SUPER_ADMIN' || role === 'ADMIN';
-  const isTeacher = role === 'TEACHER' || role === 'CREATOR' || isSuperAdmin;
+  const isOrgAdmin = role === 'ORG_ADMIN';
+  const isTeacher = role === 'TEACHER' || role === 'CREATOR';
   const isStudent = role === 'STUDENT' || role === 'LEARNER';
 
   const handleLogout = async () => {
@@ -35,7 +36,7 @@ export default function Sidebar({ activeRoute, setActiveRoute }) {
     <aside className="w-64 bg-[#0B111D] border-r border-[#1B2A44] flex flex-col justify-between shrink-0 select-none min-h-screen">
       
       {/* Top Header & Brand */}
-      <div className="p-5 space-y-6">
+      <div className="p-5 space-y-5">
         
         {/* Brand Logo */}
         <div 
@@ -50,7 +51,7 @@ export default function Sidebar({ activeRoute, setActiveRoute }) {
               QUIZ-SYSTEM
             </span>
             <p className="text-[10px] text-[#94A3B8] font-bold tracking-widest uppercase">
-              STUDIO &bull; PHASE P3
+              RBAC &bull; MULTI-ROLE OS
             </p>
           </div>
         </div>
@@ -61,11 +62,13 @@ export default function Sidebar({ activeRoute, setActiveRoute }) {
             <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${
               isSuperAdmin 
                 ? 'bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/30' 
+                : isOrgAdmin
+                ? 'bg-[#38BDF8]/20 text-[#38BDF8] border border-[#38BDF8]/30'
                 : isTeacher
                 ? 'bg-[#8B5CF6]/20 text-[#8B5CF6] border border-[#8B5CF6]/30'
                 : 'bg-[#10B981]/20 text-[#34D399] border border-[#10B981]/30'
             }`}>
-              {isSuperAdmin ? <ShieldCheck size={14} /> : isTeacher ? <FolderKanban size={14} /> : <GraduationCap size={14} />}
+              {isSuperAdmin ? <ShieldCheck size={14} /> : isOrgAdmin ? <ShieldCheck size={14} /> : isTeacher ? <FolderKanban size={14} /> : <GraduationCap size={14} />}
             </div>
             <div className="overflow-hidden">
               <p className="text-xs font-bold text-white truncate">{user?.name || 'Guest User'}</p>
@@ -80,107 +83,135 @@ export default function Sidebar({ activeRoute, setActiveRoute }) {
           ) : null}
         </div>
 
-        {/* Navigation Links */}
-        <div className="space-y-1">
-          <p className="text-[10px] font-bold tracking-wider text-[#64748B] uppercase px-3 mb-2">
-            CORE NAVIGATION
-          </p>
-
-          <button
-            onClick={() => setActiveRoute('landing')}
-            className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
-              activeRoute === 'landing' ? 'bg-[#132238] text-[#34D399] border border-[#34D399]/30' : 'text-[#94A3B8] hover:text-white hover:bg-[#0E1626]'
-            }`}
-          >
-            <LayoutDashboard size={16} />
-            Platform Overview
-          </button>
+        {/* Navigation Links Grouped Strictly by Role */}
+        <div className="space-y-4">
+          
+          {/* Common Section: Core Platform */}
+          <div className="space-y-1">
+            <p className="text-[10px] font-bold tracking-wider text-[#64748B] uppercase px-3 mb-1">
+              PLATFORM
+            </p>
+            <button
+              onClick={() => setActiveRoute('landing')}
+              className={`w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
+                activeRoute === 'landing' ? 'bg-[#132238] text-[#34D399] border border-[#34D399]/30' : 'text-[#94A3B8] hover:text-white hover:bg-[#0E1626]'
+              }`}
+            >
+              <LayoutDashboard size={15} />
+              Overview & Architecture
+            </button>
+          </div>
 
           {user && (
             <>
-              {/* Learner Dashboard / Discover */}
-              <button
-                onClick={() => setActiveRoute('learner-dashboard')}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
-                  activeRoute === 'learner-dashboard' ? 'bg-[#132238] text-[#34D399] border border-[#34D399]/30' : 'text-[#94A3B8] hover:text-white hover:bg-[#0E1626]'
-                }`}
-              >
-                <GraduationCap size={16} />
-                Learner Arena
-              </button>
+              {/* Student Role Exclusive Navigation */}
+              {(isStudent || isSuperAdmin) && (
+                <div className="space-y-1">
+                  <p className="text-[10px] font-bold tracking-wider text-[#34D399] uppercase px-3 mb-1 flex items-center gap-1.5">
+                    <GraduationCap size={13} />
+                    Learner Platform
+                  </p>
 
-              {/* Mistake Notebook (P3) */}
-              <button
-                onClick={() => setActiveRoute('mistake-notebook')}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
-                  activeRoute === 'mistake-notebook' ? 'bg-[#132238] text-[#34D399] border border-[#34D399]/30' : 'text-[#94A3B8] hover:text-white hover:bg-[#0E1626]'
-                }`}
-              >
-                <BookMarked size={16} />
-                Mistake Notebook
-              </button>
-
-              {/* Past Attempts History (P3) */}
-              <button
-                onClick={() => setActiveRoute('attempt-history')}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
-                  activeRoute === 'attempt-history' ? 'bg-[#132238] text-[#34D399] border border-[#34D399]/30' : 'text-[#94A3B8] hover:text-white hover:bg-[#0E1626]'
-                }`}
-              >
-                <History size={16} />
-                Attempt History
-              </button>
-
-              {/* Creator Studio & Quizzes (For Teachers / Admins) */}
-              {isTeacher && (
-                <>
                   <button
-                    onClick={() => setActiveRoute('creator-dashboard')}
-                    className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
-                      activeRoute === 'creator-dashboard' || activeRoute === 'quiz-studio' ? 'bg-[#132238] text-[#34D399] border border-[#34D399]/30' : 'text-[#94A3B8] hover:text-white hover:bg-[#0E1626]'
+                    onClick={() => setActiveRoute('learner-dashboard')}
+                    className={`w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
+                      activeRoute === 'learner-dashboard' ? 'bg-[#10B981]/15 text-[#34D399] border border-[#10B981]/40' : 'text-[#94A3B8] hover:text-white hover:bg-[#0E1626]'
                     }`}
                   >
-                    <FolderKanban size={16} />
+                    <GraduationCap size={15} />
+                    Take & Discover Quizzes
+                  </button>
+
+                  <button
+                    onClick={() => setActiveRoute('mistake-notebook')}
+                    className={`w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
+                      activeRoute === 'mistake-notebook' ? 'bg-[#10B981]/15 text-[#34D399] border border-[#10B981]/40' : 'text-[#94A3B8] hover:text-white hover:bg-[#0E1626]'
+                    }`}
+                  >
+                    <BookMarked size={15} />
+                    Mistake Notebook
+                  </button>
+
+                  <button
+                    onClick={() => setActiveRoute('attempt-history')}
+                    className={`w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
+                      activeRoute === 'attempt-history' ? 'bg-[#10B981]/15 text-[#34D399] border border-[#10B981]/40' : 'text-[#94A3B8] hover:text-white hover:bg-[#0E1626]'
+                    }`}
+                  >
+                    <History size={15} />
+                    Past Attempts & Scores
+                  </button>
+                </div>
+              )}
+
+              {/* Teacher Role Exclusive Navigation */}
+              {(isTeacher || isSuperAdmin || isOrgAdmin) && (
+                <div className="space-y-1">
+                  <p className="text-[10px] font-bold tracking-wider text-[#A78BFA] uppercase px-3 mb-1 flex items-center gap-1.5">
+                    <FolderKanban size={13} />
                     Teacher Studio
+                  </p>
+
+                  <button
+                    onClick={() => setActiveRoute('creator-dashboard')}
+                    className={`w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
+                      activeRoute === 'creator-dashboard' || activeRoute === 'quiz-studio' ? 'bg-[#8B5CF6]/15 text-[#A78BFA] border border-[#8B5CF6]/40' : 'text-[#94A3B8] hover:text-white hover:bg-[#0E1626]'
+                    }`}
+                  >
+                    <FolderKanban size={15} />
+                    Quiz Studio & Builder
                   </button>
 
                   <button
                     onClick={() => setActiveRoute('question-bank')}
-                    className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
-                      activeRoute === 'question-bank' ? 'bg-[#132238] text-[#34D399] border border-[#34D399]/30' : 'text-[#94A3B8] hover:text-white hover:bg-[#0E1626]'
+                    className={`w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
+                      activeRoute === 'question-bank' ? 'bg-[#8B5CF6]/15 text-[#A78BFA] border border-[#8B5CF6]/40' : 'text-[#94A3B8] hover:text-white hover:bg-[#0E1626]'
                     }`}
                   >
-                    <Database size={16} />
+                    <Database size={15} />
                     Question Bank
                   </button>
-                </>
+                </div>
               )}
 
-              {/* Super Admin Console */}
-              {isSuperAdmin && (
+              {/* Super Admin & Org Admin Navigation */}
+              {(isSuperAdmin || isOrgAdmin) && (
+                <div className="space-y-1">
+                  <p className="text-[10px] font-bold tracking-wider text-[#FBBF24] uppercase px-3 mb-1 flex items-center gap-1.5">
+                    <ShieldCheck size={13} />
+                    System Administration
+                  </p>
+
+                  <button
+                    onClick={() => setActiveRoute('admin-dashboard')}
+                    className={`w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
+                      activeRoute === 'admin-dashboard' ? 'bg-[#F59E0B]/15 text-[#FBBF24] border border-[#F59E0B]/40' : 'text-[#94A3B8] hover:text-white hover:bg-[#0E1626]'
+                    }`}
+                  >
+                    <ShieldCheck size={15} className="text-[#FBBF24]" />
+                    User Directory & Roles
+                  </button>
+                </div>
+              )}
+
+              {/* Common Section: User Account */}
+              <div className="space-y-1 pt-1 border-t border-[#1B2A44]">
+                <p className="text-[10px] font-bold tracking-wider text-[#64748B] uppercase px-3 mb-1">
+                  COMMON ACCOUNT
+                </p>
                 <button
-                  onClick={() => setActiveRoute('admin-dashboard')}
-                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
-                    activeRoute === 'admin-dashboard' ? 'bg-[#132238] text-[#F59E0B] border border-[#F59E0B]/30' : 'text-[#94A3B8] hover:text-white hover:bg-[#0E1626]'
+                  onClick={() => setActiveRoute('profile')}
+                  className={`w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
+                    activeRoute === 'profile' ? 'bg-[#132238] text-[#34D399] border border-[#34D399]/30' : 'text-[#94A3B8] hover:text-white hover:bg-[#0E1626]'
                   }`}
                 >
-                  <ShieldCheck size={16} className="text-[#F59E0B]" />
-                  Admin Console
+                  <User size={15} />
+                  Profile & Security
                 </button>
-              )}
-
-              {/* User Profile */}
-              <button
-                onClick={() => setActiveRoute('profile')}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
-                  activeRoute === 'profile' ? 'bg-[#132238] text-[#34D399] border border-[#34D399]/30' : 'text-[#94A3B8] hover:text-white hover:bg-[#0E1626]'
-                }`}
-              >
-                <User size={16} />
-                My Profile
-              </button>
+              </div>
             </>
           )}
+
         </div>
 
         {/* System Status Indicators */}

@@ -44,6 +44,26 @@ export default function App() {
     }
   }, [user, activeRoute]);
 
+  // Strict Role-Based View Guard
+  useEffect(() => {
+    if (!user) return;
+    const role = (user.role || '').toUpperCase();
+    const isSuperAdmin = role === 'SUPER_ADMIN' || role === 'ADMIN';
+    const isOrgAdmin = role === 'ORG_ADMIN';
+    const isTeacher = role === 'TEACHER' || role === 'CREATOR';
+    const isStudent = role === 'STUDENT' || role === 'LEARNER';
+
+    // Student blocked from Teacher Studio and Admin Console
+    if (isStudent && ['creator-dashboard', 'quiz-studio', 'question-bank', 'admin-dashboard'].includes(activeRoute)) {
+      setActiveRoute('learner-dashboard');
+    }
+
+    // Teacher blocked from Admin Console
+    if (isTeacher && !isSuperAdmin && !isOrgAdmin && activeRoute === 'admin-dashboard') {
+      setActiveRoute('creator-dashboard');
+    }
+  }, [user, activeRoute]);
+
   const handleOpenStudio = (quizId) => {
     setActiveStudioQuizId(quizId);
     setActiveRoute('quiz-studio');
