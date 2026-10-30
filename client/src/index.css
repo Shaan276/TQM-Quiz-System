@@ -1,0 +1,117 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+}
+
+body {
+  font-family: var(--font-family);
+  background-color: #080D14;
+  color: #F8FAFC;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #080D14;
+}
+::-webkit-scrollbar-thumb {
+  background: #1B2A44;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #2D436B;
+}
+
+/* Reference Design Panels */
+.dashboard-card {
+  background-color: #0E1626;
+  border: 1px solid #1B2A44;
+  border-radius: 18px;
+}
+
+.dashboard-card-inner {
+  background-color: #121D32;
+  border: 1px solid #1F304E;
+  border-radius: 14px;
+}
+
+/* Emerald Primary Pill Button (Matching Reference) */
+.btn-emerald-primary {
+  background-color: #10B981;
+  color: #042F2E;
+  font-weight: 700;
+  padding: 10px 18px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.15s ease;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.25);
+  border: none;
+  cursor: pointer;
+}
+
+.btn-emerald-primary:hover:not(:disabled) {
+  background-color: #34D399;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(16, 185, 129, 0.35);
+}
+
+.btn-emerald-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Secondary Button */
+.btn-secondary {
+  background-color: #121D32;
+  border: 1px solid #1F304E;
+  color: #94A3B8;
+  font-weight: 600;
+  padding: 10px 18px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background-color: #16243D;
+  color: #FFFFFF;
+  border-color: #2D436B;
+}
+
+/* Input Fields */
+.input-field {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background-color: #080D14;
+  border: 1px solid #1B2A44;
+  color: #FFFFFF;
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.input-field:focus {
+  border-color: #10B981;
+}
+
+.input-field::placeholder {
+  color: #64748B;
+}
