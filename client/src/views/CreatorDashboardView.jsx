@@ -117,8 +117,8 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
           'Authorization': `Bearer ${accessToken}`
         },
         body: JSON.stringify({
-          title: 'Untitled Quiz',
-          category: 'General',
+          title: 'TQM Quiz',
+          category: 'TQM (Total Quality Management)',
           difficulty: 'MEDIUM'
         })
       });
@@ -300,19 +300,19 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
             />
           </div>
 
-          {/* Category Filter */}
+          {/* Subject Filter */}
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value)}
-            className="input-field text-xs md:w-36"
+            className="input-field text-xs md:w-44"
           >
-            <option value="">All Categories</option>
-            <option value="General">General</option>
+            <option value="">All Subjects</option>
+            <option value="TQM (Total Quality Management)">TQM</option>
+            <option value="Computer Science">Computer Science</option>
             <option value="Science">Science</option>
             <option value="Mathematics">Mathematics</option>
-            <option value="History">History</option>
-            <option value="Technology">Technology</option>
-            <option value="Languages">Languages</option>
+            <option value="Engineering & Tech">Engineering & Tech</option>
+            <option value="General Knowledge">General Knowledge</option>
           </select>
 
           {/* Status Filter */}
@@ -397,8 +397,8 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
                     {quiz.status} &bull; v{quiz.version}
                   </span>
 
-                  <span className="text-[10px] font-mono text-[#64748B]">
-                    {quiz.category}
+                  <span className="text-[10px] font-mono text-[#34D399]">
+                    Subject: {quiz.category || 'General'}
                   </span>
                 </div>
 

@@ -64,6 +64,33 @@ router.get('/metrics/summary', authenticateToken, async (req, res, next) => {
 });
 
 /**
+ * GET /api/v1/quizzes/subjects
+ * Retrieve distinct subject names used by the creator (must be above /:id)
+ */
+router.get('/subjects', authenticateToken, async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const rows = await dbAll(
+      `SELECT DISTINCT category FROM quizzes WHERE creator_id = ? AND category IS NOT NULL AND category != ''
+       UNION
+       SELECT DISTINCT category FROM question_bank WHERE creator_id = ? AND category IS NOT NULL AND category != ''`,
+      [userId, userId]
+    );
+
+    const defaultSubjects = ['TQM (Total Quality Management)', 'Computer Science', 'Science', 'Mathematics', 'Engineering & Tech', 'General Knowledge'];
+    const dbSubjects = rows.map(r => r.category).filter(Boolean);
+    const combined = Array.from(new Set([...defaultSubjects, ...dbSubjects]));
+
+    res.json({
+      success: true,
+      data: { subjects: combined }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * GET /api/v1/quizzes
  * List quizzes with search, filtering, and pagination
  */
@@ -825,6 +852,101 @@ router.get('/:id/preview', authenticateToken, async (req, res, next) => {
           totalMarks: previewQuestions.reduce((acc, q) => acc + (q.marks || 1), 0),
           questions: previewQuestions
         }
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/v1/quizzes/:id/import-from-quiz
+ * Import whole quiz questions or selected questions into this quiz
+ */
+router.post('/:id/import-from-quiz', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (req, res, next) => {
+  try {
+    const { id: targetQuizId } = req.params;
+    const { sourceQuizId, questionIds } = req.body;
+    const userId = req.user.id;
+
+    // Validate target quiz ownership
+    const target = await dbGet(`SELECT * FROM quizzes WHERE id = ?`, [targetQuizId]);
+    if (!target || (target.creator_id !== userId && req.user.role !== 'ADMIN')) {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'ERR_FORBIDDEN', message: 'Target quiz not accessible.' }
+      });
+    }
+
+    // Validate source quiz
+    const source = await dbGet(`SELECT * FROM quizzes WHERE id = ?`, [sourceQuizId]);
+    if (!source) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'ERR_NOT_FOUND', message: 'Source quiz not found.' }
+      });
+    }
+
+    // Query questions to copy
+    let questionsToCopy = [];
+    if (Array.isArray(questionIds) && questionIds.length > 0) {
+      const placeholders = questionIds.map(() => '?').join(',');
+      questionsToCopy = await dbAll(
+        `SELECT * FROM questions WHERE quiz_id = ? AND id IN (${placeholders}) ORDER BY sort_order ASC`,
+        [sourceQuizId, ...questionIds]
+      );
+    } else {
+      // Whole quiz import!
+      questionsToCopy = await dbAll(
+        `SELECT * FROM questions WHERE quiz_id = ? ORDER BY sort_order ASC`,
+        [sourceQuizId]
+      );
+    }
+
+    const sortRow = await dbGet(
+      `SELECT COALESCE(MAX(sort_order), -1) as max_sort FROM questions WHERE quiz_id = ?`,
+      [targetQuizId]
+    );
+    let nextSort = (sortRow?.max_sort || 0) + 1;
+
+    for (const q of questionsToCopy) {
+      const newQId = generateUUID();
+      await dbRun(
+        `INSERT INTO questions (
+          id, quiz_id, question_text, question_type, marks,
+          time_limit_sec, explanation, sort_order, settings
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [newQId, targetQuizId, q.question_text, q.question_type, q.marks, q.time_limit_sec, q.explanation, nextSort++, q.settings]
+      );
+
+      // Copy options
+      const options = await dbAll(`SELECT * FROM question_options WHERE question_id = ?`, [q.id]);
+      for (const opt of options) {
+        await dbRun(
+          `INSERT INTO question_options (
+            id, question_id, option_key, option_text, is_correct, sort_order
+          ) VALUES (?, ?, ?, ?, ?, ?)`,
+          [generateUUID(), newQId, opt.option_key, opt.option_text, opt.is_correct, opt.sort_order]
+        );
+      }
+
+      // Copy answers
+      const answers = await dbAll(`SELECT * FROM question_answers WHERE question_id = ?`, [q.id]);
+      for (const ans of answers) {
+        await dbRun(
+          `INSERT INTO question_answers (
+            id, question_id, expected_answer, is_case_sensitive, numeric_tolerance
+          ) VALUES (?, ?, ?, ?, ?)`,
+          [generateUUID(), newQId, ans.expected_answer, ans.is_case_sensitive, ans.numeric_tolerance]
+        );
+      }
+    }
+
+    res.status(201).json({
+      success: true,
+      data: {
+        message: `Successfully imported ${questionsToCopy.length} question(s) from "${source.title}".`,
+        importedCount: questionsToCopy.length
       }
     });
   } catch (err) {

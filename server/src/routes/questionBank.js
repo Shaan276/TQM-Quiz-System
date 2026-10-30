@@ -434,4 +434,157 @@ router.delete('/:id', authenticateToken, requireRole('CREATOR', 'ADMIN'), async 
   }
 });
 
+/**
+ * POST /api/v1/question-bank/save-entire-quiz
+ * Save all questions of a quiz into the Question Bank
+ */
+router.post('/save-entire-quiz', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const { quizId, category } = req.body;
+
+    const quiz = await dbGet(`SELECT * FROM quizzes WHERE id = ?`, [quizId]);
+    if (!quiz || (quiz.creator_id !== userId && req.user.role !== 'ADMIN')) {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'ERR_FORBIDDEN', message: 'Quiz not accessible.' }
+      });
+    }
+
+    const questions = await dbAll(`SELECT * FROM questions WHERE quiz_id = ? ORDER BY sort_order ASC`, [quizId]);
+    if (questions.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'ERR_EMPTY', message: 'No questions in this quiz to save.' }
+      });
+    }
+
+    const targetCategory = category || quiz.category || 'General';
+    let savedCount = 0;
+
+    for (const q of questions) {
+      let optionsData = [];
+      if (['MCQ_SINGLE', 'MCQ_MULTI', 'TRUE_FALSE'].includes(q.question_type)) {
+        optionsData = await dbAll(
+          `SELECT option_key, option_text, is_correct, sort_order FROM question_options WHERE question_id = ? ORDER BY sort_order ASC`,
+          [q.id]
+        );
+      } else {
+        optionsData = await dbAll(
+          `SELECT expected_answer, is_case_sensitive, numeric_tolerance FROM question_answers WHERE question_id = ?`,
+          [q.id]
+        );
+      }
+
+      const bankId = generateUUID();
+      await dbRun(
+        `INSERT INTO question_bank (
+          id, creator_id, title, question_text, question_type, category,
+          difficulty, tags, marks, explanation, options_data, settings
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          bankId,
+          userId,
+          q.question_text.slice(0, 45) + (q.question_text.length > 45 ? '...' : ''),
+          q.question_text,
+          q.question_type,
+          targetCategory,
+          quiz.difficulty || 'MEDIUM',
+          quiz.tags || '[]',
+          q.marks,
+          q.explanation || '',
+          JSON.stringify(optionsData || []),
+          q.settings || '{}'
+        ]
+      );
+      savedCount++;
+    }
+
+    res.status(201).json({
+      success: true,
+      data: {
+        message: `Successfully saved ${savedCount} questions from "${quiz.title}" to Question Bank under subject "${targetCategory}".`,
+        savedCount
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/v1/question-bank/bulk-import-to-quiz
+ * Import multiple bank questions into a target quiz
+ */
+router.post('/bulk-import-to-quiz', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (req, res, next) => {
+  try {
+    const { targetQuizId, questionIds } = req.body;
+    const userId = req.user.id;
+
+    if (!targetQuizId || !Array.isArray(questionIds) || questionIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'ERR_VALIDATION', message: 'Target quiz ID and question IDs array required.' }
+      });
+    }
+
+    // Verify quiz ownership
+    const quiz = await dbGet(`SELECT * FROM quizzes WHERE id = ?`, [targetQuizId]);
+    if (!quiz || (quiz.creator_id !== userId && req.user.role !== 'ADMIN')) {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'ERR_FORBIDDEN', message: 'Target quiz not accessible.' }
+      });
+    }
+
+    const sortRow = await dbGet(`SELECT COALESCE(MAX(sort_order), -1) as max_sort FROM questions WHERE quiz_id = ?`, [targetQuizId]);
+    let nextSort = (sortRow?.max_sort || 0) + 1;
+
+    for (const bId of questionIds) {
+      const bankQ = await dbGet(`SELECT * FROM question_bank WHERE id = ? AND creator_id = ?`, [bId, userId]);
+      if (!bankQ) continue;
+
+      const newQId = generateUUID();
+      await dbRun(
+        `INSERT INTO questions (
+          id, quiz_id, question_text, question_type, marks,
+          time_limit_sec, explanation, sort_order, settings
+        ) VALUES (?, ?, ?, ?, ?, 30, ?, ?, ?)`,
+        [newQId, targetQuizId, bankQ.question_text, bankQ.question_type, bankQ.marks, bankQ.explanation, nextSort++, bankQ.settings || '{}']
+      );
+
+      let optionsData = [];
+      try { optionsData = JSON.parse(bankQ.options_data || '[]'); } catch (e) {}
+
+      if (['MCQ_SINGLE', 'MCQ_MULTI', 'TRUE_FALSE'].includes(bankQ.question_type)) {
+        for (let i = 0; i < optionsData.length; i++) {
+          const opt = optionsData[i];
+          await dbRun(
+            `INSERT INTO question_options (
+              id, question_id, option_key, option_text, is_correct, sort_order
+            ) VALUES (?, ?, ?, ?, ?, ?)`,
+            [generateUUID(), newQId, opt.option_key || String.fromCharCode(65 + i), opt.option_text || '', opt.is_correct ? 1 : 0, i]
+          );
+        }
+      } else {
+        for (const ans of optionsData) {
+          await dbRun(
+            `INSERT INTO question_answers (
+              id, question_id, expected_answer, is_case_sensitive, numeric_tolerance
+            ) VALUES (?, ?, ?, ?, ?)`,
+            [generateUUID(), newQId, ans.expected_answer || '', ans.is_case_sensitive ? 1 : 0, parseFloat(ans.numeric_tolerance) || 0.0]
+          );
+        }
+      }
+    }
+
+    res.status(201).json({
+      success: true,
+      data: { message: `Successfully imported ${questionIds.length} question(s) into quiz.` }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

@@ -463,7 +463,35 @@ async function runP2Tests() {
       assert.ok(mData.data.recentQuizzes.length >= 2);
     });
 
-    // Test 12: Delete Quiz
+    // Test 12: Distinct Subject Names & Whole Quiz Bank Operations
+    await test('Subject Name query and Save Whole Quiz to Bank', async () => {
+      // 1. Fetch Subjects
+      const subRes = await fetch(`${BASE_URL}/quizzes/subjects`, {
+        headers: { 'Authorization': `Bearer ${creatorToken}` }
+      });
+      assert.strictEqual(subRes.status, 200);
+      const subData = await subRes.json();
+      assert.ok(Array.isArray(subData.data.subjects));
+      assert.ok(subData.data.subjects.includes('TQM (Total Quality Management)'));
+
+      // 2. Save entire quiz to bank
+      const saveWholeRes = await fetch(`${BASE_URL}/question-bank/save-entire-quiz`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${creatorToken}`
+        },
+        body: JSON.stringify({
+          quizId: testQuizId,
+          category: 'TQM (Total Quality Management)'
+        })
+      });
+      assert.strictEqual(saveWholeRes.status, 201);
+      const saveWholeData = await saveWholeRes.json();
+      assert.ok(saveWholeData.data.savedCount >= 6);
+    });
+
+    // Test 13: Delete Quiz
     await test('Creator can delete quiz', async () => {
       const delRes = await fetch(`${BASE_URL}/quizzes/${testQuizId}`, {
         method: 'DELETE',
