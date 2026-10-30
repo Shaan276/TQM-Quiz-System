@@ -1,24 +1,35 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { User, Shield, Calendar, Key, CheckCircle2, AlertCircle } from 'lucide-react';
+import { User, Shield, Calendar, Key, CheckCircle2, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import PasswordStrengthMeter from '../components/PasswordStrengthMeter';
 
 export default function ProfileView() {
   const { user, accessToken, setUser } = useAuth();
   
   const [name, setName] = useState(user?.name || '');
+  const [nameError, setNameError] = useState('');
   const [profileMsg, setProfileMsg] = useState(null);
   const [profileLoading, setProfileLoading] = useState(false);
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newPasswordConfirmation, setNewPasswordConfirmation] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [passwordErrors, setPasswordErrors] = useState({});
   const [passwordMsg, setPasswordMsg] = useState(null);
   const [passwordLoading, setPasswordLoading] = useState(false);
 
   const handleUpdateName = async (e) => {
     e.preventDefault();
-    setProfileLoading(true);
+    setNameError('');
     setProfileMsg(null);
+
+    if (!name.trim()) {
+      setNameError('Display name is required.');
+      return;
+    }
+
+    setProfileLoading(true);
 
     try {
       const res = await fetch('/api/v1/users/profile', {
@@ -27,7 +38,7 @@ export default function ProfileView() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${accessToken}`
         },
-        body: JSON.stringify({ name })
+        body: JSON.stringify({ name: name.trim() })
       });
       const data = await res.json();
       if (data.success) {
@@ -45,8 +56,27 @@ export default function ProfileView() {
 
   const handleChangePassword = async (e) => {
     e.preventDefault();
-    setPasswordLoading(true);
     setPasswordMsg(null);
+    const errs = {};
+
+    if (!currentPassword) {
+      errs.currentPassword = 'Current password is required.';
+    }
+    if (!newPassword) {
+      errs.newPassword = 'New password is required.';
+    } else if (newPassword.length < 8) {
+      errs.newPassword = 'New password must be at least 8 characters long.';
+    }
+    if (!newPasswordConfirmation) {
+      errs.newPasswordConfirmation = 'Please confirm your new password.';
+    } else if (newPassword !== newPasswordConfirmation) {
+      errs.newPasswordConfirmation = 'New passwords do not match.';
+    }
+
+    setPasswordErrors(errs);
+    if (Object.keys(errs).length > 0) return;
+
+    setPasswordLoading(true);
 
     try {
       const res = await fetch('/api/v1/users/change-password', {
@@ -58,6 +88,7 @@ export default function ProfileView() {
         body: JSON.stringify({ currentPassword, newPassword, newPasswordConfirmation })
       });
       const data = await res.json();
+
       if (data.success) {
         setPasswordMsg({ type: 'success', text: data.data.message });
         setCurrentPassword('');
@@ -112,7 +143,7 @@ export default function ProfileView() {
             <Calendar size={18} className="text-[#06B6D4]" />
             {user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'Active'}
           </p>
-          <span className="text-[10px] text-[#94A3B8]">Phase P1 Initial Release</span>
+          <span className="text-[10px] text-[#94A3B8]">Phase P1 &bull; Active Member</span>
         </div>
       </div>
 
@@ -134,33 +165,50 @@ export default function ProfileView() {
             </div>
           )}
 
-          <form onSubmit={handleUpdateName} className="space-y-4">
+          <form onSubmit={handleUpdateName} noValidate className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-[#94A3B8] mb-1">Display Name</label>
+              <label htmlFor="profile-name" className="block text-xs font-semibold text-[#94A3B8] mb-1">
+                Display Name
+              </label>
               <input
+                id="profile-name"
+                name="name"
                 type="text"
-                required
+                autoComplete="name"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="input-field"
+                onChange={(e) => {
+                  setName(e.target.value);
+                  if (nameError) setNameError('');
+                }}
+                className={`input-field ${nameError ? 'border-[#F43F5E] focus:border-[#F43F5E]' : ''}`}
               />
+              {nameError && (
+                <p className="text-xs text-[#F43F5E] mt-1.5 flex items-center gap-1">
+                  <AlertCircle size={13} className="shrink-0" />
+                  {nameError}
+                </p>
+              )}
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-[#94A3B8] mb-1">Registered Email</label>
+              <label htmlFor="profile-email" className="block text-xs font-semibold text-[#94A3B8] mb-1">
+                Registered Email
+              </label>
               <input
-                type="text"
+                id="profile-email"
+                type="email"
                 disabled
+                autoComplete="email"
                 value={user?.email || ''}
                 className="input-field opacity-60 cursor-not-allowed"
               />
-              <span className="text-[10px] text-[#64748B] mt-1 block">Email address cannot be changed directly in P1.</span>
+              <span className="text-[10px] text-[#64748B] mt-1 block">Email address cannot be changed directly in P1/P2.</span>
             </div>
 
             <button
               type="submit"
               disabled={profileLoading}
-              className="btn-emerald-primary text-xs py-2.5 px-5"
+              className="btn-emerald-primary text-xs py-2.5 px-5 font-bold"
             >
               {profileLoading ? 'Saving...' : 'Update Name'}
             </button>
@@ -182,44 +230,96 @@ export default function ProfileView() {
             </div>
           )}
 
-          <form onSubmit={handleChangePassword} className="space-y-3">
+          <form onSubmit={handleChangePassword} noValidate className="space-y-3">
             <div>
-              <label className="block text-xs font-semibold text-[#94A3B8] mb-1">Current Password</label>
+              <label htmlFor="change-currentPassword" className="block text-xs font-semibold text-[#94A3B8] mb-1">
+                Current Password
+              </label>
               <input
+                id="change-currentPassword"
+                name="currentPassword"
                 type="password"
-                required
+                autoComplete="current-password"
                 value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
-                className="input-field text-xs"
+                onChange={(e) => {
+                  setCurrentPassword(e.target.value);
+                  if (passwordErrors.currentPassword) setPasswordErrors(prev => ({ ...prev, currentPassword: null }));
+                }}
+                className={`input-field text-xs ${passwordErrors.currentPassword ? 'border-[#F43F5E] focus:border-[#F43F5E]' : ''}`}
               />
+              {passwordErrors.currentPassword && (
+                <p className="text-xs text-[#F43F5E] mt-1 flex items-center gap-1">
+                  <AlertCircle size={12} className="shrink-0" />
+                  {passwordErrors.currentPassword}
+                </p>
+              )}
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-[#94A3B8] mb-1">New Password (Min. 8 chars)</label>
-              <input
-                type="password"
-                required
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                className="input-field text-xs"
-              />
+              <label htmlFor="change-newPassword" className="block text-xs font-semibold text-[#94A3B8] mb-1">
+                New Password (Min. 8 chars)
+              </label>
+              <div className="relative">
+                <input
+                  id="change-newPassword"
+                  name="newPassword"
+                  type={showPassword ? 'text' : 'password'}
+                  autoComplete="new-password"
+                  value={newPassword}
+                  onChange={(e) => {
+                    setNewPassword(e.target.value);
+                    if (passwordErrors.newPassword) setPasswordErrors(prev => ({ ...prev, newPassword: null }));
+                  }}
+                  className={`input-field pr-10 text-xs ${passwordErrors.newPassword ? 'border-[#F43F5E] focus:border-[#F43F5E]' : ''}`}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#64748B] hover:text-white transition-colors"
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                </button>
+              </div>
+
+              <PasswordStrengthMeter password={newPassword} />
+
+              {passwordErrors.newPassword && (
+                <p className="text-xs text-[#F43F5E] mt-1 flex items-center gap-1">
+                  <AlertCircle size={12} className="shrink-0" />
+                  {passwordErrors.newPassword}
+                </p>
+              )}
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-[#94A3B8] mb-1">Confirm New Password</label>
+              <label htmlFor="change-confirmPassword" className="block text-xs font-semibold text-[#94A3B8] mb-1">
+                Confirm New Password
+              </label>
               <input
-                type="password"
-                required
+                id="change-confirmPassword"
+                name="newPasswordConfirmation"
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="new-password"
                 value={newPasswordConfirmation}
-                onChange={(e) => setNewPasswordConfirmation(e.target.value)}
-                className="input-field text-xs"
+                onChange={(e) => {
+                  setNewPasswordConfirmation(e.target.value);
+                  if (passwordErrors.newPasswordConfirmation) setPasswordErrors(prev => ({ ...prev, newPasswordConfirmation: null }));
+                }}
+                className={`input-field text-xs ${passwordErrors.newPasswordConfirmation ? 'border-[#F43F5E] focus:border-[#F43F5E]' : ''}`}
               />
+              {passwordErrors.newPasswordConfirmation && (
+                <p className="text-xs text-[#F43F5E] mt-1 flex items-center gap-1">
+                  <AlertCircle size={12} className="shrink-0" />
+                  {passwordErrors.newPasswordConfirmation}
+                </p>
+              )}
             </div>
 
             <button
               type="submit"
               disabled={passwordLoading}
-              className="btn-secondary text-xs py-2.5 px-5"
+              className="btn-secondary text-xs py-2.5 px-5 font-bold"
             >
               {passwordLoading ? 'Updating...' : 'Change Password'}
             </button>

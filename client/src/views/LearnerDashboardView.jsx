@@ -1,72 +1,155 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { GraduationCap, BookOpen, Clock, Award, CheckCircle2, AlertCircle } from 'lucide-react';
+import { 
+  GraduationCap, 
+  BookOpen, 
+  Clock, 
+  Award, 
+  CheckCircle2, 
+  AlertCircle, 
+  Search, 
+  Eye, 
+  Sparkles,
+  Zap
+} from 'lucide-react';
 
-export default function LearnerDashboardView() {
-  const { user } = useAuth();
+export default function LearnerDashboardView({ onOpenPreview, setActiveRoute }) {
+  const { user, accessToken, setSession } = useAuth();
+  const [quizzes, setQuizzes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+
+  const fetchPublishedQuizzes = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/v1/quizzes?status=PUBLISHED&search=${encodeURIComponent(search)}`, {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setQuizzes(data.data.quizzes || []);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchPublishedQuizzes();
+  }, [accessToken, search]);
+
+  const handleUpgradeToCreator = async () => {
+    try {
+      const res = await fetch('/api/v1/users/upgrade-to-creator', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSession(data.data.accessToken, data.data.refreshToken, data.data.profile);
+        setActiveRoute('creator-dashboard');
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
+    <div className="max-w-6xl mx-auto space-y-6">
       
       {/* Header */}
-      <div className="pb-4 border-b border-[#1B2A44] flex items-center justify-between">
+      <div className="pb-4 border-b border-[#1B2A44] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-white tracking-wide flex items-center gap-2">
             <GraduationCap className="text-[#34D399]" size={26} />
             Learner Arena &bull; Student Dashboard
           </h1>
           <p className="text-xs text-[#94A3B8] mt-1">
-            Welcome, <strong className="text-white">{user?.name}</strong> &bull; Registered Email: <strong className="text-white">{user?.email}</strong>
+            Welcome, <strong className="text-white">{user?.name}</strong> &bull; Explore available published assessments.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          {user?.isVerified ? (
-            <span className="px-3 py-1 rounded-xl bg-[#10B981]/15 border border-[#10B981]/30 text-[#34D399] text-xs font-bold flex items-center gap-1.5">
-              <CheckCircle2 size={14} /> Verified Student
-            </span>
-          ) : (
-            <span className="px-3 py-1 rounded-xl bg-[#F59E0B]/15 border border-[#F59E0B]/30 text-[#F59E0B] text-xs font-bold flex items-center gap-1.5">
-              <AlertCircle size={14} /> Email Verification Pending
-            </span>
-          )}
+        {user?.role === 'LEARNER' && (
+          <button
+            onClick={handleUpgradeToCreator}
+            className="btn-secondary text-xs py-2 px-3 font-semibold gap-1.5 text-[#34D399] border-[#34D399]/30"
+            title="Upgrade your account to create quizzes"
+          >
+            <Zap size={14} />
+            Switch to Creator Role
+          </button>
+        )}
+      </div>
+
+      {/* Search Bar */}
+      <div className="dashboard-card p-4">
+        <div className="relative">
+          <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#64748B]" />
+          <input
+            type="text"
+            placeholder="Search published quizzes..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="input-field pl-10 text-xs"
+          />
         </div>
       </div>
 
-      {/* Honest Learner Notice */}
-      <div className="dashboard-card p-8 text-center space-y-4 border-dashed border-[#2D436B]">
-        <div className="w-14 h-14 rounded-2xl bg-[#121D32] border border-[#1F304E] flex items-center justify-center text-[#06B6D4] mx-auto">
-          <BookOpen size={28} />
+      {/* Available Published Quizzes Grid */}
+      {loading ? (
+        <div className="text-center py-16 text-xs text-[#94A3B8] font-mono">
+          Loading published assessments...
         </div>
-
-        <h3 className="text-lg font-bold text-white">
-          Active Assessments & Multiplayer Game Arena Coming in Phase P3
-        </h3>
-        
-        <p className="text-xs text-[#94A3B8] max-w-lg mx-auto leading-relaxed">
-          Your learner account foundation is verified and your sessions are protected with JWT authentication and database foreign key cascades. When live sessions and self-paced assignments are published in upcoming phases, they will appear here.
-        </p>
-
-        <div className="pt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-xl mx-auto text-left">
-          <div className="dashboard-card-inner p-3.5 space-y-1">
-            <p className="text-[10px] uppercase font-bold text-[#34D399]">Real-Time PIN</p>
-            <p className="text-xs font-bold text-white">Live Multiplayer</p>
-            <p className="text-[10px] text-[#64748B]">Join synchronous classroom trivia with zero latency.</p>
-          </div>
-
-          <div className="dashboard-card-inner p-3.5 space-y-1">
-            <p className="text-[10px] uppercase font-bold text-[#06B6D4]">Self-Paced</p>
-            <p className="text-xs font-bold text-white">Homework Tests</p>
-            <p className="text-[10px] text-[#64748B]">Complete scheduled assignments before strict deadlines.</p>
-          </div>
-
-          <div className="dashboard-card-inner p-3.5 space-y-1">
-            <p className="text-[10px] uppercase font-bold text-[#8B5CF6]">Smart Revision</p>
-            <p className="text-xs font-bold text-white">Mistake Notebook</p>
-            <p className="text-[10px] text-[#64748B]">Review incorrect questions with spaced repetition.</p>
-          </div>
+      ) : quizzes.length === 0 ? (
+        <div className="dashboard-card p-12 text-center space-y-3 border-dashed border-[#1F304E]">
+          <BookOpen size={28} className="text-[#64748B] mx-auto" />
+          <h3 className="text-base font-bold text-white">No Published Quizzes Available</h3>
+          <p className="text-xs text-[#94A3B8] max-w-sm mx-auto">
+            Instructors have not published quizzes yet, or your search query did not match any active assessments.
+          </p>
         </div>
-      </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {quizzes.map((quiz) => (
+            <div
+              key={quiz.id}
+              className="dashboard-card p-5 space-y-4 flex flex-col justify-between hover:border-[#34D399] transition-all"
+            >
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-[11px] text-[#64748B]">
+                  <span className="px-2 py-0.5 rounded bg-[#10B981]/15 text-[#34D399] font-mono font-bold">
+                    {quiz.category}
+                  </span>
+                  <span>{quiz.difficulty}</span>
+                </div>
+
+                <h3 className="text-base font-bold text-white line-clamp-1">
+                  {quiz.title}
+                </h3>
+                <p className="text-xs text-[#94A3B8] line-clamp-2">
+                  {quiz.description || 'Interactive assessment.'}
+                </p>
+
+                <div className="flex items-center gap-3 pt-2 text-[11px] text-[#94A3B8] border-t border-[#1B2A44]/60">
+                  <span>{quiz.question_count || 0} Questions</span>
+                  <span>&bull;</span>
+                  <span>{quiz.total_marks || 0} Points</span>
+                </div>
+              </div>
+
+              <button
+                onClick={() => onOpenPreview(quiz.id)}
+                className="btn-emerald-primary text-xs py-2 w-full font-bold gap-2 justify-center"
+              >
+                <Eye size={15} />
+                Preview Assessment
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
     </div>
   );

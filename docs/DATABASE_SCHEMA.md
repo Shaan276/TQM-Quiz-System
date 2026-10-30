@@ -182,6 +182,40 @@ erDiagram
   - `CREATE INDEX idx_options_question ON question_options(question_id);`
   - `CREATE UNIQUE INDEX idx_unique_option_key_per_question ON question_options(question_id, option_key);`
 
+#### 2.4.1 Table: `question_answers`
+- **Purpose:** Accepted text/numerical answers for `FILL_BLANK`, `SHORT_ANSWER`, and `NUMERICAL` questions.
+- **Columns:**
+  - `id`: `UUID PRIMARY KEY DEFAULT gen_random_uuid()`
+  - `question_id`: `UUID NOT NULL REFERENCES questions(id) ON DELETE CASCADE`
+  - `expected_answer`: `TEXT NOT NULL`
+  - `is_case_sensitive`: `BOOLEAN NOT NULL DEFAULT FALSE`
+  - `numeric_tolerance`: `FLOAT NOT NULL DEFAULT 0.0`
+
+#### 2.4.2 Table: `quiz_versions`
+- **Purpose:** Immutable JSON snapshots captured upon quiz publication for historical attempt preservation.
+- **Columns:**
+  - `id`: `UUID PRIMARY KEY DEFAULT gen_random_uuid()`
+  - `quiz_id`: `UUID NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE`
+  - `version`: `INT NOT NULL`
+  - `title`: `VARCHAR(255) NOT NULL`
+  - `snapshot_data`: `TEXT NOT NULL`
+  - `published_at`: `TIMESTAMPTZ NOT NULL DEFAULT NOW()`
+  - `published_by`: `UUID NOT NULL REFERENCES users(id)`
+
+#### 2.4.3 Table: `question_bank`
+- **Purpose:** Reusable repository of curated questions owned by instructors.
+- **Columns:**
+  - `id`: `UUID PRIMARY KEY DEFAULT gen_random_uuid()`
+  - `creator_id`: `UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE`
+  - `title`: `VARCHAR(255) NOT NULL`
+  - `question_text`: `TEXT NOT NULL`
+  - `question_type`: `VARCHAR(50) NOT NULL`
+  - `category`: `VARCHAR(100) NOT NULL DEFAULT 'General'`
+  - `difficulty`: `VARCHAR(50) NOT NULL DEFAULT 'MEDIUM'`
+  - `marks`: `FLOAT NOT NULL DEFAULT 1.0`
+  - `options_data`: `TEXT DEFAULT '[]'`
+  - `settings`: `TEXT DEFAULT '{}'`
+
 #### 2.5 Table: `quiz_sessions`
 - **Purpose:** Live multiplayer rooms or active assignment schedules.
 - **Columns:**

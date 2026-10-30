@@ -9,6 +9,8 @@ const { runMigrations } = require('./database/migrations');
 // Routes
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
+const quizRoutes = require('./routes/quizzes');
+const questionBankRoutes = require('./routes/questionBank');
 
 function createApp(customDb = null) {
   if (customDb) {
@@ -48,6 +50,8 @@ function createApp(customDb = null) {
   // Mount API Endpoints
   app.use('/api/v1/auth', authRoutes);
   app.use('/api/v1/users', userRoutes);
+  app.use('/api/v1/quizzes', quizRoutes);
+  app.use('/api/v1/question-bank', questionBankRoutes);
 
   // Serve production client build if exists
   const clientDist = path.resolve(__dirname, '../../client/dist');

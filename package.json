@@ -4,7 +4,7 @@
   "description": "Next-Generation Quiz & Assessment SaaS Platform",
   "scripts": {
     "start": "node server/src/server.js",
-    "test": "node server/tests/run_tests.js",
+    "test": "node server/tests/run_tests.js && node server/tests/run_p2_tests.js",
     "build:client": "cd client && npm run build",
     "dev:server": "cd server && node src/server.js",
     "dev:client": "cd client && npm run dev"

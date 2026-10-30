@@ -1,7 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { dbGet, dbRun } = require('../database');
-const { authenticateToken, requireRole } = require('../middleware/auth');
+const { authenticateToken, requireRole, signAccessToken, signRefreshToken } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -167,6 +167,44 @@ router.put('/change-password', authenticateToken, async (req, res, next) => {
 // -------------------------------------------------------------
 // 4. Role Verification Canary Endpoints (Testing RBAC Guards)
 // -------------------------------------------------------------
+router.post('/upgrade-to-creator', authenticateToken, async (req, res, next) => {
+  try {
+    await dbRun(`UPDATE users SET role = 'CREATOR', updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [req.user.id]);
+    const updated = await dbGet(`SELECT id, email, name, role, is_verified, created_at, updated_at FROM users WHERE id = ?`, [req.user.id]);
+    
+    const newAccessToken = signAccessToken({
+      id: updated.id,
+      email: updated.email,
+      role: updated.role,
+      name: updated.name
+    });
+    const newRefreshToken = signRefreshToken({
+      id: updated.id,
+      email: updated.email
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
+        profile: {
+          id: updated.id,
+          email: updated.email,
+          name: updated.name,
+          role: updated.role,
+          isVerified: updated.is_verified === 1,
+          createdAt: updated.created_at,
+          updatedAt: updated.updated_at
+        },
+        message: 'Role upgraded to CREATOR successfully! You now have full access to Quiz Studio and Question Bank.'
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/creator-only', authenticateToken, requireRole('CREATOR', 'ADMIN'), (req, res) => {
   res.json({
     success: true,

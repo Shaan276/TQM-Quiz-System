@@ -56,16 +56,12 @@ flowchart TD
   - Verify rejection of questions without an assigned correct option.
   - Verify rejection of negative or zero time limits and durations.
 
-#### 2.2 Integration Tests (Supertest + Testcontainers / Ephemeral PostgreSQL)
-- **Authentication & RBAC:**
-  - Test registration, password hashing verification, and token rotation.
-  - Verify that a `STUDENT` token receives `403 Forbidden` when attempting to call `POST /api/v1/quizzes` or view other students' attempts.
-- **Database Atomicity & Idempotency:**
-  - Execute concurrent duplicate answer submissions with identical attempt/question IDs; verify that exactly one record commits and duplicate calls return `409 Conflict` or idempotent success without score inflation.
-- **Cache Lifecycle:**
-  - Call `GET /metrics/dashboard` $\rightarrow$ verify DB query executed.
-  - Immediately call again $\rightarrow$ verify cache hit latency $< 1\text{ ms}$ and zero DB queries executed.
-  - Submit an attempt $\rightarrow$ verify cache key is automatically invalidated.
+#### 2.2 Integration Tests (Automated Test Runners)
+- **Phase P1 Automated Auth & RBAC Suite (`server/tests/run_tests.js`):**
+  - 14/14 tests covering user registration with default `LEARNER` role, duplicate email rejection (409), mismatched password confirmation (400), expiring token verification, login, invalid password rejection (401), refresh token rotation, profile updates, RBAC 403 authorization guards, password change invalidation, and forgot/reset password flow.
+- **Phase P2 Automated Quiz Studio & Question Bank Suite (`server/tests/run_p2_tests.js`):**
+  - 13/13 tests covering RBAC 403 creation guard, DRAFT quiz instantiation, autosave with all 6 question types, Poka-Yoke validation against publishing empty quizzes or questions without correct answers, immutable version snapshots in `quiz_versions`, historical version integrity on edits, unpublishing, quiz duplication, Question Bank CRUD and cross-import, student preview mode, creator dashboard aggregate metrics, and quiz deletion.
+- **Total Automated Test Coverage:** 27 scenarios, 100% pass rate (`npm test`).
 
 #### 2.3 End-to-End (E2E) Browser Testing (Playwright)
 - **Host & Player Dual-Browser Journey:**

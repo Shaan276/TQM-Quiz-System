@@ -1,0 +1,437 @@
+const express = require('express');
+const crypto = require('crypto');
+const { dbRun, dbGet, dbAll } = require('../database');
+const { authenticateToken, requireRole } = require('../middleware/auth');
+
+const router = express.Router();
+
+function generateUUID() {
+  return crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');
+}
+
+/**
+ * GET /api/v1/question-bank
+ * List questions in Question Bank with search & filters
+ */
+router.get('/', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const {
+      search = '',
+      category = '',
+      difficulty = '',
+      type = '',
+      page = 1,
+      limit = 20
+    } = req.query;
+
+    const offset = (Math.max(1, parseInt(page)) - 1) * parseInt(limit);
+    const params = [userId];
+    let whereClauses = [`creator_id = ?`];
+
+    if (search.trim()) {
+      whereClauses.push(`(title LIKE ? OR question_text LIKE ?)`);
+      params.push(`%${search.trim()}%`, `%${search.trim()}%`);
+    }
+
+    if (category) {
+      whereClauses.push(`category = ?`);
+      params.push(category);
+    }
+
+    if (difficulty) {
+      whereClauses.push(`difficulty = ?`);
+      params.push(difficulty);
+    }
+
+    if (type) {
+      whereClauses.push(`question_type = ?`);
+      params.push(type);
+    }
+
+    const whereSQL = `WHERE ${whereClauses.join(' AND ')}`;
+
+    const countRow = await dbGet(`SELECT COUNT(*) as total FROM question_bank ${whereSQL}`, params);
+    const total = countRow?.total || 0;
+
+    const questions = await dbAll(
+      `SELECT * FROM question_bank 
+       ${whereSQL} 
+       ORDER BY updated_at DESC 
+       LIMIT ? OFFSET ?`,
+      [...params, parseInt(limit), offset]
+    );
+
+    const formatted = questions.map(q => {
+      let optionsData = [];
+      let settings = {};
+      let tags = [];
+      try { optionsData = JSON.parse(q.options_data || '[]'); } catch (e) {}
+      try { settings = JSON.parse(q.settings || '{}'); } catch (e) {}
+      try { tags = JSON.parse(q.tags || '[]'); } catch (e) {}
+
+      return {
+        ...q,
+        tags,
+        options_data: optionsData,
+        settings
+      };
+    });
+
+    res.json({
+      success: true,
+      data: {
+        questions: formatted,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total,
+          totalPages: Math.ceil(total / parseInt(limit))
+        }
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/v1/question-bank
+ * Create a new question directly into the Question Bank
+ */
+router.post('/', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const {
+      title = 'Question',
+      question_text,
+      question_type = 'MCQ_SINGLE',
+      category = 'General',
+      difficulty = 'MEDIUM',
+      tags = [],
+      marks = 1.0,
+      explanation = '',
+      options_data = [],
+      settings = {}
+    } = req.body;
+
+    if (!question_text || !question_text.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'ERR_VALIDATION', message: 'Question text is required.' }
+      });
+    }
+
+    const id = generateUUID();
+    await dbRun(
+      `INSERT INTO question_bank (
+        id, creator_id, title, question_text, question_type, category,
+        difficulty, tags, marks, explanation, options_data, settings
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        userId,
+        title.trim() || 'Untitled Bank Question',
+        question_text.trim(),
+        question_type,
+        category,
+        difficulty,
+        JSON.stringify(Array.isArray(tags) ? tags : []),
+        parseFloat(marks) || 1.0,
+        explanation || '',
+        JSON.stringify(options_data || []),
+        JSON.stringify(settings || {})
+      ]
+    );
+
+    const created = await dbGet(`SELECT * FROM question_bank WHERE id = ?`, [id]);
+
+    res.status(201).json({
+      success: true,
+      data: { question: created }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/v1/question-bank/from-quiz-question
+ * Save an existing quiz question into the Question Bank
+ */
+router.post('/from-quiz-question', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const { questionId, category = 'General', tags = [] } = req.body;
+
+    const question = await dbGet(`SELECT * FROM questions WHERE id = ?`, [questionId]);
+    if (!question) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'ERR_NOT_FOUND', message: 'Quiz question not found.' }
+      });
+    }
+
+    // Verify user owns the quiz
+    const quiz = await dbGet(`SELECT creator_id FROM quizzes WHERE id = ?`, [question.quiz_id]);
+    if (!quiz || (quiz.creator_id !== userId && req.user.role !== 'ADMIN')) {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'ERR_FORBIDDEN', message: 'Not authorized.' }
+      });
+    }
+
+    let optionsData = [];
+    if (['MCQ_SINGLE', 'MCQ_MULTI', 'TRUE_FALSE'].includes(question.question_type)) {
+      optionsData = await dbAll(
+        `SELECT option_key, option_text, is_correct, sort_order 
+         FROM question_options 
+         WHERE question_id = ? 
+         ORDER BY sort_order ASC`,
+        [questionId]
+      );
+    } else {
+      optionsData = await dbAll(
+        `SELECT expected_answer, is_case_sensitive, numeric_tolerance 
+         FROM question_answers 
+         WHERE question_id = ?`,
+        [questionId]
+      );
+    }
+
+    const bankId = generateUUID();
+    await dbRun(
+      `INSERT INTO question_bank (
+        id, creator_id, title, question_text, question_type, category,
+        difficulty, tags, marks, explanation, options_data, settings
+      ) VALUES (?, ?, ?, ?, ?, ?, 'MEDIUM', ?, ?, ?, ?, ?)`,
+      [
+        bankId,
+        userId,
+        question.question_text.slice(0, 40) + '...',
+        question.question_text,
+        question.question_type,
+        category,
+        JSON.stringify(tags),
+        question.marks,
+        question.explanation,
+        JSON.stringify(optionsData),
+        question.settings || '{}'
+      ]
+    );
+
+    res.status(201).json({
+      success: true,
+      data: {
+        message: 'Question saved to Question Bank successfully.',
+        bankId
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/v1/question-bank/:id/import-to-quiz
+ * Import a Question Bank item into a target quiz as a new deep copy
+ */
+router.post('/:id/import-to-quiz', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { targetQuizId } = req.body;
+    const userId = req.user.id;
+
+    if (!targetQuizId) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'ERR_VALIDATION', message: 'Target quiz ID is required.' }
+      });
+    }
+
+    // Verify target quiz ownership
+    const quiz = await dbGet(`SELECT * FROM quizzes WHERE id = ?`, [targetQuizId]);
+    if (!quiz || (quiz.creator_id !== userId && req.user.role !== 'ADMIN')) {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'ERR_FORBIDDEN', message: 'Target quiz not accessible.' }
+      });
+    }
+
+    // Fetch bank question
+    const bankQ = await dbGet(`SELECT * FROM question_bank WHERE id = ? AND creator_id = ?`, [id, userId]);
+    if (!bankQ) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'ERR_NOT_FOUND', message: 'Question not found in bank.' }
+      });
+    }
+
+    // Get current max sort_order
+    const sortRow = await dbGet(
+      `SELECT COALESCE(MAX(sort_order), -1) as max_sort FROM questions WHERE quiz_id = ?`,
+      [targetQuizId]
+    );
+    const newSortOrder = (sortRow?.max_sort || 0) + 1;
+
+    const newQuestionId = generateUUID();
+    await dbRun(
+      `INSERT INTO questions (
+        id, quiz_id, question_text, question_type, marks,
+        time_limit_sec, explanation, sort_order, settings
+      ) VALUES (?, ?, ?, ?, ?, 30, ?, ?, ?)`,
+      [
+        newQuestionId,
+        targetQuizId,
+        bankQ.question_text,
+        bankQ.question_type,
+        bankQ.marks,
+        bankQ.explanation,
+        newSortOrder,
+        bankQ.settings || '{}'
+      ]
+    );
+
+    // Parse options_data
+    let optionsData = [];
+    try {
+      optionsData = JSON.parse(bankQ.options_data || '[]');
+    } catch (e) {}
+
+    if (['MCQ_SINGLE', 'MCQ_MULTI', 'TRUE_FALSE'].includes(bankQ.question_type)) {
+      for (let i = 0; i < optionsData.length; i++) {
+        const opt = optionsData[i];
+        await dbRun(
+          `INSERT INTO question_options (
+            id, question_id, option_key, option_text, is_correct, sort_order
+          ) VALUES (?, ?, ?, ?, ?, ?)`,
+          [
+            generateUUID(),
+            newQuestionId,
+            opt.option_key || String.fromCharCode(65 + i),
+            opt.option_text || '',
+            opt.is_correct ? 1 : 0,
+            i
+          ]
+        );
+      }
+    } else {
+      for (const ans of optionsData) {
+        await dbRun(
+          `INSERT INTO question_answers (
+            id, question_id, expected_answer, is_case_sensitive, numeric_tolerance
+          ) VALUES (?, ?, ?, ?, ?)`,
+          [
+            generateUUID(),
+            newQuestionId,
+            ans.expected_answer || '',
+            ans.is_case_sensitive ? 1 : 0,
+            parseFloat(ans.numeric_tolerance) || 0.0
+          ]
+        );
+      }
+    }
+
+    res.status(201).json({
+      success: true,
+      data: {
+        message: 'Question imported successfully into quiz.',
+        questionId: newQuestionId
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * PUT /api/v1/question-bank/:id
+ * Update question in bank
+ */
+router.put('/:id', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    const existing = await dbGet(`SELECT * FROM question_bank WHERE id = ? AND creator_id = ?`, [id, userId]);
+    if (!existing) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'ERR_NOT_FOUND', message: 'Bank question not found.' }
+      });
+    }
+
+    const {
+      title,
+      question_text,
+      question_type,
+      category,
+      difficulty,
+      tags,
+      marks,
+      explanation,
+      options_data,
+      settings
+    } = req.body;
+
+    await dbRun(
+      `UPDATE question_bank SET
+        title = ?, question_text = ?, question_type = ?, category = ?,
+        difficulty = ?, tags = ?, marks = ?, explanation = ?,
+        options_data = ?, settings = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [
+        title !== undefined ? title : existing.title,
+        question_text !== undefined ? question_text : existing.question_text,
+        question_type !== undefined ? question_type : existing.question_type,
+        category !== undefined ? category : existing.category,
+        difficulty !== undefined ? difficulty : existing.difficulty,
+        tags !== undefined ? JSON.stringify(tags) : existing.tags,
+        marks !== undefined ? parseFloat(marks) : existing.marks,
+        explanation !== undefined ? explanation : existing.explanation,
+        options_data !== undefined ? JSON.stringify(options_data) : existing.options_data,
+        settings !== undefined ? JSON.stringify(settings) : existing.settings,
+        id
+      ]
+    );
+
+    const updated = await dbGet(`SELECT * FROM question_bank WHERE id = ?`, [id]);
+
+    res.json({
+      success: true,
+      data: { question: updated }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * DELETE /api/v1/question-bank/:id
+ * Delete question from bank
+ */
+router.delete('/:id', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    const existing = await dbGet(`SELECT * FROM question_bank WHERE id = ? AND creator_id = ?`, [id, userId]);
+    if (!existing) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'ERR_NOT_FOUND', message: 'Bank question not found.' }
+      });
+    }
+
+    await dbRun(`DELETE FROM question_bank WHERE id = ?`, [id]);
+
+    res.json({
+      success: true,
+      data: { message: 'Question removed from Question Bank.' }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+module.exports = router;

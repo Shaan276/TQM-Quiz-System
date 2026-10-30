@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useAuth } from '../context/AuthContext';
 import { 
   Zap, 
@@ -9,7 +9,10 @@ import {
   GraduationCap, 
   Clock, 
   CheckCircle2, 
-  AlertCircle 
+  AlertCircle,
+  Database,
+  PlusCircle,
+  FolderKanban
 } from 'lucide-react';
 
 export default function Sidebar({ activeRoute, setActiveRoute }) {
@@ -17,6 +20,11 @@ export default function Sidebar({ activeRoute, setActiveRoute }) {
 
   const isCreator = user?.role === 'CREATOR' || user?.role === 'ADMIN';
   const isAdmin = user?.role === 'ADMIN';
+
+  const handleLogout = async () => {
+    await logout();
+    setActiveRoute('landing');
+  };
 
   return (
     <aside className="w-64 bg-[#0B111D] border-r border-[#1B2A44] flex flex-col justify-between shrink-0 select-none min-h-screen">
@@ -37,7 +45,7 @@ export default function Sidebar({ activeRoute, setActiveRoute }) {
               QUIZ-SYSTEM
             </span>
             <p className="text-[10px] text-[#94A3B8] font-bold tracking-widest uppercase">
-              FOUNDATION OS &bull; P1
+              STUDIO &bull; PHASE P2
             </p>
           </div>
         </div>
@@ -96,16 +104,28 @@ export default function Sidebar({ activeRoute, setActiveRoute }) {
                 Learner Dashboard
               </button>
 
-              {/* Creator Studio Placeholder */}
+              {/* Creator Studio & Quizzes */}
               <button
                 onClick={() => setActiveRoute('creator-dashboard')}
                 className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
-                  activeRoute === 'creator-dashboard' ? 'bg-[#132238] text-[#34D399] border border-[#34D399]/30' : 'text-[#94A3B8] hover:text-white hover:bg-[#0E1626]'
+                  activeRoute === 'creator-dashboard' || activeRoute === 'quiz-studio' ? 'bg-[#132238] text-[#34D399] border border-[#34D399]/30' : 'text-[#94A3B8] hover:text-white hover:bg-[#0E1626]'
                 }`}
               >
-                <Zap size={16} />
-                Creator Studio
-                {!isCreator && <span className="ml-auto text-[9px] bg-[#1F304E] px-1.5 py-0.5 rounded text-[#64748B]">Locked</span>}
+                <FolderKanban size={16} />
+                Quiz Studio
+                {!isCreator && <span className="ml-auto text-[9px] bg-[#1F304E] px-1.5 py-0.5 rounded text-[#64748B]">Learner</span>}
+              </button>
+
+              {/* Question Bank */}
+              <button
+                onClick={() => setActiveRoute('question-bank')}
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                  activeRoute === 'question-bank' ? 'bg-[#132238] text-[#34D399] border border-[#34D399]/30' : 'text-[#94A3B8] hover:text-white hover:bg-[#0E1626]'
+                }`}
+              >
+                <Database size={16} />
+                Question Bank
+                {!isCreator && <span className="ml-auto text-[9px] bg-[#1F304E] px-1.5 py-0.5 rounded text-[#64748B]">Learner</span>}
               </button>
 
               {/* User Profile */}
@@ -143,7 +163,7 @@ export default function Sidebar({ activeRoute, setActiveRoute }) {
       <div className="p-4 border-t border-[#1B2A44] bg-[#0A101A]">
         {user ? (
           <button
-            onClick={logout}
+            onClick={handleLogout}
             className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold text-[#F43F5E] hover:bg-[#F43F5E]/10 border border-[#F43F5E]/20 transition-colors"
           >
             <LogOut size={15} />

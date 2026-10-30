@@ -56,20 +56,26 @@
 #### 2.2 Quiz Studio & Management (`/api/v1/quizzes`)
 | Method | Path | Auth | Roles | Purpose & Description |
 | :--- | :--- | :---: | :---: | :--- |
-| `GET` | `/` | Authenticated | All | List published quizzes with debounced search (`?query=`), category filtering, and sorting (`?sort=id_asc`). |
-| `POST` | `/` | Authenticated | Teacher/Admin | Create new quiz header with title, category, duration, and passing score (Poka-Yoke enforced). |
-| `GET` | `/:id` | Authenticated | All | Fetch full quiz details. If requester is a student, correct answer keys are scrubbed. |
-| `PUT` | `/:id` | Authenticated | Teacher/Admin | Update quiz settings and increment version counter. |
-| `DELETE` | `/:id` | Authenticated | Teacher/Admin | Soft-delete quiz (`is_archived = TRUE`), preserving historical attempts. |
-| `GET` | `/categories` | Public | None | Retrieve distinct categories for fast dropdown filtering. |
+| `GET` | `/` | Authenticated | All | List quizzes with debounced search (`?search=`), category, difficulty, status filtering, and sorting (`?sort=updated_desc`). |
+| `POST` | `/` | Authenticated | Creator/Admin | Create new quiz header with default DRAFT status. |
+| `GET` | `/:id` | Authenticated | All | Fetch full quiz details including questions, options, answers, and settings. |
+| `PUT` | `/:id` | Authenticated | Creator/Admin | Autosave endpoint: atomically update quiz metadata, settings, and questions array. |
+| `POST` | `/:id/publish` | Authenticated | Creator/Admin | Poka-Yoke quality validation, creates immutable version snapshot in `quiz_versions`, sets status to `PUBLISHED`. |
+| `POST` | `/:id/unpublish` | Authenticated | Creator/Admin | Reverts published quiz back to `DRAFT`. |
+| `POST` | `/:id/duplicate` | Authenticated | Creator/Admin | Deep-clones quiz, questions, options, and answers as a new draft. |
+| `DELETE` | `/:id` | Authenticated | Creator/Admin | Deletes quiz safely. |
+| `GET` | `/:id/preview` | Authenticated | All | Returns formatted quiz for student simulation without creating attempts. |
+| `GET` | `/metrics/summary` | Authenticated | All | Returns creator metrics: totalQuizzes, publishedQuizzes, draftQuizzes, totalQuestions, bankQuestions. |
 
-#### 2.3 Question Authoring (`/api/v1/quizzes/:quiz_id/questions`)
+#### 2.3 Question Bank Management (`/api/v1/question-bank`)
 | Method | Path | Auth | Roles | Purpose & Description |
 | :--- | :--- | :---: | :---: | :--- |
-| `GET` | `/` | Authenticated | Teacher/Admin | List all questions and options for authoring view. |
-| `POST` | `/` | Authenticated | Teacher/Admin | Add new question with options, correct answer keys, marks, and explanation. |
-| `PUT` | `/:question_id` | Authenticated | Teacher/Admin | Edit question text or option set. |
-| `DELETE` | `/:question_id` | Authenticated | Teacher/Admin | Remove question from quiz. |
+| `GET` | `/` | Authenticated | Creator/Admin | List reusable questions with search, category, type, and difficulty filters. |
+| `POST` | `/` | Authenticated | Creator/Admin | Create new reusable question in Question Bank. |
+| `POST` | `/from-quiz-question` | Authenticated | Creator/Admin | Save an existing question from an authored quiz into the bank. |
+| `POST` | `/:id/import-to-quiz` | Authenticated | Creator/Admin | Import bank question into target quiz as a new deep copy. |
+| `PUT` | `/:id` | Authenticated | Creator/Admin | Update bank question prompt, options, or explanation. |
+| `DELETE` | `/:id` | Authenticated | Creator/Admin | Delete question from bank. |
 
 #### 2.4 Sessions & Multiplayer Engine (`/api/v1/sessions`)
 | Method | Path | Auth | Roles | Purpose & Description |

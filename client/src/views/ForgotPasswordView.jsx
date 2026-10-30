@@ -3,19 +3,31 @@ import { Mail, CheckCircle2, AlertCircle } from 'lucide-react';
 
 export default function ForgotPasswordView({ setActiveRoute }) {
   const [email, setEmail] = useState('');
+  const [fieldError, setFieldError] = useState('');
   const [loading, setLoading] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
     setStatusMsg('');
+    setFieldError('');
+
+    if (!email.trim()) {
+      setFieldError('Email address is required.');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      setFieldError('Please enter a valid email address.');
+      return;
+    }
+
+    setLoading(true);
 
     try {
       const res = await fetch('/api/v1/auth/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
+        body: JSON.stringify({ email: email.trim() })
       });
       const data = await res.json();
       setStatusMsg(data.data?.message || 'If an account exists, a reset link has been dispatched.');
@@ -45,23 +57,36 @@ export default function ForgotPasswordView({ setActiveRoute }) {
       )}
 
       <div className="dashboard-card p-6 space-y-4">
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} noValidate className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold text-[#94A3B8] mb-1">Email Address</label>
+            <label htmlFor="forgot-email" className="block text-xs font-semibold text-[#94A3B8] mb-1">
+              Email Address
+            </label>
             <input
+              id="forgot-email"
+              name="email"
               type="email"
-              required
+              autoComplete="email username"
               placeholder="name@example.com"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="input-field"
+              onChange={(e) => {
+                setEmail(e.target.value);
+                if (fieldError) setFieldError('');
+              }}
+              className={`input-field ${fieldError ? 'border-[#F43F5E] focus:border-[#F43F5E] focus:ring-[#F43F5E]/20' : ''}`}
             />
+            {fieldError && (
+              <p className="text-xs text-[#F43F5E] mt-1.5 flex items-center gap-1">
+                <AlertCircle size={13} className="shrink-0" />
+                {fieldError}
+              </p>
+            )}
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="btn-emerald-primary w-full text-xs py-3"
+            className="btn-emerald-primary w-full text-xs py-2.5 font-bold"
           >
             {loading ? 'Dispatching Link...' : 'Send Password Reset Email'}
           </button>
