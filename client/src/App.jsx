@@ -13,11 +13,21 @@ import LearnerDashboardView from './views/LearnerDashboardView';
 import QuizStudioView from './views/QuizStudioView';
 import QuestionBankView from './views/QuestionBankView';
 import QuizPreviewModal from './views/QuizPreviewModal';
+import QuizAttemptView from './views/QuizAttemptView';
+import QuizResultView from './views/QuizResultView';
+import MistakeNotebookView from './views/MistakeNotebookView';
+import AttemptHistoryView from './views/AttemptHistoryView';
+import SuperAdminView from './views/SuperAdminView';
 
 export default function App() {
   const { user, loading } = useAuth();
   const [activeStudioQuizId, setActiveStudioQuizId] = useState(null);
   const [previewQuizId, setPreviewQuizId] = useState(null);
+  
+  // Phase P3 Taking & Result State
+  const [activeAttemptId, setActiveAttemptId] = useState(null);
+  const [activeAttemptQuizId, setActiveAttemptQuizId] = useState(null);
+  const [resultAttemptId, setResultAttemptId] = useState(null);
   
   // URL check for initial query parameters (e.g. ?token=... on verify or reset password links)
   const [activeRoute, setActiveRoute] = useState(() => {
@@ -41,6 +51,35 @@ export default function App() {
 
   const handleOpenPreview = (quizId) => {
     setPreviewQuizId(quizId);
+  };
+
+  // Taking flows
+  const handleStartAttempt = (quizId) => {
+    setActiveAttemptQuizId(quizId);
+    setActiveAttemptId(null);
+    setActiveRoute('quiz-attempt');
+  };
+
+  const handleResumeAttempt = (attemptId) => {
+    setActiveAttemptId(attemptId);
+    setActiveAttemptQuizId(null);
+    setActiveRoute('quiz-attempt');
+  };
+
+  const handleCompleteAttempt = (attemptId) => {
+    setResultAttemptId(attemptId);
+    setActiveRoute('quiz-result');
+  };
+
+  const handleViewResult = (attemptId) => {
+    setResultAttemptId(attemptId);
+    setActiveRoute('quiz-result');
+  };
+
+  const handleRetake = (quizId) => {
+    setActiveAttemptQuizId(quizId);
+    setActiveAttemptId(null);
+    setActiveRoute('quiz-attempt');
   };
 
   if (loading) {
@@ -73,6 +112,7 @@ export default function App() {
         {activeRoute === 'verify-email' && <VerifyEmailView setActiveRoute={setActiveRoute} />}
         {activeRoute === 'profile' && <ProfileView />}
         
+        {/* Creator Studio */}
         {activeRoute === 'creator-dashboard' && (
           <CreatorDashboardView
             setActiveRoute={setActiveRoute}
@@ -95,12 +135,58 @@ export default function App() {
           />
         )}
 
+        {/* Learner Arena & Discovery */}
         {activeRoute === 'learner-dashboard' && (
           <LearnerDashboardView
             onOpenPreview={handleOpenPreview}
+            onStartAttempt={handleStartAttempt}
             setActiveRoute={setActiveRoute}
           />
         )}
+
+        {/* Interactive Taking Runner (P3) */}
+        {activeRoute === 'quiz-attempt' && (
+          <QuizAttemptView
+            attemptId={activeAttemptId}
+            quizId={activeAttemptQuizId}
+            onComplete={handleCompleteAttempt}
+            onExit={() => setActiveRoute('learner-dashboard')}
+          />
+        )}
+
+        {/* Result & Evaluation Review (P3) */}
+        {activeRoute === 'quiz-result' && resultAttemptId && (
+          <QuizResultView
+            attemptId={resultAttemptId}
+            onRetake={handleRetake}
+            onReviewMistakes={() => setActiveRoute('mistake-notebook')}
+            onBackToQuizzes={() => setActiveRoute('learner-dashboard')}
+          />
+        )}
+
+        {/* Mistake Notebook (P3) */}
+        {activeRoute === 'mistake-notebook' && (
+          <MistakeNotebookView
+            setActiveRoute={setActiveRoute}
+          />
+        )}
+
+        {/* Attempt History (P3) */}
+        {activeRoute === 'attempt-history' && (
+          <AttemptHistoryView
+            onViewResult={handleViewResult}
+            onResumeAttempt={handleResumeAttempt}
+            setActiveRoute={setActiveRoute}
+          />
+        )}
+
+        {/* Superadmin Console (P3) */}
+        {activeRoute === 'admin-dashboard' && (
+          <SuperAdminView
+            setActiveRoute={setActiveRoute}
+          />
+        )}
+
       </main>
 
       {/* Global Interactive Quiz Preview Modal */}

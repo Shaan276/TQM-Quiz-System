@@ -232,52 +232,73 @@ erDiagram
   - `CREATE UNIQUE INDEX idx_sessions_active_pin ON quiz_sessions(join_code) WHERE status != 'COMPLETED';`
   - `CREATE INDEX idx_sessions_host ON quiz_sessions(host_id, status);`
 
-#### 2.6 Table: `quiz_attempts`
-- **Purpose:** Student interaction record with a session.
+#### 2.6 Table: `quiz_attempts` (Phase P3 Implemented)
+- **Purpose:** Student interaction record with a quiz (self-paced attempt).
 - **Columns:**
-  - `id`: `UUID PRIMARY KEY DEFAULT gen_random_uuid()`
-  - `session_id`: `UUID NOT NULL REFERENCES quiz_sessions(id) ON DELETE CASCADE`
-  - `user_id`: `UUID NULL REFERENCES users(id) ON DELETE SET NULL` (Allows anonymous guest participants)
-  - `participant_alias`: `VARCHAR(100) NOT NULL`
-  - `total_questions`: `INT NOT NULL DEFAULT 0`
-  - `correct_answers`: `INT NOT NULL DEFAULT 0`
-  - `score`: `FLOAT NOT NULL DEFAULT 0.0`
-  - `score_percentage`: `FLOAT NOT NULL DEFAULT 0.0`
-  - `status`: `VARCHAR(50) NOT NULL CHECK (status IN ('IN_PROGRESS', 'PASSED', 'FAILED'))`
-  - `latency_ms`: `FLOAT NOT NULL DEFAULT 0.0`
-  - `submitted_at`: `TIMESTAMPTZ NOT NULL DEFAULT NOW()`
+  - `id`: `TEXT PRIMARY KEY` (UUIDv4)
+  - `quiz_id`: `TEXT NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE`
+  - `quiz_version`: `INTEGER NOT NULL DEFAULT 1`
+  - `user_id`: `TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE`
+  - `status`: `TEXT NOT NULL DEFAULT 'IN_PROGRESS' CHECK (status IN ('IN_PROGRESS', 'COMPLETED', 'EXPIRED', 'ABANDONED'))`
+  - `score`: `REAL NOT NULL DEFAULT 0.0`
+  - `max_score`: `REAL NOT NULL DEFAULT 0.0`
+  - `score_percentage`: `REAL NOT NULL DEFAULT 0.0`
+  - `is_passed`: `INTEGER NOT NULL DEFAULT 0`
+  - `total_questions`: `INTEGER NOT NULL DEFAULT 0`
+  - `correct_answers`: `INTEGER NOT NULL DEFAULT 0`
+  - `incorrect_answers`: `INTEGER NOT NULL DEFAULT 0`
+  - `unanswered_count`: `INTEGER NOT NULL DEFAULT 0`
+  - `time_limit_sec`: `INTEGER NOT NULL DEFAULT 0`
+  - `started_at`: `DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP`
+  - `expires_at`: `DATETIME NULL`
+  - `submitted_at`: `DATETIME NULL`
+  - `time_taken_sec`: `INTEGER NOT NULL DEFAULT 0`
+  - `idempotency_key`: `TEXT NULL UNIQUE`
 - **Indexes:**
-  - `CREATE INDEX idx_attempts_session ON quiz_attempts(session_id, score DESC);`
-  - `CREATE INDEX idx_attempts_user_history ON quiz_attempts(user_id, submitted_at DESC);`
-  - `CREATE UNIQUE INDEX idx_unique_attempt_per_user_session ON quiz_attempts(session_id, user_id) WHERE user_id IS NOT NULL;`
+  - `CREATE INDEX idx_attempts_user ON quiz_attempts(user_id, status);`
+  - `CREATE INDEX idx_attempts_quiz ON quiz_attempts(quiz_id, submitted_at DESC);`
 
-#### 2.7 Table: `attempt_answers`
-- **Purpose:** Item-by-item granular answers, latencies, and awarded points.
+#### 2.7 Table: `attempt_answers` (Phase P3 Implemented)
+- **Purpose:** Item-by-item granular answers, evaluation status, and awarded points.
 - **Columns:**
-  - `id`: `UUID PRIMARY KEY DEFAULT gen_random_uuid()`
-  - `attempt_id`: `UUID NOT NULL REFERENCES quiz_attempts(id) ON DELETE CASCADE`
-  - `question_id`: `UUID NOT NULL REFERENCES questions(id) ON DELETE CASCADE`
-  - `selected_option_id`: `UUID NULL REFERENCES question_options(id) ON DELETE SET NULL`
-  - `is_correct`: `BOOLEAN NOT NULL DEFAULT FALSE`
-  - `earned_score`: `FLOAT NOT NULL DEFAULT 0.0`
-  - `latency_ms`: `FLOAT NOT NULL DEFAULT 0.0`
+  - `id`: `TEXT PRIMARY KEY` (UUIDv4)
+  - `attempt_id`: `TEXT NOT NULL REFERENCES quiz_attempts(id) ON DELETE CASCADE`
+  - `question_id`: `TEXT NOT NULL`
+  - `question_type`: `TEXT NOT NULL`
+  - `user_answer`: `TEXT NOT NULL DEFAULT ''` (JSON-serialized or raw string)
+  - `is_correct`: `INTEGER NOT NULL DEFAULT 0`
+  - `earned_score`: `REAL NOT NULL DEFAULT 0.0`
+  - `max_marks`: `REAL NOT NULL DEFAULT 1.0`
+  - `is_evaluated`: `INTEGER NOT NULL DEFAULT 1`
+  - `evaluation_notes`: `TEXT DEFAULT ''`
+  - `saved_at`: `DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP`
+  - `UNIQUE(attempt_id, question_id)`
 - **Indexes:**
-  - `CREATE INDEX idx_answers_attempt ON attempt_answers(attempt_id);`
-  - `CREATE UNIQUE INDEX idx_unique_answer_per_attempt_q ON attempt_answers(attempt_id, question_id);`
+  - `CREATE INDEX idx_attempt_answers_attempt ON attempt_answers(attempt_id);`
 
-#### 2.8 Table: `mistake_notebook`
-- **Purpose:** Automatic pedagogical feedback repository storing learner failure modes.
+#### 2.8 Table: `mistake_notebook` (Phase P3 Implemented)
+- **Purpose:** Automatic pedagogical feedback repository storing learner failure modes for revision.
 - **Columns:**
-  - `id`: `UUID PRIMARY KEY DEFAULT gen_random_uuid()`
-  - `user_id`: `UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE`
-  - `question_id`: `UUID NOT NULL REFERENCES questions(id) ON DELETE CASCADE`
-  - `attempt_id`: `UUID NOT NULL REFERENCES quiz_attempts(id) ON DELETE CASCADE`
-  - `mistake_count`: `INT NOT NULL DEFAULT 1`
-  - `is_resolved`: `BOOLEAN NOT NULL DEFAULT FALSE`
-  - `last_failed_at`: `TIMESTAMPTZ NOT NULL DEFAULT NOW()`
+  - `id`: `TEXT PRIMARY KEY` (UUIDv4)
+  - `user_id`: `TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE`
+  - `attempt_id`: `TEXT NOT NULL REFERENCES quiz_attempts(id) ON DELETE CASCADE`
+  - `quiz_id`: `TEXT NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE`
+  - `question_id`: `TEXT NOT NULL`
+  - `quiz_title`: `TEXT NOT NULL`
+  - `question_text`: `TEXT NOT NULL`
+  - `question_type`: `TEXT NOT NULL`
+  - `subject`: `TEXT NOT NULL DEFAULT 'General'`
+  - `user_answer`: `TEXT NOT NULL DEFAULT ''`
+  - `correct_answer`: `TEXT NOT NULL DEFAULT ''`
+  - `explanation`: `TEXT NOT NULL DEFAULT ''`
+  - `is_resolved`: `INTEGER NOT NULL DEFAULT 0`
+  - `mistake_count`: `INTEGER NOT NULL DEFAULT 1`
+  - `created_at`: `DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP`
+  - `reviewed_at`: `DATETIME NULL`
+  - `UNIQUE(user_id, question_id)`
 - **Indexes:**
-  - `CREATE INDEX idx_mistake_user_unresolved ON mistake_notebook(user_id, is_resolved);`
-  - `CREATE UNIQUE INDEX idx_user_question_mistake ON mistake_notebook(user_id, question_id);`
+  - `CREATE INDEX idx_mistakes_user ON mistake_notebook(user_id, is_resolved);`
+  - `CREATE INDEX idx_mistakes_subject ON mistake_notebook(user_id, subject);`
 
 #### 2.9 Table: `audit_logs`
 - **Purpose:** Immutable append-only audit trail for TQM traceability and security monitoring.

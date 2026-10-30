@@ -12,14 +12,19 @@ import {
   AlertCircle,
   Database,
   PlusCircle,
-  FolderKanban
+  FolderKanban,
+  BookMarked,
+  History,
+  Shield
 } from 'lucide-react';
 
 export default function Sidebar({ activeRoute, setActiveRoute }) {
   const { user, logout } = useAuth();
 
-  const isCreator = user?.role === 'CREATOR' || user?.role === 'ADMIN';
-  const isAdmin = user?.role === 'ADMIN';
+  const role = (user?.role || '').toUpperCase();
+  const isSuperAdmin = role === 'SUPER_ADMIN' || role === 'ADMIN';
+  const isTeacher = role === 'TEACHER' || role === 'CREATOR' || isSuperAdmin;
+  const isStudent = role === 'STUDENT' || role === 'LEARNER';
 
   const handleLogout = async () => {
     await logout();
@@ -32,7 +37,7 @@ export default function Sidebar({ activeRoute, setActiveRoute }) {
       {/* Top Header & Brand */}
       <div className="p-5 space-y-6">
         
-        {/* Brand Logo - Nutri-Track Health OS inspired */}
+        {/* Brand Logo */}
         <div 
           onClick={() => setActiveRoute('landing')}
           className="flex items-center gap-3 cursor-pointer group"
@@ -45,7 +50,7 @@ export default function Sidebar({ activeRoute, setActiveRoute }) {
               QUIZ-SYSTEM
             </span>
             <p className="text-[10px] text-[#94A3B8] font-bold tracking-widest uppercase">
-              STUDIO &bull; PHASE P2
+              STUDIO &bull; PHASE P3
             </p>
           </div>
         </div>
@@ -54,13 +59,13 @@ export default function Sidebar({ activeRoute, setActiveRoute }) {
         <div className="p-3 rounded-xl bg-[#121D32] border border-[#1F304E] flex items-center justify-between">
           <div className="flex items-center gap-2 overflow-hidden">
             <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${
-              isAdmin 
+              isSuperAdmin 
                 ? 'bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/30' 
-                : isCreator
+                : isTeacher
                 ? 'bg-[#8B5CF6]/20 text-[#8B5CF6] border border-[#8B5CF6]/30'
                 : 'bg-[#10B981]/20 text-[#34D399] border border-[#10B981]/30'
             }`}>
-              {isAdmin ? <ShieldCheck size={14} /> : <GraduationCap size={14} />}
+              {isSuperAdmin ? <ShieldCheck size={14} /> : isTeacher ? <FolderKanban size={14} /> : <GraduationCap size={14} />}
             </div>
             <div className="overflow-hidden">
               <p className="text-xs font-bold text-white truncate">{user?.name || 'Guest User'}</p>
@@ -93,7 +98,7 @@ export default function Sidebar({ activeRoute, setActiveRoute }) {
 
           {user && (
             <>
-              {/* Learner Dashboard */}
+              {/* Learner Dashboard / Discover */}
               <button
                 onClick={() => setActiveRoute('learner-dashboard')}
                 className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
@@ -101,32 +106,68 @@ export default function Sidebar({ activeRoute, setActiveRoute }) {
                 }`}
               >
                 <GraduationCap size={16} />
-                Learner Dashboard
+                Learner Arena
               </button>
 
-              {/* Creator Studio & Quizzes */}
+              {/* Mistake Notebook (P3) */}
               <button
-                onClick={() => setActiveRoute('creator-dashboard')}
+                onClick={() => setActiveRoute('mistake-notebook')}
                 className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
-                  activeRoute === 'creator-dashboard' || activeRoute === 'quiz-studio' ? 'bg-[#132238] text-[#34D399] border border-[#34D399]/30' : 'text-[#94A3B8] hover:text-white hover:bg-[#0E1626]'
+                  activeRoute === 'mistake-notebook' ? 'bg-[#132238] text-[#34D399] border border-[#34D399]/30' : 'text-[#94A3B8] hover:text-white hover:bg-[#0E1626]'
                 }`}
               >
-                <FolderKanban size={16} />
-                Quiz Studio
-                {!isCreator && <span className="ml-auto text-[9px] bg-[#1F304E] px-1.5 py-0.5 rounded text-[#64748B]">Learner</span>}
+                <BookMarked size={16} />
+                Mistake Notebook
               </button>
 
-              {/* Question Bank */}
+              {/* Past Attempts History (P3) */}
               <button
-                onClick={() => setActiveRoute('question-bank')}
+                onClick={() => setActiveRoute('attempt-history')}
                 className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
-                  activeRoute === 'question-bank' ? 'bg-[#132238] text-[#34D399] border border-[#34D399]/30' : 'text-[#94A3B8] hover:text-white hover:bg-[#0E1626]'
+                  activeRoute === 'attempt-history' ? 'bg-[#132238] text-[#34D399] border border-[#34D399]/30' : 'text-[#94A3B8] hover:text-white hover:bg-[#0E1626]'
                 }`}
               >
-                <Database size={16} />
-                Question Bank
-                {!isCreator && <span className="ml-auto text-[9px] bg-[#1F304E] px-1.5 py-0.5 rounded text-[#64748B]">Learner</span>}
+                <History size={16} />
+                Attempt History
               </button>
+
+              {/* Creator Studio & Quizzes (For Teachers / Admins) */}
+              {isTeacher && (
+                <>
+                  <button
+                    onClick={() => setActiveRoute('creator-dashboard')}
+                    className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                      activeRoute === 'creator-dashboard' || activeRoute === 'quiz-studio' ? 'bg-[#132238] text-[#34D399] border border-[#34D399]/30' : 'text-[#94A3B8] hover:text-white hover:bg-[#0E1626]'
+                    }`}
+                  >
+                    <FolderKanban size={16} />
+                    Teacher Studio
+                  </button>
+
+                  <button
+                    onClick={() => setActiveRoute('question-bank')}
+                    className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                      activeRoute === 'question-bank' ? 'bg-[#132238] text-[#34D399] border border-[#34D399]/30' : 'text-[#94A3B8] hover:text-white hover:bg-[#0E1626]'
+                    }`}
+                  >
+                    <Database size={16} />
+                    Question Bank
+                  </button>
+                </>
+              )}
+
+              {/* Super Admin Console */}
+              {isSuperAdmin && (
+                <button
+                  onClick={() => setActiveRoute('admin-dashboard')}
+                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                    activeRoute === 'admin-dashboard' ? 'bg-[#132238] text-[#F59E0B] border border-[#F59E0B]/30' : 'text-[#94A3B8] hover:text-white hover:bg-[#0E1626]'
+                  }`}
+                >
+                  <ShieldCheck size={16} className="text-[#F59E0B]" />
+                  Admin Console
+                </button>
+              )}
 
               {/* User Profile */}
               <button
@@ -136,7 +177,7 @@ export default function Sidebar({ activeRoute, setActiveRoute }) {
                 }`}
               >
                 <User size={16} />
-                My Profile Settings
+                My Profile
               </button>
             </>
           )}

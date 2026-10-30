@@ -193,6 +193,124 @@ const MIGRATIONS = [
       await dbRun(`CREATE INDEX IF NOT EXISTS idx_question_bank_type ON question_bank(question_type);`, [], db);
       await dbRun(`CREATE INDEX IF NOT EXISTS idx_quiz_versions_quiz ON quiz_versions(quiz_id, version);`, [], db);
     }
+  },
+  {
+    version: 3,
+    name: '003_quiz_attempts_scoring_and_mistakes',
+    up: async (db) => {
+      // 1. Safe Schema Migration for Users: Expand roles and normalize existing accounts
+      await dbRun(`PRAGMA foreign_keys = OFF;`, [], db);
+
+      await dbRun(`
+        CREATE TABLE IF NOT EXISTS users_v3 (
+          id TEXT PRIMARY KEY,
+          email TEXT UNIQUE NOT NULL,
+          password_hash TEXT NOT NULL,
+          name TEXT NOT NULL,
+          role TEXT NOT NULL DEFAULT 'STUDENT' CHECK (role IN ('STUDENT', 'TEACHER', 'ORG_ADMIN', 'SUPER_ADMIN', 'LEARNER', 'CREATOR', 'ADMIN')),
+          organization_id TEXT NULL,
+          is_verified INTEGER NOT NULL DEFAULT 0,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+      `, [], db);
+
+      // Copy users with normalized roles: LEARNER -> STUDENT, CREATOR -> TEACHER, ADMIN -> SUPER_ADMIN
+      await dbRun(`
+        INSERT INTO users_v3 (id, email, password_hash, name, role, is_verified, created_at, updated_at)
+        SELECT id, email, password_hash, name,
+          CASE 
+            WHEN role = 'LEARNER' THEN 'STUDENT'
+            WHEN role = 'CREATOR' THEN 'TEACHER'
+            WHEN role = 'ADMIN' THEN 'SUPER_ADMIN'
+            ELSE role
+          END,
+          is_verified, created_at, updated_at
+        FROM users;
+      `, [], db);
+
+      await dbRun(`DROP TABLE users;`, [], db);
+      await dbRun(`ALTER TABLE users_v3 RENAME TO users;`, [], db);
+      await dbRun(`PRAGMA foreign_keys = ON;`, [], db);
+
+      // Recreate user indexes
+      await dbRun(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_lower ON users(LOWER(email));`, [], db);
+      await dbRun(`CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);`, [], db);
+      await dbRun(`CREATE INDEX IF NOT EXISTS idx_users_org ON users(organization_id);`, [], db);
+
+      // 2. Table: quiz_attempts
+      await dbRun(`
+        CREATE TABLE IF NOT EXISTS quiz_attempts (
+          id TEXT PRIMARY KEY,
+          quiz_id TEXT NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
+          quiz_version INTEGER NOT NULL DEFAULT 1,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          status TEXT NOT NULL DEFAULT 'IN_PROGRESS' CHECK (status IN ('IN_PROGRESS', 'COMPLETED', 'EXPIRED', 'ABANDONED')),
+          score REAL NOT NULL DEFAULT 0.0,
+          max_score REAL NOT NULL DEFAULT 0.0,
+          score_percentage REAL NOT NULL DEFAULT 0.0,
+          is_passed INTEGER NOT NULL DEFAULT 0,
+          total_questions INTEGER NOT NULL DEFAULT 0,
+          correct_answers INTEGER NOT NULL DEFAULT 0,
+          incorrect_answers INTEGER NOT NULL DEFAULT 0,
+          unanswered_count INTEGER NOT NULL DEFAULT 0,
+          time_limit_sec INTEGER NOT NULL DEFAULT 0,
+          started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          expires_at DATETIME NULL,
+          submitted_at DATETIME NULL,
+          time_taken_sec INTEGER NOT NULL DEFAULT 0,
+          idempotency_key TEXT NULL UNIQUE
+        );
+      `, [], db);
+
+      // 3. Table: attempt_answers
+      await dbRun(`
+        CREATE TABLE IF NOT EXISTS attempt_answers (
+          id TEXT PRIMARY KEY,
+          attempt_id TEXT NOT NULL REFERENCES quiz_attempts(id) ON DELETE CASCADE,
+          question_id TEXT NOT NULL,
+          question_type TEXT NOT NULL,
+          user_answer TEXT NOT NULL DEFAULT '',
+          is_correct INTEGER NOT NULL DEFAULT 0,
+          earned_score REAL NOT NULL DEFAULT 0.0,
+          max_marks REAL NOT NULL DEFAULT 1.0,
+          is_evaluated INTEGER NOT NULL DEFAULT 1,
+          evaluation_notes TEXT DEFAULT '',
+          saved_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(attempt_id, question_id)
+        );
+      `, [], db);
+
+      // 4. Table: mistake_notebook
+      await dbRun(`
+        CREATE TABLE IF NOT EXISTS mistake_notebook (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          attempt_id TEXT NOT NULL REFERENCES quiz_attempts(id) ON DELETE CASCADE,
+          quiz_id TEXT NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
+          question_id TEXT NOT NULL,
+          quiz_title TEXT NOT NULL,
+          question_text TEXT NOT NULL,
+          question_type TEXT NOT NULL,
+          subject TEXT NOT NULL DEFAULT 'General',
+          user_answer TEXT NOT NULL DEFAULT '',
+          correct_answer TEXT NOT NULL DEFAULT '',
+          explanation TEXT NOT NULL DEFAULT '',
+          is_resolved INTEGER NOT NULL DEFAULT 0,
+          mistake_count INTEGER NOT NULL DEFAULT 1,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          reviewed_at DATETIME NULL,
+          UNIQUE(user_id, question_id)
+        );
+      `, [], db);
+
+      // Indexes for high performance
+      await dbRun(`CREATE INDEX IF NOT EXISTS idx_attempts_user ON quiz_attempts(user_id, status);`, [], db);
+      await dbRun(`CREATE INDEX IF NOT EXISTS idx_attempts_quiz ON quiz_attempts(quiz_id, submitted_at DESC);`, [], db);
+      await dbRun(`CREATE INDEX IF NOT EXISTS idx_attempt_answers_attempt ON attempt_answers(attempt_id);`, [], db);
+      await dbRun(`CREATE INDEX IF NOT EXISTS idx_mistakes_user ON mistake_notebook(user_id, is_resolved);`, [], db);
+      await dbRun(`CREATE INDEX IF NOT EXISTS idx_mistakes_subject ON mistake_notebook(user_id, subject);`, [], db);
+    }
   }
 ];
 

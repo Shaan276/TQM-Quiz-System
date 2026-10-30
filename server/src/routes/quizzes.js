@@ -65,7 +65,7 @@ router.get('/metrics/summary', authenticateToken, async (req, res, next) => {
 
 /**
  * GET /api/v1/quizzes/subjects
- * Retrieve distinct subject names used by the creator (must be above /:id)
+ * Retrieve distinct subject names used by the creator and across published quizzes
  */
 router.get('/subjects', authenticateToken, async (req, res, next) => {
   try {
@@ -73,7 +73,9 @@ router.get('/subjects', authenticateToken, async (req, res, next) => {
     const rows = await dbAll(
       `SELECT DISTINCT category FROM quizzes WHERE creator_id = ? AND category IS NOT NULL AND category != ''
        UNION
-       SELECT DISTINCT category FROM question_bank WHERE creator_id = ? AND category IS NOT NULL AND category != ''`,
+       SELECT DISTINCT category FROM question_bank WHERE creator_id = ? AND category IS NOT NULL AND category != ''
+       UNION
+       SELECT DISTINCT category FROM quizzes WHERE status = 'PUBLISHED' AND category IS NOT NULL AND category != ''`,
       [userId, userId]
     );
 
@@ -84,6 +86,103 @@ router.get('/subjects', authenticateToken, async (req, res, next) => {
     res.json({
       success: true,
       data: { subjects: combined }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/v1/quizzes/discover
+ * Learner-facing quiz discovery endpoint for published, accessible quizzes.
+ * Strips answers and explanations to prevent cheating.
+ */
+router.get('/discover', authenticateToken, async (req, res, next) => {
+  try {
+    const {
+      search = '',
+      category = '',
+      difficulty = '',
+      sort = 'newest',
+      page = 1,
+      limit = 12
+    } = req.query;
+
+    const offset = (Math.max(1, parseInt(page)) - 1) * parseInt(limit);
+    const params = [];
+    let whereClauses = [`q.status = 'PUBLISHED'`, `q.visibility != 'PRIVATE'`];
+
+    if (search.trim()) {
+      whereClauses.push(`(q.title LIKE ? OR q.description LIKE ? OR u.name LIKE ?)`);
+      params.push(`%${search.trim()}%`, `%${search.trim()}%`, `%${search.trim()}%`);
+    }
+
+    if (category) {
+      whereClauses.push(`q.category = ?`);
+      params.push(category);
+    }
+
+    if (difficulty) {
+      whereClauses.push(`q.difficulty = ?`);
+      params.push(difficulty);
+    }
+
+    let orderBy = 'q.updated_at DESC';
+    if (sort === 'oldest') orderBy = 'q.created_at ASC';
+    if (sort === 'title_asc') orderBy = 'q.title COLLATE NOCASE ASC';
+    if (sort === 'title_desc') orderBy = 'q.title COLLATE NOCASE DESC';
+    if (sort === 'popular') orderBy = 'attempt_count DESC, q.updated_at DESC';
+
+    const whereSQL = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+
+    const countRow = await dbGet(
+      `SELECT COUNT(*) as total 
+       FROM quizzes q 
+       JOIN users u ON q.creator_id = u.id 
+       ${whereSQL}`, 
+      params
+    );
+    const total = countRow?.total || 0;
+
+    const quizzes = await dbAll(
+      `SELECT 
+        q.id,
+        q.title,
+        q.description,
+        q.cover_image_url as cover_image,
+        q.category,
+        q.difficulty,
+        q.time_limit_sec,
+        q.passing_percentage as pass_percentage,
+        q.shuffle_questions,
+        q.shuffle_options,
+        q.show_explanations,
+        q.version,
+        q.created_at,
+        q.updated_at,
+        u.name as creator_name,
+        (SELECT COUNT(*) FROM questions WHERE quiz_id = q.id) as question_count,
+        (SELECT COALESCE(SUM(marks), 0) FROM questions WHERE quiz_id = q.id) as total_marks,
+        (SELECT COUNT(*) FROM quiz_attempts WHERE quiz_id = q.id AND status = 'COMPLETED') as attempt_count
+       FROM quizzes q
+       JOIN users u ON q.creator_id = u.id
+       ${whereSQL}
+       ORDER BY ${orderBy}
+       LIMIT ? OFFSET ?`,
+      [...params, parseInt(limit), offset]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        quizzes,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total,
+          totalPages: Math.ceil(total / parseInt(limit))
+        }
+      }
     });
   } catch (err) {
     next(err);
@@ -188,7 +287,12 @@ router.post('/', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (req,
       tags = [],
       visibility = 'PUBLIC',
       timeLimitSec = 0,
-      passingPercentage = 60
+      time_limit_sec = 0,
+      passingPercentage = 60,
+      pass_percentage = 60,
+      showExplanations = 'AFTER_SUBMIT',
+      show_explanations = 'AFTER_SUBMIT',
+      questions = null
     } = req.body;
 
     if (!title.trim()) {
@@ -200,12 +304,17 @@ router.post('/', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (req,
 
     const quizId = generateUUID();
     const tagsJson = JSON.stringify(Array.isArray(tags) ? tags : []);
+    const effectiveTimeLimit = Math.max(0, parseInt(timeLimitSec || time_limit_sec) || 0);
+    const effectivePassing = Math.min(100, Math.max(0, parseInt(passingPercentage || pass_percentage) || 60));
+    const effectiveExplanations = ['ALWAYS', 'AFTER_SUBMIT', 'NEVER'].includes(showExplanations || show_explanations)
+      ? (showExplanations || show_explanations)
+      : 'AFTER_SUBMIT';
 
     await dbRun(
       `INSERT INTO quizzes (
         id, creator_id, title, description, category, difficulty, tags,
-        status, visibility, time_limit_sec, passing_percentage
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'DRAFT', ?, ?, ?)`,
+        status, visibility, time_limit_sec, passing_percentage, show_explanations
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'DRAFT', ?, ?, ?, ?)`,
       [
         quizId,
         userId,
@@ -215,10 +324,61 @@ router.post('/', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (req,
         ['EASY', 'MEDIUM', 'HARD'].includes(difficulty) ? difficulty : 'MEDIUM',
         tagsJson,
         visibility === 'PRIVATE' ? 'PRIVATE' : 'PUBLIC',
-        Math.max(0, parseInt(timeLimitSec) || 0),
-        Math.min(100, Math.max(0, parseInt(passingPercentage) || 60))
+        effectiveTimeLimit,
+        effectivePassing,
+        effectiveExplanations
       ]
     );
+
+    // If questions were provided in POST payload, insert them
+    if (Array.isArray(questions) && questions.length > 0) {
+      for (let i = 0; i < questions.length; i++) {
+        const q = questions[i];
+        const qId = q.id || generateUUID();
+        const qType = q.question_type || 'MCQ_SINGLE';
+        const qMarks = Math.max(0.25, parseFloat(q.marks) || 1.0);
+        const qTime = Math.max(5, parseInt(q.time_limit_sec) || 30);
+        const qExplanation = q.explanation || '';
+        const qSettings = JSON.stringify(q.settings || {});
+
+        await dbRun(
+          `INSERT INTO questions (
+            id, quiz_id, question_text, question_type, marks,
+            time_limit_sec, explanation, sort_order, settings
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            qId, quizId, q.question_text || 'Untitled Question',
+            qType, qMarks, qTime, qExplanation, i, qSettings
+          ]
+        );
+
+        if (['MCQ_SINGLE', 'MCQ_MULTI', 'TRUE_FALSE'].includes(qType) && Array.isArray(q.options)) {
+          for (let j = 0; j < q.options.length; j++) {
+            const opt = q.options[j];
+            const optId = opt.id || generateUUID();
+            await dbRun(
+              `INSERT INTO question_options (id, question_id, option_key, option_text, is_correct, sort_order)
+               VALUES (?, ?, ?, ?, ?, ?)`,
+              [
+                optId, qId, opt.option_key || String.fromCharCode(65 + j),
+                opt.option_text || '', opt.is_correct ? 1 : 0, j
+              ]
+            );
+          }
+        } else if (Array.isArray(q.answers)) {
+          for (const ans of q.answers) {
+            await dbRun(
+              `INSERT INTO question_answers (id, question_id, expected_answer, is_case_sensitive, numeric_tolerance)
+               VALUES (?, ?, ?, ?, ?)`,
+              [
+                generateUUID(), qId, ans.expected_answer || '',
+                ans.is_case_sensitive ? 1 : 0, parseFloat(ans.numeric_tolerance) || 0.0
+              ]
+            );
+          }
+        }
+      }
+    }
 
     const created = await dbGet(`SELECT * FROM quizzes WHERE id = ?`, [quizId]);
 

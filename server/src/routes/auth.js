@@ -2,7 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const { dbGet, dbRun, dbAll } = require('../database');
-const { signAccessToken, signRefreshToken, verifyRefreshToken, authenticateToken } = require('../middleware/auth');
+const { signAccessToken, signRefreshToken, verifyRefreshToken, authenticateToken, normalizeRole } = require('../middleware/auth');
 const { rateLimiter } = require('../middleware/rateLimiter');
 const { 
   generateSecureToken, 
@@ -81,12 +81,18 @@ router.post(
       const passwordHash = await bcrypt.hash(password, salt);
       const userId = crypto.randomUUID();
 
-      // Enforce default role 'LEARNER' (Users cannot self-assign ADMIN or CREATOR during registration)
-      const defaultRole = 'LEARNER';
+      // Enforce default role 'STUDENT' or allow selecting 'TEACHER'/'STUDENT'
+      let assignedRole = 'STUDENT';
+      if (req.body.role) {
+        const requested = normalizeRole(req.body.role);
+        if (['STUDENT', 'TEACHER'].includes(requested)) {
+          assignedRole = requested;
+        }
+      }
 
       await dbRun(
         `INSERT INTO users (id, email, password_hash, name, role, is_verified) VALUES (?, ?, ?, ?, ?, 0)`,
-        [userId, cleanEmail, passwordHash, cleanName, defaultRole]
+        [userId, cleanEmail, passwordHash, cleanName, assignedRole]
       );
 
       // Generate Verification Token
@@ -105,7 +111,7 @@ router.post(
       // Audit log
       await dbRun(
         `INSERT INTO audit_logs (user_id, action, details) VALUES (?, 'USER_REGISTERED', ?)`,
-        [userId, `User '${cleanEmail}' registered with role ${defaultRole}`]
+        [userId, `User '${cleanEmail}' registered with role ${assignedRole}`]
       );
 
       return res.status(201).json({
@@ -115,7 +121,7 @@ router.post(
             id: userId,
             name: cleanName,
             email: cleanEmail,
-            role: defaultRole,
+            role: assignedRole,
             isVerified: false
           },
           message: 'Account created successfully. Please check your email to verify your address.'

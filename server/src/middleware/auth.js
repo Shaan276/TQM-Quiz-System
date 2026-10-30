@@ -1,8 +1,21 @@
 const jwt = require('jsonwebtoken');
 const config = require('../config');
 
+function normalizeRole(role) {
+  if (!role) return 'STUDENT';
+  const r = role.toUpperCase();
+  if (r === 'LEARNER') return 'STUDENT';
+  if (r === 'CREATOR') return 'TEACHER';
+  if (r === 'ADMIN') return 'SUPER_ADMIN';
+  return r;
+}
+
 function signAccessToken(payload) {
-  return jwt.sign(payload, config.jwt.accessSecret, {
+  const normalized = {
+    ...payload,
+    role: payload.role ? normalizeRole(payload.role) : 'STUDENT'
+  };
+  return jwt.sign(normalized, config.jwt.accessSecret, {
     expiresIn: config.jwt.accessExpiresIn
   });
 }
@@ -56,6 +69,9 @@ function authenticateToken(req, res, next) {
   }
 
   req.user = result.decoded;
+  if (req.user && req.user.role) {
+    req.user.normalizedRole = normalizeRole(req.user.role);
+  }
   next();
 }
 
@@ -69,7 +85,22 @@ function requireRole(...allowedRoles) {
       });
     }
 
-    if (!allowedRoles.includes(req.user.role)) {
+    const userRole = (req.user.role || '').toUpperCase();
+    const userNormalized = normalizeRole(userRole);
+
+    // SUPER_ADMIN (or ADMIN) has universal access
+    if (userNormalized === 'SUPER_ADMIN' || userRole === 'ADMIN') {
+      return next();
+    }
+
+    const normalizedAllowed = allowedRoles.map(r => normalizeRole(r));
+    const rawAllowed = allowedRoles.map(r => r.toUpperCase());
+
+    const isAuthorized = normalizedAllowed.includes(userNormalized) || 
+                         rawAllowed.includes(userRole) || 
+                         normalizedAllowed.includes(userRole);
+
+    if (!isAuthorized) {
       return res.status(403).json({
         success: false,
         error: {
@@ -84,6 +115,7 @@ function requireRole(...allowedRoles) {
 }
 
 module.exports = {
+  normalizeRole,
   signAccessToken,
   signRefreshToken,
   verifyAccessToken,

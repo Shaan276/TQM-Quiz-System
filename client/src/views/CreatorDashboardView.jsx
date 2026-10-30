@@ -48,12 +48,18 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
   const [quizToDelete, setQuizToDelete] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
 
-  const isCreatorOrAdmin = user?.role === 'CREATOR' || user?.role === 'ADMIN';
+  // Student attempts modal state
+  const [viewingAttemptsQuiz, setViewingAttemptsQuiz] = useState(null);
+  const [quizAttemptsList, setQuizAttemptsList] = useState([]);
+  const [loadingAttempts, setLoadingAttempts] = useState(false);
+  const [teacherAnalytics, setTeacherAnalytics] = useState(null);
+
+  const isCreatorOrAdmin = ['CREATOR', 'TEACHER', 'ADMIN', 'SUPER_ADMIN'].includes((user?.role || '').toUpperCase());
 
   // Role upgrade handler for testing/learners
   const handleUpgradeToCreator = async () => {
     try {
-      const res = await fetch('/api/v1/users/upgrade-to-creator', {
+      const res = await fetch('/api/v1/users/upgrade-to-teacher', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${accessToken}` }
       });
@@ -63,6 +69,24 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
       }
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleOpenAttempts = async (quiz) => {
+    setViewingAttemptsQuiz(quiz);
+    setLoadingAttempts(true);
+    try {
+      const res = await fetch(`/api/v1/attempts/quiz/${quiz.id}`, {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setQuizAttemptsList(data.data.attempts || []);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingAttempts(false);
     }
   };
 
@@ -81,7 +105,16 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
         setMetrics(mData.data);
       }
 
-      // 2. Fetch quizzes with query params
+      // 2. Fetch teacher analytics
+      const tRes = await fetch('/api/v1/analytics/teacher', {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      const tData = await tRes.json();
+      if (tData.success) {
+        setTeacherAnalytics(tData.data);
+      }
+
+      // 3. Fetch quizzes with query params
       const params = new URLSearchParams();
       if (search.trim()) params.append('search', search.trim());
       if (category) params.append('category', category);
@@ -450,6 +483,17 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
                     <Eye size={15} />
                   </button>
 
+                  {/* Student Attempts (Phase P3) */}
+                  {quiz.status === 'PUBLISHED' && (
+                    <button
+                      onClick={() => handleOpenAttempts(quiz)}
+                      className="p-2 rounded-lg bg-[#132238] hover:bg-[#1A2D4A] text-white hover:text-[#38BDF8] transition-colors"
+                      title="View Student Assessment Attempts"
+                    >
+                      <Award size={15} />
+                    </button>
+                  )}
+
                   {/* Duplicate */}
                   <button
                     onClick={() => handleDuplicate(quiz.id)}
@@ -485,6 +529,72 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
 
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Student Attempts Breakdown Modal (Phase P3) */}
+      {viewingAttemptsQuiz && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="dashboard-card max-w-2xl w-full p-6 space-y-4 border border-[#1B2A44] shadow-2xl animate-in fade-in">
+            <div className="flex items-center justify-between pb-3 border-b border-[#1B2A44]">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <Award size={18} className="text-[#38BDF8]" />
+                  Learner Performance &bull; {viewingAttemptsQuiz.title}
+                </h3>
+                <p className="text-xs text-[#94A3B8]">Review student scores and pass rates for this assessment.</p>
+              </div>
+              <button onClick={() => setViewingAttemptsQuiz(null)} className="text-[#64748B] hover:text-white">
+                ✕
+              </button>
+            </div>
+
+            {loadingAttempts ? (
+              <div className="text-center py-12 text-xs text-[#94A3B8] font-mono">
+                Loading attempt records...
+              </div>
+            ) : quizAttemptsList.length === 0 ? (
+              <div className="p-8 text-center text-xs text-[#94A3B8]">
+                No completed student attempts yet for this quiz.
+              </div>
+            ) : (
+              <div className="max-h-80 overflow-y-auto space-y-2">
+                {quizAttemptsList.map(att => (
+                  <div key={att.id} className="p-3.5 rounded-xl bg-[#121D32] border border-[#1F304E] flex items-center justify-between text-xs">
+                    <div>
+                      <p className="font-bold text-white">{att.student_name}</p>
+                      <p className="text-[11px] text-[#64748B] font-mono">{att.student_email}</p>
+                    </div>
+
+                    <div className="text-right flex items-center gap-3">
+                      <div>
+                        <span className="font-mono font-bold text-white text-sm">
+                          {att.score_percentage}%
+                        </span>
+                        <p className="text-[10px] text-[#64748B] font-mono">{att.score} / {att.max_score} pts</p>
+                      </div>
+
+                      {att.is_passed ? (
+                        <span className="text-[10px] font-bold text-[#34D399] bg-[#10B981]/20 px-2 py-0.5 rounded-full border border-[#10B981]/30">
+                          Passed
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-bold text-[#FB7185] bg-[#F43F5E]/20 px-2 py-0.5 rounded-full border border-[#F43F5E]/30">
+                          Failed
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex justify-end pt-2">
+              <button onClick={() => setViewingAttemptsQuiz(null)} className="btn-secondary text-xs py-2 px-4">
+                Close
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

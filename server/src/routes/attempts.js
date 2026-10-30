@@ -1,0 +1,1134 @@
+const express = require('express');
+const crypto = require('crypto');
+const { dbGet, dbRun, dbAll } = require('../database');
+const { authenticateToken, requireRole } = require('../middleware/auth');
+
+const router = express.Router();
+
+function generateUUID() {
+  return crypto.randomUUID();
+}
+
+/**
+ * Sanitizes questions for taking so no answers or explanations leak to client.
+ */
+function maskQuestionsForAttempt(questions) {
+  return questions.map(q => {
+    const masked = {
+      id: q.id,
+      question_text: q.question_text,
+      question_type: q.question_type,
+      marks: q.marks,
+      time_limit_sec: q.time_limit_sec,
+      sort_order: q.sort_order,
+      media_url: q.media_url || null,
+      settings: q.settings || {}
+    };
+
+    // Include option choices WITHOUT is_correct
+    if (['MCQ_SINGLE', 'MCQ_MULTI', 'TRUE_FALSE'].includes(q.question_type) && Array.isArray(q.options)) {
+      masked.options = q.options.map(opt => ({
+        id: opt.id,
+        option_key: opt.option_key,
+        option_text: opt.option_text,
+        sort_order: opt.sort_order
+      }));
+    }
+
+    // Do NOT include expected_answer or numeric_tolerance or explanation
+    return masked;
+  });
+}
+
+/**
+ * Helper to retrieve snapshot or active questions for a quiz
+ */
+async function getQuizVersionQuestions(quizId, version) {
+  // Try to find snapshot in quiz_versions
+  const versionRow = await dbGet(
+    `SELECT snapshot_data FROM quiz_versions WHERE quiz_id = ? AND version = ?`,
+    [quizId, version]
+  );
+
+  if (versionRow && versionRow.snapshot_data) {
+    try {
+      const parsed = JSON.parse(versionRow.snapshot_data);
+      if (parsed && Array.isArray(parsed.questions)) {
+        return { quiz: parsed.quiz, questions: parsed.questions };
+      }
+    } catch (e) {
+      console.error('[Attempts] Failed to parse snapshot_data:', e);
+    }
+  }
+
+  // Fallback to active questions from database
+  const quiz = await dbGet(`SELECT * FROM quizzes WHERE id = ?`, [quizId]);
+  const questions = await dbAll(
+    `SELECT * FROM questions WHERE quiz_id = ? ORDER BY sort_order ASC, created_at ASC`,
+    [quizId]
+  );
+
+  const populated = [];
+  for (const q of questions) {
+    let options = [];
+    let answers = [];
+
+    if (['MCQ_SINGLE', 'MCQ_MULTI', 'TRUE_FALSE'].includes(q.question_type)) {
+      options = await dbAll(
+        `SELECT id, option_key, option_text, is_correct, sort_order FROM question_options WHERE question_id = ? ORDER BY sort_order ASC`,
+        [q.id]
+      );
+    } else {
+      answers = await dbAll(
+        `SELECT expected_answer, is_case_sensitive, numeric_tolerance FROM question_answers WHERE question_id = ?`,
+        [q.id]
+      );
+    }
+
+    populated.push({
+      ...q,
+      options,
+      answers,
+      settings: typeof q.settings === 'string' ? JSON.parse(q.settings || '{}') : q.settings
+    });
+  }
+
+  return { quiz, questions: populated };
+}
+
+// -------------------------------------------------------------
+// 1. POST /api/v1/attempts/start - Start a new quiz attempt
+// -------------------------------------------------------------
+router.post('/start', authenticateToken, async (req, res, next) => {
+  try {
+    const { quizId } = req.body;
+    const userId = req.user.id;
+
+    if (!quizId) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'ERR_VALIDATION', message: 'quizId is required to start an attempt' }
+      });
+    }
+
+    // 1. Fetch published quiz
+    const quiz = await dbGet(
+      `SELECT q.*, u.name as creator_name 
+       FROM quizzes q 
+       JOIN users u ON q.creator_id = u.id 
+       WHERE q.id = ?`,
+      [quizId]
+    );
+
+    if (!quiz) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'ERR_QUIZ_NOT_FOUND', message: 'Quiz does not exist' }
+      });
+    }
+
+    if (quiz.status !== 'PUBLISHED') {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'ERR_QUIZ_NOT_PUBLISHED', message: 'This quiz is not currently published for taking' }
+      });
+    }
+
+    // 2. Check for an existing in-progress attempt to resume
+    const existingAttempt = await dbGet(
+      `SELECT * FROM quiz_attempts WHERE quiz_id = ? AND user_id = ? AND status = 'IN_PROGRESS' ORDER BY started_at DESC LIMIT 1`,
+      [quizId, userId]
+    );
+
+    if (existingAttempt) {
+      // Check if it expired
+      if (existingAttempt.expires_at && new Date() > new Date(existingAttempt.expires_at)) {
+        await dbRun(`UPDATE quiz_attempts SET status = 'EXPIRED' WHERE id = ?`, [existingAttempt.id]);
+      } else {
+        // Return existing in-progress attempt
+        const { questions } = await getQuizVersionQuestions(quizId, existingAttempt.quiz_version);
+        const savedAnswers = await dbAll(
+          `SELECT question_id, user_answer FROM attempt_answers WHERE attempt_id = ?`,
+          [existingAttempt.id]
+        );
+
+        const answersMap = {};
+        savedAnswers.forEach(a => {
+          answersMap[a.question_id] = a.user_answer;
+        });
+
+        const remainingSeconds = existingAttempt.expires_at
+          ? Math.max(0, Math.round((new Date(existingAttempt.expires_at) - new Date()) / 1000))
+          : null;
+
+        return res.json({
+          success: true,
+          data: {
+            isResumed: true,
+            attemptId: existingAttempt.id,
+            quiz: {
+              id: quiz.id,
+              title: quiz.title,
+              description: quiz.description,
+              category: quiz.category,
+              difficulty: quiz.difficulty,
+              time_limit_sec: quiz.time_limit_sec,
+              pass_percentage: quiz.passing_percentage ?? quiz.pass_percentage ?? 60,
+              total_questions: existingAttempt.total_questions,
+              max_score: existingAttempt.max_score
+            },
+            questions: maskQuestionsForAttempt(questions),
+            savedAnswers: answersMap,
+            startedAt: existingAttempt.started_at,
+            expiresAt: existingAttempt.expires_at,
+            remainingSeconds
+          }
+        });
+      }
+    }
+
+    // 3. Check max attempts if configured
+    if (quiz.max_attempts && quiz.max_attempts > 0) {
+      const attemptsCountRow = await dbGet(
+        `SELECT COUNT(*) as count FROM quiz_attempts WHERE quiz_id = ? AND user_id = ? AND status = 'COMPLETED'`,
+        [quizId, userId]
+      );
+      if (attemptsCountRow && attemptsCountRow.count >= quiz.max_attempts) {
+        return res.status(403).json({
+          success: false,
+          error: {
+            code: 'ERR_MAX_ATTEMPTS_EXCEEDED',
+            message: `You have reached the maximum allowed attempts (${quiz.max_attempts}) for this quiz.`
+          }
+        });
+      }
+    }
+
+    // 4. Load quiz questions snapshot
+    const currentVersion = quiz.published_version || quiz.version || 1;
+    const { questions } = await getQuizVersionQuestions(quizId, currentVersion);
+
+    if (!questions || questions.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'ERR_EMPTY_QUIZ', message: 'This quiz has no questions available for taking' }
+      });
+    }
+
+    // Compute total marks and time limit
+    const totalQuestions = questions.length;
+    const maxScore = questions.reduce((sum, q) => sum + (Number(q.marks) || 1), 0);
+    const quizTimeLimit = Number(quiz.time_limit_sec) || 0;
+
+    const startedAt = new Date();
+    let expiresAt = null;
+    let remainingSeconds = null;
+
+    if (quizTimeLimit > 0) {
+      expiresAt = new Date(startedAt.getTime() + quizTimeLimit * 1000);
+      remainingSeconds = quizTimeLimit;
+    }
+
+    const attemptId = generateUUID();
+
+    await dbRun(
+      `INSERT INTO quiz_attempts (
+        id, quiz_id, quiz_version, user_id, status, score, max_score, 
+        total_questions, time_limit_sec, started_at, expires_at
+      ) VALUES (?, ?, ?, ?, 'IN_PROGRESS', 0.0, ?, ?, ?, ?, ?)`,
+      [
+        attemptId,
+        quizId,
+        currentVersion,
+        userId,
+        maxScore,
+        totalQuestions,
+        quizTimeLimit,
+        startedAt.toISOString(),
+        expiresAt ? expiresAt.toISOString() : null
+      ]
+    );
+
+    // Shuffle questions if quiz settings dictate
+    let orderedQuestions = [...questions];
+    if (quiz.shuffle_questions) {
+      orderedQuestions = orderedQuestions.sort(() => Math.random() - 0.5);
+    }
+
+    // Shuffle options if quiz settings dictate
+    if (quiz.shuffle_options) {
+      orderedQuestions = orderedQuestions.map(q => {
+        if (Array.isArray(q.options)) {
+          return { ...q, options: [...q.options].sort(() => Math.random() - 0.5) };
+        }
+        return q;
+      });
+    }
+
+    res.status(201).json({
+      success: true,
+      data: {
+        isResumed: false,
+        attemptId,
+        quiz: {
+          id: quiz.id,
+          title: quiz.title,
+          description: quiz.description,
+          category: quiz.category,
+          difficulty: quiz.difficulty,
+          time_limit_sec: quizTimeLimit,
+          pass_percentage: quiz.passing_percentage ?? quiz.pass_percentage ?? 60,
+          total_questions: totalQuestions,
+          max_score: maxScore
+        },
+        questions: maskQuestionsForAttempt(orderedQuestions),
+        savedAnswers: {},
+        startedAt: startedAt.toISOString(),
+        expiresAt: expiresAt ? expiresAt.toISOString() : null,
+        remainingSeconds
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// -------------------------------------------------------------
+// 2. GET /api/v1/attempts/:id - Get in-progress attempt state
+// -------------------------------------------------------------
+router.get('/:id', authenticateToken, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    const attempt = await dbGet(`SELECT * FROM quiz_attempts WHERE id = ?`, [id]);
+    if (!attempt) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'ERR_NOT_FOUND', message: 'Attempt not found' }
+      });
+    }
+
+    // Verify ownership
+    if (attempt.user_id !== userId && req.user.role !== 'SUPER_ADMIN' && req.user.role !== 'ADMIN') {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'ERR_FORBIDDEN', message: 'Unauthorized to access this quiz attempt' }
+      });
+    }
+
+    // Check expiration if IN_PROGRESS
+    if (attempt.status === 'IN_PROGRESS' && attempt.expires_at) {
+      if (new Date() > new Date(attempt.expires_at)) {
+        await dbRun(`UPDATE quiz_attempts SET status = 'EXPIRED' WHERE id = ?`, [id]);
+        attempt.status = 'EXPIRED';
+      }
+    }
+
+    const quiz = await dbGet(`SELECT * FROM quizzes WHERE id = ?`, [attempt.quiz_id]);
+    const { questions } = await getQuizVersionQuestions(attempt.quiz_id, attempt.quiz_version);
+    const savedAnswers = await dbAll(
+      `SELECT question_id, user_answer FROM attempt_answers WHERE attempt_id = ?`,
+      [id]
+    );
+
+    const answersMap = {};
+    savedAnswers.forEach(a => {
+      answersMap[a.question_id] = a.user_answer;
+    });
+
+    const remainingSeconds = attempt.expires_at && attempt.status === 'IN_PROGRESS'
+      ? Math.max(0, Math.round((new Date(attempt.expires_at) - new Date()) / 1000))
+      : 0;
+
+    res.json({
+      success: true,
+      data: {
+        attempt: {
+          id: attempt.id,
+          quizId: attempt.quiz_id,
+          status: attempt.status,
+          startedAt: attempt.started_at,
+          expiresAt: attempt.expires_at,
+          submittedAt: attempt.submitted_at,
+          score: attempt.score,
+          maxScore: attempt.max_score,
+          scorePercentage: attempt.score_percentage,
+          isPassed: attempt.is_passed === 1,
+          totalQuestions: attempt.total_questions,
+          correctAnswers: attempt.correct_answers,
+          incorrectAnswers: attempt.incorrect_answers,
+          remainingSeconds
+        },
+        quiz: {
+          id: quiz?.id,
+          title: quiz?.title,
+          description: quiz?.description,
+          category: quiz?.category,
+          difficulty: quiz?.difficulty,
+          time_limit_sec: attempt.time_limit_sec,
+          pass_percentage: quiz?.passing_percentage ?? quiz?.pass_percentage ?? 60
+        },
+        questions: maskQuestionsForAttempt(questions),
+        savedAnswers: answersMap
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// -------------------------------------------------------------
+// 3. PUT /api/v1/attempts/:id/answers - Autosave user answers
+// -------------------------------------------------------------
+router.put('/:id/answers', authenticateToken, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    const { answers } = req.body; // Can be array [{ questionId, answer }] or { questionId, answer }
+
+    const attempt = await dbGet(`SELECT * FROM quiz_attempts WHERE id = ?`, [id]);
+    if (!attempt) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'ERR_NOT_FOUND', message: 'Attempt not found' }
+      });
+    }
+
+    if (attempt.user_id !== userId) {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'ERR_FORBIDDEN', message: 'Unauthorized to modify this attempt' }
+      });
+    }
+
+    if (attempt.status !== 'IN_PROGRESS') {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'ERR_ATTEMPT_NOT_ACTIVE',
+          message: `Cannot save answers. Attempt status is already ${attempt.status}`
+        }
+      });
+    }
+
+    // Check expiration
+    if (attempt.expires_at && new Date() > new Date(attempt.expires_at)) {
+      await dbRun(`UPDATE quiz_attempts SET status = 'EXPIRED' WHERE id = ?`, [id]);
+      return res.status(400).json({
+        success: false,
+        error: { code: 'ERR_ATTEMPT_EXPIRED', message: 'Time limit for this quiz has expired.' }
+      });
+    }
+
+    const answersList = Array.isArray(answers) ? answers : [answers];
+
+    for (const item of answersList) {
+      if (!item || !item.questionId) continue;
+      const questionId = item.questionId;
+      const serializedAnswer = typeof item.answer === 'object'
+        ? JSON.stringify(item.answer)
+        : String(item.answer ?? '');
+
+      // Upsert answer
+      const existing = await dbGet(
+        `SELECT id FROM attempt_answers WHERE attempt_id = ? AND question_id = ?`,
+        [id, questionId]
+      );
+
+      if (existing) {
+        await dbRun(
+          `UPDATE attempt_answers SET user_answer = ?, saved_at = CURRENT_TIMESTAMP WHERE id = ?`,
+          [serializedAnswer, existing.id]
+        );
+      } else {
+        await dbRun(
+          `INSERT INTO attempt_answers (id, attempt_id, question_id, question_type, user_answer)
+           VALUES (?, ?, ?, 'UNKNOWN', ?)`,
+          [generateUUID(), id, questionId, serializedAnswer]
+        );
+      }
+    }
+
+    res.json({
+      success: true,
+      data: { message: 'Answers saved successfully', savedAt: new Date().toISOString() }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// -------------------------------------------------------------
+// 4. POST /api/v1/attempts/:id/submit - Authoritative Backend Scoring
+// -------------------------------------------------------------
+router.post('/:id/submit', authenticateToken, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    const { answers, idempotencyKey } = req.body;
+
+    const attempt = await dbGet(`SELECT * FROM quiz_attempts WHERE id = ?`, [id]);
+    if (!attempt) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'ERR_NOT_FOUND', message: 'Attempt not found' }
+      });
+    }
+
+    if (attempt.user_id !== userId) {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'ERR_FORBIDDEN', message: 'Unauthorized' }
+      });
+    }
+
+    // Idempotency check: If already completed and matching idempotencyKey or already submitted
+    if (attempt.status === 'COMPLETED') {
+      return res.json({
+        success: true,
+        data: {
+          message: 'Quiz attempt already completed',
+          alreadyCompleted: true,
+          score: attempt.score,
+          maxScore: attempt.max_score,
+          scorePercentage: attempt.score_percentage,
+          isPassed: attempt.is_passed === 1
+        }
+      });
+    }
+
+    // If answers provided in submission payload, persist them first
+    if (Array.isArray(answers)) {
+      for (const item of answers) {
+        if (!item || !item.questionId) continue;
+        const serialized = typeof item.answer === 'object'
+          ? JSON.stringify(item.answer)
+          : String(item.answer ?? '');
+
+        const existing = await dbGet(
+          `SELECT id FROM attempt_answers WHERE attempt_id = ? AND question_id = ?`,
+          [id, item.questionId]
+        );
+        if (existing) {
+          await dbRun(`UPDATE attempt_answers SET user_answer = ? WHERE id = ?`, [serialized, existing.id]);
+        } else {
+          await dbRun(
+            `INSERT INTO attempt_answers (id, attempt_id, question_id, question_type, user_answer) VALUES (?, ?, ?, 'UNKNOWN', ?)`,
+            [generateUUID(), id, item.questionId, serialized]
+          );
+        }
+      }
+    }
+
+    // Fetch snapshot questions and quiz details
+    const quiz = await dbGet(`SELECT * FROM quizzes WHERE id = ?`, [attempt.quiz_id]);
+    const { questions } = await getQuizVersionQuestions(attempt.quiz_id, attempt.quiz_version);
+
+    // Fetch all saved user answers
+    const userAnswers = await dbAll(`SELECT * FROM attempt_answers WHERE attempt_id = ?`, [id]);
+    const answerMap = {};
+    userAnswers.forEach(a => {
+      answerMap[a.question_id] = a;
+    });
+
+    let totalEarnedScore = 0;
+    let totalMaxScore = 0;
+    let correctCount = 0;
+    let incorrectCount = 0;
+    let unansweredCount = 0;
+
+    const evaluatedDetails = [];
+    const mistakesToRecord = [];
+
+    // Evaluate each question authoritatively
+    for (const q of questions) {
+      const qMarks = Number(q.marks) || 1;
+      totalMaxScore += qMarks;
+
+      const userAnsObj = answerMap[q.id];
+      const rawUserAns = userAnsObj ? userAnsObj.user_answer : '';
+      const hasAnswer = rawUserAns !== undefined && rawUserAns !== null && rawUserAns.trim() !== '';
+
+      let isCorrect = 0;
+      let earnedScore = 0;
+      let notes = '';
+      let correctAnswerDisplay = '';
+
+      if (!hasAnswer) {
+        unansweredCount++;
+        notes = 'Unanswered';
+        // Format correct answer for display
+        correctAnswerDisplay = formatCorrectAnswer(q);
+      } else {
+        switch (q.question_type) {
+          case 'MCQ_SINGLE': {
+            const correctOpt = (q.options || []).find(o => o.is_correct === 1);
+            correctAnswerDisplay = correctOpt ? correctOpt.option_text : '';
+            // rawUserAns could be option ID or option key
+            if (correctOpt && (rawUserAns === correctOpt.id || rawUserAns === correctOpt.option_key || rawUserAns === correctOpt.option_text)) {
+              isCorrect = 1;
+              earnedScore = qMarks;
+            } else {
+              isCorrect = 0;
+              earnedScore = 0;
+            }
+            break;
+          }
+
+          case 'MCQ_MULTI': {
+            const correctOptions = (q.options || []).filter(o => o.is_correct === 1);
+            correctAnswerDisplay = correctOptions.map(o => o.option_text).join(', ');
+
+            let selectedValues = [];
+            try {
+              selectedValues = JSON.parse(rawUserAns);
+              if (!Array.isArray(selectedValues)) selectedValues = [rawUserAns];
+            } catch (e) {
+              selectedValues = rawUserAns.split(',').map(s => s.trim());
+            }
+
+            const correctKeysOrIds = new Set(
+              correctOptions.flatMap(o => [o.id, o.option_key, o.option_text.toLowerCase()])
+            );
+
+            let selectedCorrect = 0;
+            let selectedIncorrect = 0;
+
+            selectedValues.forEach(val => {
+              if (correctKeysOrIds.has(val) || correctKeysOrIds.has(String(val).toLowerCase())) {
+                selectedCorrect++;
+              } else {
+                selectedIncorrect++;
+              }
+            });
+
+            // Scoring with penalty (-0.25 on incorrect pick, floor 0)
+            if (correctOptions.length > 0) {
+              const proportion = selectedCorrect / correctOptions.length;
+              const penalty = selectedIncorrect * 0.25;
+              earnedScore = Math.max(0, (proportion * qMarks) - penalty);
+              earnedScore = Math.round(earnedScore * 100) / 100;
+              isCorrect = (selectedCorrect === correctOptions.length && selectedIncorrect === 0) ? 1 : 0;
+            }
+            break;
+          }
+
+          case 'TRUE_FALSE': {
+            const correctOpt = (q.options || []).find(o => o.is_correct === 1);
+            const expectedStr = correctOpt ? correctOpt.option_text.trim().toLowerCase() : '';
+            correctAnswerDisplay = correctOpt ? correctOpt.option_text : '';
+
+            const userStr = rawUserAns.trim().toLowerCase();
+            if (userStr === expectedStr || (userStr === 'true' && expectedStr === 'true') || (userStr === 'false' && expectedStr === 'false')) {
+              isCorrect = 1;
+              earnedScore = qMarks;
+            } else {
+              isCorrect = 0;
+              earnedScore = 0;
+            }
+            break;
+          }
+
+          case 'FILL_BLANK': {
+            const answerSpec = (q.answers && q.answers[0]) || {};
+            const expected = (answerSpec.expected_answer || '').trim();
+            correctAnswerDisplay = expected;
+
+            const isCaseSensitive = answerSpec.is_case_sensitive === 1;
+            const acceptedVariants = expected.split('|').map(s => s.trim());
+
+            const userText = rawUserAns.trim();
+            const matched = acceptedVariants.some(variant => {
+              return isCaseSensitive
+                ? userText === variant
+                : userText.toLowerCase() === variant.toLowerCase();
+            });
+
+            if (matched) {
+              isCorrect = 1;
+              earnedScore = qMarks;
+            } else {
+              isCorrect = 0;
+              earnedScore = 0;
+            }
+            break;
+          }
+
+          case 'SHORT_ANSWER': {
+            const answerSpec = (q.answers && q.answers[0]) || {};
+            const expected = (answerSpec.expected_answer || '').trim();
+            correctAnswerDisplay = expected;
+
+            const isCaseSensitive = answerSpec.is_case_sensitive === 1;
+            const acceptedVariants = expected.split('|').map(s => s.trim());
+            const userText = rawUserAns.trim();
+
+            const matched = acceptedVariants.some(variant => {
+              return isCaseSensitive
+                ? userText === variant
+                : userText.toLowerCase() === variant.toLowerCase();
+            });
+
+            if (matched) {
+              isCorrect = 1;
+              earnedScore = qMarks;
+            } else {
+              isCorrect = 0;
+              earnedScore = 0;
+            }
+            break;
+          }
+
+          case 'NUMERICAL': {
+            const answerSpec = (q.answers && q.answers[0]) || {};
+            const expectedNum = parseFloat(answerSpec.expected_answer);
+            const tolerance = parseFloat(answerSpec.numeric_tolerance) || 0.0;
+            correctAnswerDisplay = `${expectedNum}${tolerance > 0 ? ` (±${tolerance})` : ''}`;
+
+            const userNum = parseFloat(rawUserAns.trim());
+            if (!isNaN(userNum) && !isNaN(expectedNum) && Math.abs(userNum - expectedNum) <= tolerance) {
+              isCorrect = 1;
+              earnedScore = qMarks;
+            } else {
+              isCorrect = 0;
+              earnedScore = 0;
+            }
+            break;
+          }
+
+          default:
+            isCorrect = 0;
+            earnedScore = 0;
+        }
+
+        if (isCorrect === 1) {
+          correctCount++;
+        } else {
+          incorrectCount++;
+        }
+      }
+
+      totalEarnedScore += earnedScore;
+
+      // Update attempt_answers record
+      if (userAnsObj) {
+        await dbRun(
+          `UPDATE attempt_answers SET 
+            question_type = ?, 
+            is_correct = ?, 
+            earned_score = ?, 
+            max_marks = ?, 
+            is_evaluated = 1, 
+            evaluation_notes = ?
+           WHERE id = ?`,
+          [q.question_type, isCorrect, earnedScore, qMarks, notes, userAnsObj.id]
+        );
+      } else {
+        await dbRun(
+          `INSERT INTO attempt_answers (
+            id, attempt_id, question_id, question_type, user_answer, is_correct, earned_score, max_marks, is_evaluated, evaluation_notes
+          ) VALUES (?, ?, ?, ?, '', ?, ?, ?, 1, ?)`,
+          [generateUUID(), id, q.id, q.question_type, isCorrect, earnedScore, qMarks, notes]
+        );
+      }
+
+      // If answered incorrectly, record in Mistake Notebook
+      if (isCorrect === 0 && hasAnswer) {
+        mistakesToRecord.push({
+          userId,
+          attemptId: id,
+          quizId: attempt.quiz_id,
+          questionId: q.id,
+          quizTitle: quiz?.title || 'Quiz',
+          questionText: q.question_text,
+          questionType: q.question_type,
+          subject: quiz?.category || 'General',
+          userAnswer: rawUserAns,
+          correctAnswer: correctAnswerDisplay,
+          explanation: q.explanation || ''
+        });
+      }
+
+      evaluatedDetails.push({
+        questionId: q.id,
+        isCorrect,
+        earnedScore,
+        maxMarks: qMarks
+      });
+    }
+
+    // Calculate percentage and pass status
+    const scorePercentage = totalMaxScore > 0
+      ? Math.round((totalEarnedScore / totalMaxScore) * 10000) / 100
+      : 0;
+    const passThreshold = quiz?.passing_percentage ?? quiz?.pass_percentage ?? 50;
+    const isPassed = scorePercentage >= passThreshold ? 1 : 0;
+
+    const submittedAt = new Date();
+    const startedAt = new Date(attempt.started_at);
+    const timeTakenSec = Math.max(0, Math.round((submittedAt - startedAt) / 1000));
+
+    // Update quiz_attempts to COMPLETED
+    await dbRun(
+      `UPDATE quiz_attempts SET 
+        status = 'COMPLETED',
+        score = ?,
+        max_score = ?,
+        score_percentage = ?,
+        is_passed = ?,
+        correct_answers = ?,
+        incorrect_answers = ?,
+        unanswered_count = ?,
+        submitted_at = ?,
+        time_taken_sec = ?,
+        idempotency_key = ?
+       WHERE id = ?`,
+      [
+        totalEarnedScore,
+        totalMaxScore,
+        scorePercentage,
+        isPassed,
+        correctCount,
+        incorrectCount,
+        unansweredCount,
+        submittedAt.toISOString(),
+        timeTakenSec,
+        idempotencyKey || generateUUID(),
+        id
+      ]
+    );
+
+    // Save mistakes to Mistake Notebook
+    for (const m of mistakesToRecord) {
+      const existingMistake = await dbGet(
+        `SELECT id, mistake_count FROM mistake_notebook WHERE user_id = ? AND question_id = ?`,
+        [m.userId, m.questionId]
+      );
+
+      if (existingMistake) {
+        await dbRun(
+          `UPDATE mistake_notebook SET 
+            attempt_id = ?, 
+            user_answer = ?, 
+            correct_answer = ?, 
+            explanation = ?, 
+            is_resolved = 0, 
+            mistake_count = mistake_count + 1,
+            reviewed_at = CURRENT_TIMESTAMP
+           WHERE id = ?`,
+          [m.attemptId, m.userAnswer, m.correctAnswer, m.explanation, existingMistake.id]
+        );
+      } else {
+        await dbRun(
+          `INSERT INTO mistake_notebook (
+            id, user_id, attempt_id, quiz_id, question_id, quiz_title, 
+            question_text, question_type, subject, user_answer, correct_answer, explanation
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            generateUUID(),
+            m.userId,
+            m.attemptId,
+            m.quizId,
+            m.questionId,
+            m.quizTitle,
+            m.questionText,
+            m.questionType,
+            m.subject,
+            m.userAnswer,
+            m.correctAnswer,
+            m.explanation
+          ]
+        );
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        attemptId: id,
+        quizId: attempt.quiz_id,
+        status: 'COMPLETED',
+        score: totalEarnedScore,
+        maxScore: totalMaxScore,
+        scorePercentage,
+        isPassed: isPassed === 1,
+        totalQuestions: questions.length,
+        correctAnswers: correctCount,
+        incorrectAnswers: incorrectCount,
+        unansweredCount,
+        timeTakenSec,
+        submittedAt: submittedAt.toISOString(),
+        showExplanations: quiz?.show_explanations || 'AFTER_SUBMIT'
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Helper to format correct answer string for questions
+function formatCorrectAnswer(q) {
+  if (['MCQ_SINGLE', 'TRUE_FALSE'].includes(q.question_type)) {
+    const opt = (q.options || []).find(o => o.is_correct === 1);
+    return opt ? opt.option_text : '';
+  }
+  if (q.question_type === 'MCQ_MULTI') {
+    return (q.options || []).filter(o => o.is_correct === 1).map(o => o.option_text).join(', ');
+  }
+  if (['FILL_BLANK', 'SHORT_ANSWER'].includes(q.question_type)) {
+    return (q.answers && q.answers[0]?.expected_answer) || '';
+  }
+  if (q.question_type === 'NUMERICAL') {
+    const a = q.answers && q.answers[0];
+    return a ? `${a.expected_answer}${a.numeric_tolerance ? ` (±${a.numeric_tolerance})` : ''}` : '';
+  }
+  return '';
+}
+
+// -------------------------------------------------------------
+// 5. GET /api/v1/attempts/:id/summary - Result breakdown & review
+// -------------------------------------------------------------
+router.get('/:id/summary', authenticateToken, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    const attempt = await dbGet(`SELECT * FROM quiz_attempts WHERE id = ?`, [id]);
+    if (!attempt) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'ERR_NOT_FOUND', message: 'Attempt not found' }
+      });
+    }
+
+    // Verify access
+    if (attempt.user_id !== userId && req.user.role !== 'SUPER_ADMIN' && req.user.role !== 'ADMIN' && req.user.role !== 'TEACHER') {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'ERR_FORBIDDEN', message: 'Unauthorized access to this result summary' }
+      });
+    }
+
+    const quiz = await dbGet(`SELECT * FROM quizzes WHERE id = ?`, [attempt.quiz_id]);
+    const { questions } = await getQuizVersionQuestions(attempt.quiz_id, attempt.quiz_version);
+    const answers = await dbAll(`SELECT * FROM attempt_answers WHERE attempt_id = ?`, [id]);
+    const answerMap = {};
+    answers.forEach(a => {
+      answerMap[a.question_id] = a;
+    });
+
+    const showExplanations = quiz?.show_explanations || 'AFTER_SUBMIT';
+    const canSeeExplanations = showExplanations === 'ALWAYS' || showExplanations === 'AFTER_SUBMIT';
+
+    const reviewQuestions = questions.map(q => {
+      const userAns = answerMap[q.id];
+      const isCorrect = userAns ? userAns.is_correct === 1 : false;
+      const earnedScore = userAns ? userAns.earned_score : 0;
+      const rawUserAns = userAns ? userAns.user_answer : '';
+
+      const reviewItem = {
+        id: q.id,
+        question_text: q.question_text,
+        question_type: q.question_type,
+        marks: q.marks,
+        earned_score: earnedScore,
+        is_correct: isCorrect,
+        user_answer: rawUserAns,
+        unanswered: !rawUserAns
+      };
+
+      if (['MCQ_SINGLE', 'MCQ_MULTI', 'TRUE_FALSE'].includes(q.question_type)) {
+        reviewItem.options = (q.options || []).map(opt => ({
+          id: opt.id,
+          option_key: opt.option_key,
+          option_text: opt.option_text,
+          is_correct: canSeeExplanations ? opt.is_correct : undefined
+        }));
+      }
+
+      if (canSeeExplanations) {
+        reviewItem.explanation = q.explanation || '';
+        reviewItem.correct_answer = formatCorrectAnswer(q);
+      }
+
+      return reviewItem;
+    });
+
+    res.json({
+      success: true,
+      data: {
+        attempt: {
+          id: attempt.id,
+          quizId: attempt.quiz_id,
+          status: attempt.status,
+          score: attempt.score,
+          maxScore: attempt.max_score,
+          scorePercentage: attempt.score_percentage,
+          isPassed: attempt.is_passed === 1,
+          totalQuestions: attempt.total_questions,
+          correctAnswers: attempt.correct_answers,
+          incorrectAnswers: attempt.incorrect_answers,
+          unansweredCount: attempt.unanswered_count,
+          timeTakenSec: attempt.time_taken_sec,
+          startedAt: attempt.started_at,
+          submittedAt: attempt.submitted_at
+        },
+        quiz: {
+          id: quiz?.id,
+          title: quiz?.title,
+          description: quiz?.description,
+          category: quiz?.category,
+          difficulty: quiz?.difficulty,
+          pass_percentage: quiz?.passing_percentage ?? quiz?.pass_percentage ?? 60,
+          show_explanations: showExplanations
+        },
+        reviewQuestions
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// -------------------------------------------------------------
+// 6. GET /api/v1/attempts/history/my - Learner's historical attempts
+// -------------------------------------------------------------
+router.get('/history/my', authenticateToken, async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const { page = 1, limit = 10, status = '' } = req.query;
+    const offset = (Math.max(1, parseInt(page)) - 1) * parseInt(limit);
+
+    let whereClauses = [`a.user_id = ?`];
+    const params = [userId];
+
+    if (status) {
+      whereClauses.push(`a.status = ?`);
+      params.push(status);
+    }
+
+    const whereSQL = `WHERE ${whereClauses.join(' AND ')}`;
+
+    const countRow = await dbGet(`SELECT COUNT(*) as total FROM quiz_attempts a ${whereSQL}`, params);
+    const total = countRow?.total || 0;
+
+    const attempts = await dbAll(
+      `SELECT 
+        a.id,
+        a.quiz_id,
+        a.quiz_version,
+        a.status,
+        a.score,
+        a.max_score,
+        a.score_percentage,
+        a.is_passed,
+        a.total_questions,
+        a.correct_answers,
+        a.incorrect_answers,
+        a.time_taken_sec,
+        a.started_at,
+        a.submitted_at,
+        q.title as quiz_title,
+        q.category as quiz_category,
+        q.difficulty as quiz_difficulty,
+        q.cover_image_url as quiz_cover_image
+       FROM quiz_attempts a
+       JOIN quizzes q ON a.quiz_id = q.id
+       ${whereSQL}
+       ORDER BY a.started_at DESC
+       LIMIT ? OFFSET ?`,
+      [...params, parseInt(limit), offset]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        attempts,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total,
+          totalPages: Math.ceil(total / parseInt(limit))
+        }
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// -------------------------------------------------------------
+// 7. GET /api/v1/attempts/quiz/:quizId - Teacher attempt breakdown
+// -------------------------------------------------------------
+router.get('/quiz/:quizId', authenticateToken, requireRole('TEACHER', 'CREATOR', 'SUPER_ADMIN'), async (req, res, next) => {
+  try {
+    const { quizId } = req.params;
+    const { page = 1, limit = 20 } = req.query;
+    const offset = (Math.max(1, parseInt(page)) - 1) * parseInt(limit);
+
+    const quiz = await dbGet(`SELECT id, title, creator_id FROM quizzes WHERE id = ?`, [quizId]);
+    if (!quiz) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'ERR_NOT_FOUND', message: 'Quiz not found' }
+      });
+    }
+
+    // Verify creator ownership (or super admin)
+    if (quiz.creator_id !== req.user.id && req.user.role !== 'SUPER_ADMIN' && req.user.role !== 'ADMIN') {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'ERR_FORBIDDEN', message: 'You can only view attempts for quizzes you authored' }
+      });
+    }
+
+    const countRow = await dbGet(
+      `SELECT COUNT(*) as total FROM quiz_attempts WHERE quiz_id = ? AND status = 'COMPLETED'`,
+      [quizId]
+    );
+    const total = countRow?.total || 0;
+
+    const attempts = await dbAll(
+      `SELECT 
+        a.id,
+        a.user_id,
+        u.name as student_name,
+        u.email as student_email,
+        a.score,
+        a.max_score,
+        a.score_percentage,
+        a.is_passed,
+        a.total_questions,
+        a.correct_answers,
+        a.incorrect_answers,
+        a.time_taken_sec,
+        a.started_at,
+        a.submitted_at
+       FROM quiz_attempts a
+       JOIN users u ON a.user_id = u.id
+       WHERE a.quiz_id = ? AND a.status = 'COMPLETED'
+       ORDER BY a.submitted_at DESC
+       LIMIT ? OFFSET ?`,
+      [quizId, parseInt(limit), offset]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        quiz: { id: quiz.id, title: quiz.title },
+        attempts,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total,
+          totalPages: Math.ceil(total / parseInt(limit))
+        }
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+module.exports = router;

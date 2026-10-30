@@ -1,7 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const { dbGet, dbRun } = require('../database');
-const { authenticateToken, requireRole, signAccessToken, signRefreshToken } = require('../middleware/auth');
+const { dbGet, dbRun, dbAll } = require('../database');
+const { authenticateToken, requireRole, signAccessToken, signRefreshToken, normalizeRole } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -165,11 +165,11 @@ router.put('/change-password', authenticateToken, async (req, res, next) => {
 });
 
 // -------------------------------------------------------------
-// 4. Role Verification Canary Endpoints (Testing RBAC Guards)
+// 4. Role Verification & Upgrade Endpoints
 // -------------------------------------------------------------
-router.post('/upgrade-to-creator', authenticateToken, async (req, res, next) => {
+router.post('/upgrade-to-teacher', authenticateToken, async (req, res, next) => {
   try {
-    await dbRun(`UPDATE users SET role = 'CREATOR', updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [req.user.id]);
+    await dbRun(`UPDATE users SET role = 'TEACHER', updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [req.user.id]);
     const updated = await dbGet(`SELECT id, email, name, role, is_verified, created_at, updated_at FROM users WHERE id = ?`, [req.user.id]);
     
     const newAccessToken = signAccessToken({
@@ -197,7 +197,7 @@ router.post('/upgrade-to-creator', authenticateToken, async (req, res, next) => 
           createdAt: updated.created_at,
           updatedAt: updated.updated_at
         },
-        message: 'Role upgraded to CREATOR successfully! You now have full access to Quiz Studio and Question Bank.'
+        message: 'Role upgraded to TEACHER successfully! You now have full access to Quiz Studio and Question Bank.'
       }
     });
   } catch (err) {
@@ -205,18 +205,186 @@ router.post('/upgrade-to-creator', authenticateToken, async (req, res, next) => 
   }
 });
 
-router.get('/creator-only', authenticateToken, requireRole('CREATOR', 'ADMIN'), (req, res) => {
+router.post('/upgrade-to-creator', authenticateToken, async (req, res, next) => {
+  try {
+    await dbRun(`UPDATE users SET role = 'TEACHER', updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [req.user.id]);
+    const updated = await dbGet(`SELECT id, email, name, role, is_verified, created_at, updated_at FROM users WHERE id = ?`, [req.user.id]);
+    
+    const newAccessToken = signAccessToken({
+      id: updated.id,
+      email: updated.email,
+      role: updated.role,
+      name: updated.name
+    });
+    const newRefreshToken = signRefreshToken({
+      id: updated.id,
+      email: updated.email
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
+        profile: {
+          id: updated.id,
+          email: updated.email,
+          name: updated.name,
+          role: updated.role,
+          isVerified: updated.is_verified === 1,
+          createdAt: updated.created_at,
+          updatedAt: updated.updated_at
+        },
+        message: 'Role upgraded to TEACHER successfully! You now have full access to Quiz Studio and Question Bank.'
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/creator-only', authenticateToken, requireRole('CREATOR', 'TEACHER', 'SUPER_ADMIN'), (req, res) => {
   res.json({
     success: true,
     data: { message: `Welcome to Creator Studio, ${req.user.name}! Your role is ${req.user.role}.` }
   });
 });
 
-router.get('/admin-only', authenticateToken, requireRole('ADMIN'), (req, res) => {
+router.get('/admin-only', authenticateToken, requireRole('ADMIN', 'SUPER_ADMIN'), (req, res) => {
   res.json({
     success: true,
     data: { message: `Welcome to Superadmin Command Center, ${req.user.name}!` }
   });
+});
+
+// -------------------------------------------------------------
+// 5. Super Admin / Org Admin User Management Endpoints
+// -------------------------------------------------------------
+router.get('/', authenticateToken, requireRole('SUPER_ADMIN', 'ORG_ADMIN'), async (req, res, next) => {
+  try {
+    const { search = '', role = '', page = 1, limit = 20 } = req.query;
+    const offset = (Math.max(1, parseInt(page)) - 1) * parseInt(limit);
+    const params = [];
+    let whereClauses = [];
+
+    if (search.trim()) {
+      whereClauses.push(`(name LIKE ? OR email LIKE ?)`);
+      params.push(`%${search.trim()}%`, `%${search.trim()}%`);
+    }
+
+    if (role.trim()) {
+      whereClauses.push(`role = ?`);
+      params.push(normalizeRole(role.trim()));
+    }
+
+    const whereSQL = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+    const countRow = await dbGet(`SELECT COUNT(*) as total FROM users ${whereSQL}`, params);
+    const total = countRow?.total || 0;
+
+    const users = await dbAll(
+      `SELECT id, email, name, role, is_verified, created_at, updated_at 
+       FROM users 
+       ${whereSQL} 
+       ORDER BY created_at DESC 
+       LIMIT ? OFFSET ?`,
+      [...params, parseInt(limit), offset]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        users,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total,
+          totalPages: Math.ceil(total / parseInt(limit))
+        }
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/:id/role', authenticateToken, requireRole('SUPER_ADMIN'), async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { role } = req.body;
+
+    if (!role) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'ERR_VALIDATION', message: 'Target role is required' }
+      });
+    }
+
+    const validRoles = ['STUDENT', 'TEACHER', 'ORG_ADMIN', 'SUPER_ADMIN'];
+    const normalized = normalizeRole(role);
+    if (!validRoles.includes(normalized)) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'ERR_INVALID_ROLE', message: `Invalid role. Allowed: ${validRoles.join(', ')}` }
+      });
+    }
+
+    const targetUser = await dbGet(`SELECT id, email, role FROM users WHERE id = ?`, [id]);
+    if (!targetUser) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'ERR_NOT_FOUND', message: 'User not found' }
+      });
+    }
+
+    await dbRun(`UPDATE users SET role = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [normalized, id]);
+    await dbRun(
+      `INSERT INTO audit_logs (user_id, action, details) VALUES (?, 'ROLE_UPDATED', ?)`,
+      [req.user.id, `Changed role of user ${targetUser.email} from ${targetUser.role} to ${normalized}`]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        message: `Role of user ${targetUser.email} updated to ${normalized}`,
+        role: normalized
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/:id', authenticateToken, requireRole('SUPER_ADMIN'), async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (id === req.user.id) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'ERR_FORBIDDEN', message: 'Cannot delete your own administrative account' }
+      });
+    }
+
+    const targetUser = await dbGet(`SELECT id, email FROM users WHERE id = ?`, [id]);
+    if (!targetUser) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'ERR_NOT_FOUND', message: 'User not found' }
+      });
+    }
+
+    await dbRun(`DELETE FROM users WHERE id = ?`, [id]);
+    await dbRun(
+      `INSERT INTO audit_logs (user_id, action, details) VALUES (?, 'USER_DELETED', ?)`,
+      [req.user.id, `Super admin deleted user ${targetUser.email}`]
+    );
+
+    res.json({
+      success: true,
+      data: { message: `User ${targetUser.email} successfully deleted.` }
+    });
+  } catch (err) {
+    next(err);
+  }
 });
 
 module.exports = router;

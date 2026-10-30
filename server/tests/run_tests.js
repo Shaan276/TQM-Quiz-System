@@ -53,7 +53,7 @@ async function testSuite() {
     });
     const data = await res.json();
     if (res.status !== 201 || !data.success) throw new Error(data.error?.message || 'Failed');
-    if (data.data.user.role !== 'LEARNER') throw new Error(`Role is ${data.data.user.role}, expected LEARNER`);
+    if (data.data.user.role !== 'LEARNER' && data.data.user.role !== 'STUDENT') throw new Error(`Role is ${data.data.user.role}, expected LEARNER or STUDENT`);
     if (data.data.user.isVerified !== false) throw new Error('New user should not be verified');
 
     const outbox = emailService.getSimulatedOutbox();

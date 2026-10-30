@@ -9,50 +9,70 @@
 | :--- | :--- | :---: | :--- |
 | **Phase 0** | **Product Discovery, Tech Stack & Architecture** | **COMPLETED** | Complete specification documents, ADRs, ERD diagrams, and risk registers authored. |
 | **Phase P1** | **Foundation, Authentication & User Management** | **COMPLETED (100% Passed)** | Schema migrations, user registration, email verification, login, profile management, RBAC guards, and automated test suite passing (14/14). |
-| **Phase P2** | **Quiz Studio & Question Management** | **COMPLETED (100% Passed)** | Quiz CRUD, 6 Question Types, Question Bank, Autosave/Drafts, Quiz Versioning, Preview simulation, Poka-Yoke validations, automated test suite passing (13/13). |
-| **Phase P3** | **Real-Time Multiplayer Live Engine** | *NEXT IN QUEUE* | Socket.io rooms, PIN-joining, anti-cheat question masking, Redis pub/sub backplane. |
-| **Phase P4** | **Self-Paced Assessment Engine & Assignments** | *QUEUED* | Deadline scheduler, attempt limit enforcement, server-side grading transaction. |
-| **Phase P5** | **Gamification, Podium & Mistake Notebook** | *QUEUED* | Speed multiplier formulas, 3D Olympic podium, mistake notebook curation. |
-| **Phase P6** | **Analytics, Reports & Audit Cockpit** | *QUEUED* | Paginated student gradebooks, cohort distractor analysis, performance SLA benchmarks. |
-| **Phase P7** | **End-to-End Testing & Production Deployment** | *QUEUED* | K6 500-concurrency load test passed, Docker containerization deployed. |
+| **Phase P2** | **Quiz Studio & Question Management** | **COMPLETED (100% Passed)** | Quiz CRUD, 6 Question Types, Question Bank, Autosave/Drafts, Quiz Versioning, Preview simulation, Poka-Yoke validations, automated test suite passing (14/14). |
+| **Phase P3** | **Self-Paced Quiz Attempts, Scoring, Learner Experience & Role-Based Access** | **COMPLETED (100% Passed)** | Expanded role architecture, student quiz discovery, authoritative taking runner, server-side scoring for 6 types, negative marking, Mistake Notebook, analytics, passing (13/13). Total: 41/41 passing. |
+| **Phase P4** | **Assignments, Deadlines & Scheduled Assessments** | *NEXT IN QUEUE* | Assignment scheduler, group/class rosters, mandatory deadlines, and late submission policies. |
+| **Phase P5** | **Real-Time Multiplayer Live Engine** | *QUEUED* | Socket.io rooms, PIN-joining, anti-cheat question masking, Redis pub/sub backplane. |
+| **Phase P6** | **Gamification, Podium & Badges** | *QUEUED* | Speed multiplier formulas, 3D Olympic podium, achievement badges. |
+| **Phase P7** | **Advanced Analytics, Reports & Export Cockpit** | *QUEUED* | Paginated student gradebooks, cohort distractor analysis, CSV/PDF export. |
 
 ---
 
-### 2. Phase P2 Verification Audit Results
+### 2. Phase P3 Verification Audit Results
 
-- **Automated Tests Executed:** 13 Phase P2 automated integration tests (`node server/tests/run_p2_tests.js`) + 14 Phase P1 regression tests (`node server/tests/run_tests.js`). Total: **27 automated tests**.
-- **Pass Rate:** **100% (27 Passed, 0 Failed)**
-- **Phase P2 Test Scenarios Verified:**
-  1. RBAC authorization guard: Unprivileged `LEARNER` is forbidden from creating quizzes (403 Forbidden).
-  2. Quiz creation: Authenticated `CREATOR` creates new quiz in initial `DRAFT` status and version 1.
-  3. All 6 Question Types supported and autosaved with custom scoring & timing:
-     - Single-choice MCQ (options, one correct choice).
-     - Multiple-select MCQ (options, multiple correct choices).
-     - True or False (True/False toggle).
-     - Fill in the Blanks (multiple accepted alternative answers, case-sensitivity options).
-     - Short Answer (concise text match rules).
-     - Numerical Answer (target numeric value with `+/-` tolerance margins).
-  4. Autosave debounced persistence: Full state updates atomic without question duplication.
-  5. Poka-Yoke Quality Validation: Empty quiz or question without correct answer rejected with HTTP 400 before publishing.
-  6. Quiz Publishing & Versioning: Publishing generates immutable version snapshot in `quiz_versions` table and increments version number.
-  7. Historical Version Integrity: Editing published quiz does not alter existing historical attempt snapshots.
-  8. Unpublishing: Reverts quiz status to `DRAFT`.
-  9. Duplication: Deep copies quiz, all questions, options, and answers with "Copy of" title.
-  10. Question Bank CRUD: Reusable bank creation, category filtering, saving quiz question to bank, and importing bank question into target quiz.
-  11. Student Preview Mode: Structured question presentation and scoring simulation without recording real student attempts.
-  12. Real Creator Metrics: Aggregation of total quizzes, published quizzes, draft quizzes, total questions, and bank questions.
-  13. Quiz Deletion: Creator deletes quiz safely.
+- **Automated Tests Executed:** 13 Phase P3 integration tests (`node server/tests/run_p3_tests.js`) + 14 Phase P2 integration tests (`node server/tests/run_p2_tests.js`) + 14 Phase P1 regression tests (`node server/tests/run_tests.js`). Total: **41 automated tests**.
+- **Pass Rate:** **100% (41 Passed, 0 Failed)**
+- **Phase P3 Capabilities Verified:**
+  1. **Expanded Role-Based Access Control**:
+     - Supported normalized roles: `STUDENT` (mapped from `LEARNER`), `TEACHER` (mapped from `CREATOR`), `ORG_ADMIN`, `SUPER_ADMIN` (mapped from `ADMIN`).
+     - Backwards-compatible `normalizeRole` middleware ensures all legacy tokens and new tokens operate seamlessly.
+     - Universal access for `SUPER_ADMIN` across all protected endpoints.
+  2. **Super Admin User Management**:
+     - `GET /api/v1/users`: Paginated user list with role and search filters.
+     - `PATCH /api/v1/users/:id/role`: Role promotion and modification with audit logging.
+     - `DELETE /api/v1/users/:id`: Safe account deactivation.
+  3. **Quiz Discovery**:
+     - `GET /api/v1/quizzes/discover`: Returns published quizzes for student exploration.
+     - Zero data leakage: Strips correct options, expected answers, and explanations to eliminate client-side cheating.
+  4. **Self-Paced Attempt Lifecycle**:
+     - `POST /api/v1/attempts/start`: Authoritative start tied to published `quiz_versions` snapshot, calculates backend expiration timestamp, resumes in-progress attempts.
+     - `GET /api/v1/attempts/:id`: Returns attempt state, remaining seconds, saved answers, and sanitized questions.
+  5. **Answer Autosaving**:
+     - `PUT /api/v1/attempts/:id/answers`: Upserts user answers (`attempt_answers`), checks expiration and completion barriers.
+  6. **Authoritative Backend Scoring Engine**:
+     - `POST /api/v1/attempts/:id/submit`: Server-side evaluation supporting all 6 question types:
+       - Single MCQ (exact option match).
+       - Multiple MCQ (proportional marks with penalty deduction of -0.25 on incorrect picks).
+       - True/False (boolean and string match).
+       - Fill in the Blank (case-sensitivity options, whitespace trimming, multi-variant pipe matching).
+       - Short Answer (trimmed text matching).
+       - Numerical (float matching within strict tolerance `|user - expected| <= tolerance`).
+     - Calculates earned score, total max score, percentage, and pass/fail status against quiz threshold.
+     - Idempotent submission: Re-submitting returns completed score report without double-scoring.
+  7. **Mistake Notebook Integration**:
+     - Submitting a quiz automatically writes failed questions to `mistake_notebook` with user answer, correct answer, explanation, and mistake counter.
+     - `GET /api/v1/mistakes`: Filter by subject, question type, and resolution status.
+     - `PATCH /api/v1/mistakes/:id/resolve`: Toggle resolution status (`is_resolved = 1`).
+     - `GET /api/v1/mistakes/stats`: Summary counts of total, pending review, and resolved mistakes.
+  8. **Results Report & Explanation Review**:
+     - `GET /api/v1/attempts/:id/summary`: Comprehensive score report with questions review obeying quiz `show_explanations` policy (`ALWAYS`, `AFTER_SUBMIT`, `NEVER`).
+  9. **Learner Attempt History & Teacher Overview**:
+     - `GET /api/v1/attempts/history/my`: Learner historical attempts with scores and timestamps.
+     - `GET /api/v1/attempts/quiz/:quizId`: Teacher attempt overview listing all student submissions for authored quizzes.
+  10. **Analytics Endpoints**:
+      - `GET /api/v1/analytics/student`: Learner metrics (completed attempts, pass rate, average score, mistake counts).
+      - `GET /api/v1/analytics/teacher`: Teacher metrics (total student attempts, average score, pass rate, hardest questions).
+      - `GET /api/v1/analytics/admin`: System metrics (users, quizzes, attempts).
+  11. **Frontend Experiences Implemented**:
+      - `QuizAttemptView.jsx`: Interactive quiz runner with authoritative countdown timer, progress bar, 6 question type interactive widgets, question palette jump grid, autosave status, and confirmation modal.
+      - `QuizResultView.jsx`: Score summary card, celebration/retry banner, 4 metrics grid, and question-by-question review with explanations.
+      - `MistakeNotebookView.jsx`: Revision hub with status tabs, subject filters, and resolve/delete actions.
+      - `AttemptHistoryView.jsx`: Past attempts list with status badges and report inspect links.
+      - `SuperAdminView.jsx`: Platform command center with user management table and platform stats.
+      - Upgraded `LearnerDashboardView.jsx` and `CreatorDashboardView.jsx` with real analytics and navigation links.
 
 ---
 
-### 3. Password Strength & Autofill UX Fixes
-- **Password Strength Meter**: Dynamic visual 4-tier strength calculation (Weak, Fair, Good, Strong) integrated into Registration, Reset Password, and Profile Password Change views.
-- **Custom Inline Red Errors**: Default HTML browser tooltip error bubbles disabled via `noValidate`. Empty fields display explicit red validation text below inputs and red border highlights.
-- **Google / Browser Autofill**: Standardized HTML credential manager attributes (`name`, `id`, `autoComplete="username email"`, `autoComplete="current-password"`, `autoComplete="new-password"`).
-- **Auto-Redirect on Logout**: Logging out from any protected route automatically redirects the user to the Landing page.
-
----
-
-### 4. Strict Phase Boundary Declaration
+### 3. Strict Phase Boundary Declaration
 > [!IMPORTANT]
-> **Phase P2 is complete.** In accordance with prompt instructions, no live multiplayer rooms, socket sessions, or real student attempt submissions have been authored yet (reserved for Phase P3+).
+> **Phase P3 is complete.** In accordance with roadmap instructions, live multiplayer socket sessions, PIN rooms, and assignment scheduling remain safely sequestered for subsequent phases.

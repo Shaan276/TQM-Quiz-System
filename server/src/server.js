@@ -11,6 +11,9 @@ const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const quizRoutes = require('./routes/quizzes');
 const questionBankRoutes = require('./routes/questionBank');
+const attemptRoutes = require('./routes/attempts');
+const mistakeRoutes = require('./routes/mistakes');
+const analyticsRoutes = require('./routes/analytics');
 
 function createApp(customDb = null) {
   if (customDb) {
@@ -52,6 +55,9 @@ function createApp(customDb = null) {
   app.use('/api/v1/users', userRoutes);
   app.use('/api/v1/quizzes', quizRoutes);
   app.use('/api/v1/question-bank', questionBankRoutes);
+  app.use('/api/v1/attempts', attemptRoutes);
+  app.use('/api/v1/mistakes', mistakeRoutes);
+  app.use('/api/v1/analytics', analyticsRoutes);
 
   // Serve production client build if exists
   const clientDist = path.resolve(__dirname, '../../client/dist');
