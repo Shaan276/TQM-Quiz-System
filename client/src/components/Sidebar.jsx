@@ -15,7 +15,8 @@ import {
   FolderKanban,
   BookMarked,
   History,
-  Shield
+  Shield,
+  Radio
 } from 'lucide-react';
 
 export default function Sidebar({ activeRoute, setActiveRoute }) {
@@ -140,6 +141,16 @@ export default function Sidebar({ activeRoute, setActiveRoute }) {
                   >
                     <History size={15} />
                     Past Attempts & Scores
+                  </button>
+
+                  <button
+                    onClick={() => setActiveRoute('live-session')}
+                    className={`w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
+                      activeRoute === 'live-session' ? 'bg-[#10B981]/20 text-[#34D399] border border-[#10B981]/50' : 'text-[#34D399] hover:text-white hover:bg-[#0E1626]'
+                    }`}
+                  >
+                    <Radio size={15} className="animate-pulse" />
+                    Join Live Game (PIN)
                   </button>
                 </div>
               )}

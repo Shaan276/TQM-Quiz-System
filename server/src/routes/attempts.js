@@ -2,6 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const { dbGet, dbRun, dbAll } = require('../database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
+const { evaluateQuestionAnswer, formatCorrectAnswer, formatUserAnswer } = require('../services/scoringEngine');
 
 const router = express.Router();
 
@@ -541,171 +542,25 @@ router.post('/:id/submit', authenticateToken, async (req, res, next) => {
     const evaluatedDetails = [];
     const mistakesToRecord = [];
 
-    // Evaluate each question authoritatively
+    // Evaluate each question authoritatively using shared scoring engine
     for (const q of questions) {
       const qMarks = Number(q.marks) || 1;
       totalMaxScore += qMarks;
 
       const userAnsObj = answerMap[q.id];
       const rawUserAns = userAnsObj ? userAnsObj.user_answer : '';
-      const hasAnswer = rawUserAns !== undefined && rawUserAns !== null && rawUserAns.trim() !== '';
+      const hasAnswer = rawUserAns !== undefined && rawUserAns !== null && String(rawUserAns).trim() !== '';
 
-      let isCorrect = 0;
-      let earnedScore = 0;
-      let notes = '';
-      let correctAnswerDisplay = '';
+      const evalResult = evaluateQuestionAnswer(q, rawUserAns);
+      const isCorrect = evalResult.isCorrect;
+      const earnedScore = evalResult.earnedScore;
+      const notes = evalResult.notes;
+      const correctAnswerDisplay = evalResult.correctAnswerDisplay;
+      const displayUserAnswer = evalResult.userAnswerDisplay;
 
       if (!hasAnswer) {
         unansweredCount++;
-        notes = 'Unanswered';
-        // Format correct answer for display
-        correctAnswerDisplay = formatCorrectAnswer(q);
       } else {
-        switch (q.question_type) {
-          case 'MCQ_SINGLE': {
-            const correctOpt = (q.options || []).find(o => o.is_correct === 1);
-            correctAnswerDisplay = correctOpt ? correctOpt.option_text : '';
-            // rawUserAns could be option ID or option key
-            if (correctOpt && (rawUserAns === correctOpt.id || rawUserAns === correctOpt.option_key || rawUserAns === correctOpt.option_text)) {
-              isCorrect = 1;
-              earnedScore = qMarks;
-            } else {
-              isCorrect = 0;
-              earnedScore = 0;
-            }
-            break;
-          }
-
-          case 'MCQ_MULTI': {
-            const correctOptions = (q.options || []).filter(o => o.is_correct === 1);
-            correctAnswerDisplay = correctOptions.map(o => o.option_text).join(', ');
-
-            let selectedValues = [];
-            try {
-              selectedValues = JSON.parse(rawUserAns);
-              if (!Array.isArray(selectedValues)) selectedValues = [rawUserAns];
-            } catch (e) {
-              selectedValues = rawUserAns.split(',').map(s => s.trim());
-            }
-
-            const correctKeysOrIds = new Set(
-              correctOptions.flatMap(o => [o.id, o.option_key, o.option_text.toLowerCase()])
-            );
-
-            let selectedCorrect = 0;
-            let selectedIncorrect = 0;
-
-            selectedValues.forEach(val => {
-              if (correctKeysOrIds.has(val) || correctKeysOrIds.has(String(val).toLowerCase())) {
-                selectedCorrect++;
-              } else {
-                selectedIncorrect++;
-              }
-            });
-
-            // Scoring with penalty (-0.25 on incorrect pick, floor 0)
-            if (correctOptions.length > 0) {
-              const proportion = selectedCorrect / correctOptions.length;
-              const penalty = selectedIncorrect * 0.25;
-              earnedScore = Math.max(0, (proportion * qMarks) - penalty);
-              earnedScore = Math.round(earnedScore * 100) / 100;
-              isCorrect = (selectedCorrect === correctOptions.length && selectedIncorrect === 0) ? 1 : 0;
-            }
-            break;
-          }
-
-          case 'TRUE_FALSE': {
-            const correctOpt = (q.options || []).find(o => o.is_correct === 1);
-            const expectedStr = correctOpt ? correctOpt.option_text.trim().toLowerCase() : '';
-            correctAnswerDisplay = correctOpt ? correctOpt.option_text : '';
-
-            const userStr = rawUserAns.trim().toLowerCase();
-            if (userStr === expectedStr || (userStr === 'true' && expectedStr === 'true') || (userStr === 'false' && expectedStr === 'false')) {
-              isCorrect = 1;
-              earnedScore = qMarks;
-            } else {
-              isCorrect = 0;
-              earnedScore = 0;
-            }
-            break;
-          }
-
-          case 'FILL_BLANK': {
-            const answerSpec = (q.answers && q.answers[0]) || {};
-            const expected = (answerSpec.expected_answer || '').trim();
-            correctAnswerDisplay = expected;
-
-            const isCaseSensitive = answerSpec.is_case_sensitive === 1;
-            const acceptedVariants = expected.split('|').map(s => s.trim());
-
-            const normalizeText = (t) => (t || '').trim().replace(/\s+/g, ' ').replace(/[.,;]$/, '');
-            const userNorm = normalizeText(rawUserAns);
-            const matched = acceptedVariants.some(variant => {
-              const varNorm = normalizeText(variant);
-              return isCaseSensitive
-                ? userNorm === varNorm
-                : userNorm.toLowerCase() === varNorm.toLowerCase();
-            });
-
-            if (matched) {
-              isCorrect = 1;
-              earnedScore = qMarks;
-            } else {
-              isCorrect = 0;
-              earnedScore = 0;
-            }
-            break;
-          }
-
-          case 'SHORT_ANSWER': {
-            const answerSpec = (q.answers && q.answers[0]) || {};
-            const expected = (answerSpec.expected_answer || '').trim();
-            correctAnswerDisplay = expected;
-
-            const isCaseSensitive = answerSpec.is_case_sensitive === 1;
-            const acceptedVariants = expected.split('|').map(s => s.trim());
-            const normalizeText = (t) => (t || '').trim().replace(/\s+/g, ' ').replace(/[.,;]$/, '');
-            const userNorm = normalizeText(rawUserAns);
-
-            const matched = acceptedVariants.some(variant => {
-              const varNorm = normalizeText(variant);
-              return isCaseSensitive
-                ? userNorm === varNorm
-                : userNorm.toLowerCase() === varNorm.toLowerCase();
-            });
-
-            if (matched) {
-              isCorrect = 1;
-              earnedScore = qMarks;
-            } else {
-              isCorrect = 0;
-              earnedScore = 0;
-            }
-            break;
-          }
-
-          case 'NUMERICAL': {
-            const answerSpec = (q.answers && q.answers[0]) || {};
-            const expectedNum = parseFloat(answerSpec.expected_answer);
-            const tolerance = parseFloat(answerSpec.numeric_tolerance) || 0.0;
-            correctAnswerDisplay = `${expectedNum}${tolerance > 0 ? ` (±${tolerance})` : ''}`;
-
-            const userNum = parseFloat(rawUserAns.trim());
-            if (!isNaN(userNum) && !isNaN(expectedNum) && Math.abs(userNum - expectedNum) <= tolerance) {
-              isCorrect = 1;
-              earnedScore = qMarks;
-            } else {
-              isCorrect = 0;
-              earnedScore = 0;
-            }
-            break;
-          }
-
-          default:
-            isCorrect = 0;
-            earnedScore = 0;
-        }
-
         if (isCorrect === 1) {
           correctCount++;
         } else {
@@ -739,26 +594,6 @@ router.post('/:id/submit', authenticateToken, async (req, res, next) => {
 
       // If answered incorrectly, record in Mistake Notebook
       if (isCorrect === 0 && hasAnswer) {
-        let displayUserAnswer = rawUserAns;
-
-        if (['MCQ_SINGLE', 'TRUE_FALSE'].includes(q.question_type)) {
-          const opt = (q.options || []).find(o => o.id === rawUserAns || o.option_key === rawUserAns || o.option_text === rawUserAns);
-          if (opt) displayUserAnswer = opt.option_text;
-        } else if (q.question_type === 'MCQ_MULTI') {
-          let selectedValues = [];
-          try {
-            selectedValues = JSON.parse(rawUserAns);
-            if (!Array.isArray(selectedValues)) selectedValues = [rawUserAns];
-          } catch (e) {
-            selectedValues = rawUserAns.split(',').map(s => s.trim());
-          }
-          const mapped = selectedValues.map(val => {
-            const opt = (q.options || []).find(o => o.id === val || o.option_key === val || o.option_text === val);
-            return opt ? opt.option_text : val;
-          });
-          displayUserAnswer = mapped.join(', ');
-        }
-
         mistakesToRecord.push({
           userId,
           attemptId: id,
@@ -890,25 +725,6 @@ router.post('/:id/submit', authenticateToken, async (req, res, next) => {
     next(err);
   }
 });
-
-// Helper to format correct answer string for questions
-function formatCorrectAnswer(q) {
-  if (['MCQ_SINGLE', 'TRUE_FALSE'].includes(q.question_type)) {
-    const opt = (q.options || []).find(o => o.is_correct === 1);
-    return opt ? opt.option_text : '';
-  }
-  if (q.question_type === 'MCQ_MULTI') {
-    return (q.options || []).filter(o => o.is_correct === 1).map(o => o.option_text).join(', ');
-  }
-  if (['FILL_BLANK', 'SHORT_ANSWER'].includes(q.question_type)) {
-    return (q.answers && q.answers[0]?.expected_answer) || '';
-  }
-  if (q.question_type === 'NUMERICAL') {
-    const a = q.answers && q.answers[0];
-    return a ? `${a.expected_answer}${a.numeric_tolerance ? ` (±${a.numeric_tolerance})` : ''}` : '';
-  }
-  return '';
-}
 
 // -------------------------------------------------------------
 // 5. GET /api/v1/attempts/:id/summary - Result breakdown & review

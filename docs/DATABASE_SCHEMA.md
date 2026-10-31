@@ -313,6 +313,60 @@ erDiagram
 - **Indexes:**
   - `CREATE INDEX idx_audit_created ON audit_logs(created_at DESC);`
 
+#### 2.10 Table: `quiz_sessions` (Phase P4 Implemented)
+- **Purpose:** Live multiplayer synchronized game room sessions hosted by teachers.
+- **Columns:**
+  - `id`: `TEXT PRIMARY KEY` (UUIDv4)
+  - `quiz_id`: `TEXT NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE`
+  - `quiz_version`: `INTEGER NOT NULL DEFAULT 1`
+  - `host_id`: `TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE`
+  - `join_code`: `TEXT NOT NULL UNIQUE` (6-digit numeric PIN)
+  - `status`: `TEXT NOT NULL DEFAULT 'LOBBY'` (`LOBBY`, `STARTING`, `QUESTION_ACTIVE`, `QUESTION_ENDED`, `LEADERBOARD`, `PAUSED`, `COMPLETED`, `CANCELLED`)
+  - `current_question_index`: `INTEGER NOT NULL DEFAULT 0`
+  - `total_questions`: `INTEGER NOT NULL DEFAULT 0`
+  - `question_start_time`: `DATETIME NULL`
+  - `question_end_time`: `DATETIME NULL`
+  - `settings`: `TEXT NOT NULL DEFAULT '{}'` (JSON configuration)
+  - `created_at`: `DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP`
+  - `ended_at`: `DATETIME NULL`
+- **Indexes:**
+  - `CREATE INDEX idx_quiz_sessions_code ON quiz_sessions(join_code);`
+  - `CREATE INDEX idx_quiz_sessions_host ON quiz_sessions(host_id, status);`
+
+#### 2.11 Table: `session_participants` (Phase P4 Implemented)
+- **Purpose:** Roster of enrolled learners in a live multiplayer session.
+- **Columns:**
+  - `id`: `TEXT PRIMARY KEY` (UUIDv4)
+  - `session_id`: `TEXT NOT NULL REFERENCES quiz_sessions(id) ON DELETE CASCADE`
+  - `user_id`: `TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE`
+  - `display_name`: `TEXT NOT NULL`
+  - `score`: `REAL NOT NULL DEFAULT 0.0`
+  - `correct_count`: `INTEGER NOT NULL DEFAULT 0`
+  - `rank`: `INTEGER NOT NULL DEFAULT 0`
+  - `is_connected`: `INTEGER NOT NULL DEFAULT 1`
+  - `joined_at`: `DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP`
+  - `last_seen_at`: `DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP`
+  - `UNIQUE(session_id, user_id)`
+- **Indexes:**
+  - `CREATE INDEX idx_participants_session ON session_participants(session_id, score DESC);`
+
+#### 2.12 Table: `session_answers` (Phase P4 Implemented)
+- **Purpose:** Authoritative individual responses recorded during active multiplayer live questions.
+- **Columns:**
+  - `id`: `TEXT PRIMARY KEY` (UUIDv4)
+  - `session_id`: `TEXT NOT NULL REFERENCES quiz_sessions(id) ON DELETE CASCADE`
+  - `participant_id`: `TEXT NOT NULL REFERENCES session_participants(id) ON DELETE CASCADE`
+  - `question_id`: `TEXT NOT NULL`
+  - `question_index`: `INTEGER NOT NULL`
+  - `user_answer`: `TEXT NOT NULL DEFAULT ''`
+  - `is_correct`: `INTEGER NOT NULL DEFAULT 0`
+  - `earned_score`: `REAL NOT NULL DEFAULT 0.0`
+  - `time_taken_ms`: `INTEGER NOT NULL DEFAULT 0`
+  - `submitted_at`: `DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP`
+  - `UNIQUE(session_id, participant_id, question_id)`
+- **Indexes:**
+  - `CREATE INDEX idx_session_answers_round ON session_answers(session_id, question_index);`
+
 ---
 
 ### 3. Critical Integrity & Security Rules

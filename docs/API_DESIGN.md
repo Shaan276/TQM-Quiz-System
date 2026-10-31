@@ -108,3 +108,50 @@
 | `GET` | `/student` | Authenticated | All | Learner stats: completed quizzes, pass rate, average score %, mistake counts, recent attempts. |
 | `GET` | `/teacher` | Authenticated | Teacher/Admin | Teacher stats: total student attempts, pass rate %, average score, hardest questions. |
 | `GET` | `/admin` | Authenticated | Super Admin | Platform-wide counts of users, quizzes, and completed attempts. |
+
+#### 2.8 Live Multiplayer Sessions (`/api/v1/live-sessions`)
+| Method | Path | Auth | Roles | Purpose & Description |
+| :--- | :--- | :---: | :---: | :--- |
+| `POST` | `/` | Authenticated | Teacher/Admin | Host a live session for a published quiz. Generates unique 6-digit PIN. |
+| `GET` | `/my` | Authenticated | Teacher/Admin | List active and historical live sessions hosted by user. |
+| `GET` | `/code/:joinCode` | Authenticated | All | Verify 6-digit PIN and retrieve public session preview. |
+| `GET` | `/:id` | Authenticated | All | Retrieve full session metadata, state, participant count. |
+| `GET` | `/:id/leaderboard` | Authenticated | All | Retrieve current session leaderboard rankings. |
+| `GET` | `/:id/results` | Authenticated | Teacher/Admin | Retrieve comprehensive session results breakdown. |
+
+---
+
+### 3. Real-Time WebSocket Protocol (`/ws/live`)
+
+- **Endpoint:** `ws://<host>:<port>/ws/live`
+- **Handshake Authentication:** `Authorization: Bearer <jwt_access_token>` or `?token=<jwt_access_token>`
+- **Frame Format:** JSON (`{ "type": "<EVENT_NAME>", "payload": { ... } }`)
+
+#### 3.1 Client-to-Server Events
+| Event Type | Sent By | Payload | Purpose |
+| :--- | :---: | :--- | :--- |
+| `join_session` | Student | `{ joinCode, displayName }` | Enter session lobby. |
+| `host_connect` | Teacher | `{ joinCode }` | Register as host and receive authoritative snapshot. |
+| `start_session` | Teacher | `{ joinCode }` | Transition from `LOBBY` to `STARTING` (3s countdown) then `QUESTION_ACTIVE`. |
+| `submit_answer` | Student | `{ joinCode, questionId, questionIndex, answer, timeTakenMs }` | Submit answer for current active question. |
+| `next_question` | Teacher | `{ joinCode }` | Advance from `QUESTION_ENDED` or `LEADERBOARD` to next question. |
+| `show_leaderboard` | Teacher | `{ joinCode }` | Transition to `LEADERBOARD` display. |
+| `pause_session` | Teacher | `{ joinCode }` | Pause timer for all participants. |
+| `resume_session` | Teacher | `{ joinCode }` | Resume active question timer. |
+| `end_session` | Teacher | `{ joinCode }` | Conclude session and display final podium. |
+
+#### 3.2 Server-to-Client Broadcast Events
+| Event Type | Delivered To | Payload Summary |
+| :--- | :---: | :--- |
+| `session_joined` | Sender | Participant metadata and current session state. |
+| `participant_joined` | Room | Updated participant roster and participant count. |
+| `participant_left` | Room | Notification and updated roster when a user leaves. |
+| `session_starting` | Room | 3-second countdown countdown initiation. |
+| `question_active` | Room | Masked question (prompt, options, time limit, deadline timestamp, points). |
+| `answer_accepted` | Sender | Confirmation receipt of submission. |
+| `answer_tally` | Host | Live count and distribution of submitted answers. |
+| `question_ended` | Room | Authoritative answer key, correct option, explanation, and answer distribution. |
+| `leaderboard_update` | Room | Ranked standings (display name, score, rank, correct count). |
+| `session_completed` | Room | Final standings, top 3 podium crowns, and session stats. |
+| `session_cancelled` | Room | Notification if host terminates or cancels session. |
+| `error` | Sender | Actionable error message (`ERR_INVALID_CODE`, `ERR_QUESTION_EXPIRED`, etc.). |

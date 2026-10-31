@@ -19,6 +19,8 @@ import QuizResultView from './views/QuizResultView';
 import MistakeNotebookView from './views/MistakeNotebookView';
 import AttemptHistoryView from './views/AttemptHistoryView';
 import SuperAdminView from './views/SuperAdminView';
+import LiveHostView from './views/LiveHostView';
+import LiveSessionView from './views/LiveSessionView';
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -29,6 +31,10 @@ export default function App() {
   const [activeAttemptId, setActiveAttemptId] = useState(() => sessionStorage.getItem('quiz_active_attempt_id') || null);
   const [activeAttemptQuizId, setActiveAttemptQuizId] = useState(() => sessionStorage.getItem('quiz_active_attempt_quiz_id') || null);
   const [resultAttemptId, setResultAttemptId] = useState(() => sessionStorage.getItem('quiz_result_attempt_id') || null);
+
+  // Phase P4 Live Session State
+  const [activeLiveSessionId, setActiveLiveSessionId] = useState(() => sessionStorage.getItem('quiz_active_live_session_id') || null);
+  const [activeLivePin, setActiveLivePin] = useState(() => sessionStorage.getItem('quiz_active_live_pin') || '');
   
   // URL check for initial query parameters or persisted route
   const [activeRoute, setActiveRouteState] = useState(() => {
@@ -42,7 +48,8 @@ export default function App() {
       'landing', 'register', 'login', 'forgot-password', 'reset-password',
       'verify-email', 'profile', 'creator-dashboard', 'quiz-studio',
       'question-bank', 'learner-dashboard', 'quiz-attempt', 'quiz-result',
-      'mistake-notebook', 'attempt-history', 'admin-dashboard'
+      'mistake-notebook', 'attempt-history', 'admin-dashboard',
+      'live-host', 'live-session'
     ];
     if (hash && VALID_ROUTES.includes(hash)) return hash;
 
@@ -150,6 +157,19 @@ export default function App() {
     setActiveRoute('quiz-attempt');
   };
 
+  // Phase P4 Live Multiplayer Handlers
+  const handleHostLive = (sessionId) => {
+    setActiveLiveSessionId(sessionId);
+    sessionStorage.setItem('quiz_active_live_session_id', sessionId);
+    setActiveRoute('live-host');
+  };
+
+  const handleJoinLive = (pinCode) => {
+    setActiveLivePin(pinCode || '');
+    sessionStorage.setItem('quiz_active_live_pin', pinCode || '');
+    setActiveRoute('live-session');
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#080D14] flex items-center justify-center text-white text-xs font-mono">
@@ -187,6 +207,7 @@ export default function App() {
               setActiveRoute={setActiveRoute}
               onOpenStudio={handleOpenStudio}
               onOpenPreview={handleOpenPreview}
+              onHostLive={handleHostLive}
             />
           )}
 
@@ -202,6 +223,7 @@ export default function App() {
                 setActiveRoute={setActiveRoute}
                 onOpenStudio={handleOpenStudio}
                 onOpenPreview={handleOpenPreview}
+                onHostLive={handleHostLive}
               />
             )
           )}
@@ -217,7 +239,23 @@ export default function App() {
             <LearnerDashboardView
               onOpenPreview={handleOpenPreview}
               onStartAttempt={handleStartAttempt}
+              onJoinLive={handleJoinLive}
               setActiveRoute={setActiveRoute}
+            />
+          )}
+
+          {/* Phase P4 Live Multiplayer Views */}
+          {activeRoute === 'live-host' && (
+            <LiveHostView
+              sessionId={activeLiveSessionId}
+              onBack={() => setActiveRoute('creator-dashboard')}
+            />
+          )}
+
+          {activeRoute === 'live-session' && (
+            <LiveSessionView
+              initialPin={activeLivePin}
+              onBack={() => setActiveRoute('learner-dashboard')}
             />
           )}
 

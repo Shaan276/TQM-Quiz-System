@@ -334,6 +334,72 @@ const MIGRATIONS = [
       await dbRun(`CREATE INDEX IF NOT EXISTS idx_questions_code ON questions(question_code);`, [], db);
       await dbRun(`CREATE INDEX IF NOT EXISTS idx_question_bank_code ON question_bank(question_code);`, [], db);
     }
+  },
+  {
+    version: 5,
+    name: '005_live_multiplayer_sessions',
+    up: async (db) => {
+      // 1. Live Quiz Sessions Table
+      await dbRun(`
+        CREATE TABLE IF NOT EXISTS quiz_sessions (
+          id TEXT PRIMARY KEY,
+          quiz_id TEXT NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
+          quiz_version INTEGER NOT NULL DEFAULT 1,
+          host_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          join_code TEXT UNIQUE NOT NULL,
+          status TEXT NOT NULL DEFAULT 'LOBBY' CHECK (status IN ('LOBBY', 'STARTING', 'QUESTION_ACTIVE', 'QUESTION_ENDED', 'LEADERBOARD', 'PAUSED', 'COMPLETED', 'CANCELLED')),
+          current_question_index INTEGER NOT NULL DEFAULT 0,
+          total_questions INTEGER NOT NULL DEFAULT 0,
+          question_start_time DATETIME NULL,
+          question_end_time DATETIME NULL,
+          settings TEXT NOT NULL DEFAULT '{}',
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          ended_at DATETIME NULL
+        );
+      `, [], db);
+
+      // 2. Session Participants Table
+      await dbRun(`
+        CREATE TABLE IF NOT EXISTS session_participants (
+          id TEXT PRIMARY KEY,
+          session_id TEXT NOT NULL REFERENCES quiz_sessions(id) ON DELETE CASCADE,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          display_name TEXT NOT NULL,
+          score REAL NOT NULL DEFAULT 0.0,
+          correct_count INTEGER NOT NULL DEFAULT 0,
+          rank INTEGER NOT NULL DEFAULT 0,
+          is_connected INTEGER NOT NULL DEFAULT 1,
+          joined_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(session_id, user_id)
+        );
+      `, [], db);
+
+      // 3. Session Answers Table
+      await dbRun(`
+        CREATE TABLE IF NOT EXISTS session_answers (
+          id TEXT PRIMARY KEY,
+          session_id TEXT NOT NULL REFERENCES quiz_sessions(id) ON DELETE CASCADE,
+          participant_id TEXT NOT NULL REFERENCES session_participants(id) ON DELETE CASCADE,
+          question_id TEXT NOT NULL,
+          question_index INTEGER NOT NULL DEFAULT 0,
+          user_answer TEXT NOT NULL,
+          is_correct INTEGER NOT NULL DEFAULT 0,
+          earned_score REAL NOT NULL DEFAULT 0.0,
+          time_taken_ms INTEGER NOT NULL DEFAULT 0,
+          submitted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(session_id, participant_id, question_id)
+        );
+      `, [], db);
+
+      // Indexes for rapid live querying and high concurrency
+      await dbRun(`CREATE INDEX IF NOT EXISTS idx_sessions_host ON quiz_sessions(host_id, status);`, [], db);
+      await dbRun(`CREATE INDEX IF NOT EXISTS idx_sessions_code ON quiz_sessions(join_code);`, [], db);
+      await dbRun(`CREATE INDEX IF NOT EXISTS idx_sessions_status ON quiz_sessions(status);`, [], db);
+      await dbRun(`CREATE INDEX IF NOT EXISTS idx_participants_session ON session_participants(session_id, score DESC);`, [], db);
+      await dbRun(`CREATE INDEX IF NOT EXISTS idx_participants_user ON session_participants(user_id);`, [], db);
+      await dbRun(`CREATE INDEX IF NOT EXISTS idx_session_answers_lookup ON session_answers(session_id, question_id);`, [], db);
+    }
   }
 ];
 

@@ -14,10 +14,12 @@ import {
   BookMarked,
   History,
   TrendingUp,
-  Filter
+  Filter,
+  Radio
 } from 'lucide-react';
 
-export default function LearnerDashboardView({ onOpenPreview, onStartAttempt, setActiveRoute }) {
+export default function LearnerDashboardView({ onOpenPreview, onStartAttempt, onJoinLive, setActiveRoute }) {
+  const [joinPinInput, setJoinPinInput] = useState('');
   const { user, accessToken, setSession } = useAuth();
   const [quizzes, setQuizzes] = useState([]);
   const [analytics, setAnalytics] = useState(null);
@@ -149,6 +151,50 @@ export default function LearnerDashboardView({ onOpenPreview, onStartAttempt, se
             </button>
           )}
         </div>
+      </div>
+
+            {/* Join Live Game Quick Bar (Phase P4) */}
+      <div className="dashboard-card p-4 sm:p-5 border border-[#10B981]/40 bg-gradient-to-r from-[#10B981]/15 via-[#0E1626] to-[#0A1220] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-[#10B981]/20 border border-[#10B981]/30 flex items-center justify-center text-[#34D399] shrink-0">
+            <Radio size={20} className="animate-pulse" />
+          </div>
+          <div>
+            <h3 className="text-sm font-black text-white flex items-center gap-2">
+              Have a Live Quiz PIN?
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#34D399]/20 text-[#34D399] font-bold border border-[#34D399]/30">Live Multiplayer</span>
+            </h3>
+            <p className="text-xs text-[#94A3B8]">
+              Enter the 6-digit session PIN from your teacher to join the real-time live assessment.
+            </p>
+          </div>
+        </div>
+
+        <form 
+          onSubmit={(e) => { 
+            e.preventDefault(); 
+            if (joinPinInput.trim() && onJoinLive) {
+              onJoinLive(joinPinInput.trim());
+            } 
+          }} 
+          className="flex items-center gap-2 shrink-0"
+        >
+          <input
+            type="text"
+            maxLength={8}
+            value={joinPinInput}
+            onChange={(e) => setJoinPinInput(e.target.value.replace(/[^0-9a-zA-Z]/g, '').toUpperCase())}
+            placeholder="6-Digit PIN"
+            className="w-32 bg-[#0B111D] border border-[#2D436B] focus:border-[#34D399] rounded-xl px-3 py-2 text-xs font-mono font-bold text-center text-white outline-none placeholder:text-[#64748B]"
+          />
+          <button
+            type="submit"
+            disabled={!joinPinInput.trim()}
+            className="btn-emerald-primary text-xs py-2 px-4 font-bold shadow-md shadow-[#10B981]/20"
+          >
+            Join Live
+          </button>
+        </form>
       </div>
 
       {/* Real Performance Analytics Metric Bar */}

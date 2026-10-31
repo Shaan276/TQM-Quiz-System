@@ -1,11 +1,13 @@
 const express = require('express');
 const cors = require('cors');
+const http = require('http');
 const path = require('path');
 const fs = require('fs');
 const config = require('./config');
 const { getDatabase, setDatabaseInstance } = require('./database');
 const { runMigrations } = require('./database/migrations');
 const { seedDemoAccounts } = require('./database/seeds');
+const { initWebSocketServer } = require('./websocket');
 
 // Routes
 const authRoutes = require('./routes/auth');
@@ -15,6 +17,7 @@ const questionBankRoutes = require('./routes/questionBank');
 const attemptRoutes = require('./routes/attempts');
 const mistakeRoutes = require('./routes/mistakes');
 const analyticsRoutes = require('./routes/analytics');
+const liveSessionRoutes = require('./routes/liveSessions');
 
 function createApp(customDb = null) {
   if (customDb) {
@@ -59,13 +62,14 @@ function createApp(customDb = null) {
   app.use('/api/v1/attempts', attemptRoutes);
   app.use('/api/v1/mistakes', mistakeRoutes);
   app.use('/api/v1/analytics', analyticsRoutes);
+  app.use('/api/v1/live-sessions', liveSessionRoutes);
 
   // Serve production client build if exists
   const clientDist = path.resolve(__dirname, '../../client/dist');
   if (fs.existsSync(clientDist)) {
     app.use(express.static(clientDist));
     app.use((req, res, next) => {
-      if (req.path.startsWith('/api')) return next();
+      if (req.path.startsWith('/api') || req.path.startsWith('/ws')) return next();
       res.sendFile(path.join(clientDist, 'index.html'));
     });
   }
@@ -103,8 +107,11 @@ if (require.main === module) {
       console.log('[Startup] Database migrations and demo accounts ready.');
 
       const app = createApp();
-      app.listen(config.port, () => {
-        console.log(`[Startup] Quiz System API Server listening at http://localhost:${config.port}`);
+      const server = http.createServer(app);
+      initWebSocketServer(server);
+
+      server.listen(config.port, () => {
+        console.log(`[Startup] Quiz System API & WebSocket Server listening at http://localhost:${config.port}`);
       });
     } catch (err) {
       console.error('[Startup] Failed to start server:', err);
@@ -112,5 +119,7 @@ if (require.main === module) {
     }
   })();
 }
+
+module.exports = { createApp, initWebSocketServer };
 
 module.exports = { createApp };

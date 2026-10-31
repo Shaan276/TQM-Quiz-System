@@ -21,10 +21,11 @@ import {
   ShieldCheck,
   TrendingUp,
   Sparkles,
-  Award
+  Award,
+  Radio
 } from 'lucide-react';
 
-export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onOpenPreview }) {
+export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onOpenPreview, onHostLive }) {
   const { user, accessToken, setSession } = useAuth();
   const [metrics, setMetrics] = useState({
     totalQuizzes: 0,
@@ -178,6 +179,30 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
       }
     } catch (err) {
       alert('Failed to duplicate quiz');
+    }
+  };
+
+  // Host live multiplayer session
+  const handleHostLiveSession = async (quizId) => {
+    try {
+      const res = await fetch('/api/v1/live-sessions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
+        },
+        body: JSON.stringify({ quizId })
+      });
+      const data = await res.json();
+      if (data.success && data.data?.sessionId) {
+        if (onHostLive) {
+          onHostLive(data.data.sessionId);
+        }
+      } else {
+        alert(data.error?.message || 'Failed to start live session');
+      }
+    } catch (err) {
+      alert('Network error starting live session');
     }
   };
 
@@ -514,17 +539,31 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
                   </button>
                 </div>
 
-                {/* Publish Toggle Button */}
-                <button
-                  onClick={() => handleTogglePublish(quiz)}
-                  className={`text-[11px] font-bold px-3 py-1.5 rounded-lg transition-all ${
-                    quiz.status === 'PUBLISHED'
-                      ? 'bg-[#1F293D] text-[#94A3B8] hover:bg-[#F43F5E]/15 hover:text-[#F43F5E]'
-                      : 'bg-[#10B981]/20 text-[#34D399] hover:bg-[#10B981]/30 border border-[#10B981]/40'
-                  }`}
-                >
-                  {quiz.status === 'PUBLISHED' ? 'Unpublish' : 'Publish'}
-                </button>
+                <div className="flex items-center gap-2">
+                  {/* Host Live Session (P4) */}
+                  {quiz.status === 'PUBLISHED' && (
+                    <button
+                      onClick={() => handleHostLiveSession(quiz.id)}
+                      className="px-2.5 py-1.5 rounded-lg bg-[#10B981]/20 hover:bg-[#10B981]/30 text-[#34D399] text-[11px] font-bold border border-[#10B981]/40 flex items-center gap-1.5 transition-all shadow-sm shadow-[#10B981]/15"
+                      title="Host Synchronized Live Multiplayer Session"
+                    >
+                      <Radio size={12} className="animate-pulse" />
+                      <span>Host Live</span>
+                    </button>
+                  )}
+
+                  {/* Publish Toggle Button */}
+                  <button
+                    onClick={() => handleTogglePublish(quiz)}
+                    className={`text-[11px] font-bold px-3 py-1.5 rounded-lg transition-all ${
+                      quiz.status === 'PUBLISHED'
+                        ? 'bg-[#1F293D] text-[#94A3B8] hover:bg-[#F43F5E]/15 hover:text-[#F43F5E]'
+                        : 'bg-[#10B981]/20 text-[#34D399] hover:bg-[#10B981]/30 border border-[#10B981]/40'
+                    }`}
+                  >
+                    {quiz.status === 'PUBLISHED' ? 'Unpublish' : 'Publish'}
+                  </button>
+                </div>
 
               </div>
 
