@@ -6,6 +6,10 @@
   --font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   font-family: var(--font-family);
   background-color: #080D14;

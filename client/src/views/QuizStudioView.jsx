@@ -66,14 +66,16 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
   const [bankSavedMap, setBankSavedMap] = useState({});
   const [savingBankQIdx, setSavingBankQIdx] = useState(null);
 
-  // Timing states
-  const [defaultQuestionTimer, setDefaultQuestionTimer] = useState(30);
+  // Timing states (Compulsory default is 60 seconds)
+  const [defaultQuestionTimer, setDefaultQuestionTimer] = useState(60);
+  const [highlightedQId, setHighlightedQId] = useState(null);
 
   const handleApplyDefaultTimerToAll = () => {
-    const updated = questions.map(q => ({ ...q, time_limit_sec: defaultQuestionTimer }));
+    const targetTimer = defaultQuestionTimer || 60;
+    const updated = questions.map(q => ({ ...q, time_limit_sec: targetTimer }));
     setQuestions(updated);
     triggerAutosave(quiz, updated);
-    showToast(`Applied ${defaultQuestionTimer}s timer to all ${questions.length} question(s)!`);
+    showToast(`Applied ${targetTimer}s timer to all ${questions.length} question(s)!`);
   };
 
   // Autosave timer ref
@@ -138,7 +140,9 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
             difficulty: updatedQuiz.difficulty,
             tags: updatedQuiz.tags,
             visibility: updatedQuiz.visibility,
-            timeLimitSec: updatedQuiz.time_limit_sec,
+            timeLimitSec: (updatedQuiz.time_limit_sec !== '' && updatedQuiz.time_limit_sec !== undefined && updatedQuiz.time_limit_sec !== null)
+              ? parseInt(updatedQuiz.time_limit_sec, 10) || 0
+              : 0,
             passingPercentage: updatedQuiz.passing_percentage,
             shuffleQuestions: updatedQuiz.shuffle_questions,
             shuffleOptions: updatedQuiz.shuffle_options,
@@ -147,7 +151,12 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
             showExplanations: updatedQuiz.show_explanations,
             maxAttempts: updatedQuiz.max_attempts,
             autoSaveQuestionsToBank: autoSaveNewToBank,
-            questions: updatedQuestions
+            questions: (updatedQuestions || []).map(q => ({
+              ...q,
+              time_limit_sec: (q.time_limit_sec !== '' && q.time_limit_sec !== undefined && q.time_limit_sec !== null)
+                ? (parseInt(q.time_limit_sec, 10) || 60)
+                : 60
+            }))
           })
         });
         const data = await res.json();
@@ -226,7 +235,7 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
       question_text: '',
       question_type: type,
       marks: 1.0,
-      time_limit_sec: defaultQuestionTimer,
+      time_limit_sec: defaultQuestionTimer || 60,
       explanation: '',
       options: initialOptions,
       answers: initialAnswers,
@@ -244,15 +253,21 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
     setQuestions(updated);
     triggerAutosave(quiz, updated);
 
-    // Auto-scroll into view directly to the new question card (Google Forms style)
+    // Highlight and smoothly scroll directly to the newly added question card without sudden jumps
+    setHighlightedQId(newId);
+    setTimeout(() => setHighlightedQId(null), 1800);
+
     setTimeout(() => {
       const el = document.getElementById(`question-card-${newId}`);
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        const targetInput = el.querySelector('textarea, input[type="text"]');
-        if (targetInput) targetInput.focus();
+        // Delay focus slightly so the smooth scroll can complete smoothly without abrupt viewport jumping
+        setTimeout(() => {
+          const targetInput = el.querySelector('textarea, input[type="text"]');
+          if (targetInput) targetInput.focus({ preventScroll: true });
+        }, 380);
       }
-    }, 120);
+    }, 50);
   };
 
   // Update specific question
@@ -277,6 +292,7 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
   // Duplicate question
   const handleDuplicateQuestion = (index) => {
     const target = questions[index];
+    const cloneId = 'clone_' + Date.now();
     const qCode = formatQuestionCode(
       quiz?.category || 'General',
       target.question_type,
@@ -285,30 +301,49 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
     );
     const clone = {
       ...target,
-      id: 'clone_' + Date.now(),
+      id: cloneId,
       question_code: qCode,
       question_text: `${target.question_text} (Copy)`,
       options: target.options ? target.options.map(o => ({ ...o, id: undefined })) : [],
       answers: target.answers ? target.answers.map(a => ({ ...a, id: undefined })) : [],
-      saveToBank: autoSaveNewToBank,
+      saveToBank: true,
       bankSaved: false
     };
     const updated = [...questions];
     updated.splice(index + 1, 0, clone);
     setQuestions(updated);
     triggerAutosave(quiz, updated);
+
+    // Smoothly scroll and highlight duplicated question
+    setHighlightedQId(cloneId);
+    setTimeout(() => setHighlightedQId(null), 1800);
+    setTimeout(() => {
+      const el = document.getElementById(`question-card-${cloneId}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 50);
   };
 
   // Move Question
   const handleMoveQuestion = (index, direction) => {
     const targetIndex = index + direction;
     if (targetIndex < 0 || targetIndex >= questions.length) return;
+    const movedId = questions[index]?.id;
     const updated = [...questions];
     const temp = updated[index];
     updated[index] = updated[targetIndex];
     updated[targetIndex] = temp;
     setQuestions(updated);
     triggerAutosave(quiz, updated);
+
+    // Smoothly scroll to the moved item and highlight it
+    if (movedId) {
+      setHighlightedQId(movedId);
+      setTimeout(() => setHighlightedQId(null), 1200);
+      setTimeout(() => {
+        const el = document.getElementById(`question-card-${movedId}`);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 50);
+    }
   };
 
   // Options Handlers for MCQ inside a question
@@ -737,17 +772,34 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
                   type="number"
                   min="0"
                   step="30"
-                  value={quiz.time_limit_sec ?? 600}
+                  placeholder="600"
+                  value={quiz.time_limit_sec !== undefined && quiz.time_limit_sec !== null ? quiz.time_limit_sec : ''}
                   onChange={(e) => {
-                    const sec = Math.max(0, parseInt(e.target.value) || 0);
-                    const updated = { ...quiz, time_limit_sec: sec };
-                    setQuiz(updated);
-                    triggerAutosave(updated, questions);
+                    const val = e.target.value;
+                    if (val === '') {
+                      const updated = { ...quiz, time_limit_sec: '' };
+                      setQuiz(updated);
+                    } else {
+                      const parsed = parseInt(val, 10);
+                      const updated = { ...quiz, time_limit_sec: isNaN(parsed) ? 0 : parsed };
+                      setQuiz(updated);
+                      triggerAutosave(updated, questions);
+                    }
                   }}
-                  className="bg-[#0B111D] border border-[#2D436B] focus:border-[#38BDF8] rounded-lg px-2.5 py-1 text-xs font-mono font-bold text-white w-24 outline-none"
+                  onBlur={(e) => {
+                    const val = e.target.value;
+                    if (val === '') {
+                      const updated = { ...quiz, time_limit_sec: 0 };
+                      setQuiz(updated);
+                      triggerAutosave(updated, questions);
+                    }
+                  }}
+                  className="bg-[#0B111D] border border-[#2D436B] focus:border-[#38BDF8] rounded-lg px-2.5 py-1 text-xs font-mono font-bold text-white w-24 outline-none placeholder:text-[#64748B]/60"
                 />
                 <span className="text-[11px] text-[#64748B] font-medium">
-                  {quiz.time_limit_sec === 0 ? '(Untimed)' : `≈ ${Math.floor((quiz.time_limit_sec || 0)/60)}m ${(quiz.time_limit_sec || 0)%60}s`}
+                  {!quiz.time_limit_sec || quiz.time_limit_sec === 0 || quiz.time_limit_sec === ''
+                    ? '(Untimed)'
+                    : `≈ ${Math.floor((parseInt(quiz.time_limit_sec, 10) || 0)/60)}m ${(parseInt(quiz.time_limit_sec, 10) || 0)%60}s`}
                 </span>
               </div>
             </div>
@@ -759,19 +811,31 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
             </div>
             <div className="flex-1">
               <label className="block text-[10px] font-bold text-[#94A3B8] uppercase tracking-wider mb-0.5">
-                Default Time Per Question (Seconds)
+                Default Time Per Question (Seconds, Default: 60s)
               </label>
               <div className="flex items-center gap-2">
                 <input
                   type="number"
                   min="5"
                   step="5"
-                  value={defaultQuestionTimer}
+                  placeholder="60"
+                  value={defaultQuestionTimer !== '' ? defaultQuestionTimer : ''}
                   onChange={(e) => {
-                    const sec = Math.max(5, parseInt(e.target.value) || 30);
-                    setDefaultQuestionTimer(sec);
+                    const val = e.target.value;
+                    if (val === '') {
+                      setDefaultQuestionTimer('');
+                    } else {
+                      const parsed = parseInt(val, 10);
+                      setDefaultQuestionTimer(isNaN(parsed) ? '' : parsed);
+                    }
                   }}
-                  className="bg-[#0B111D] border border-[#2D436B] focus:border-[#34D399] rounded-lg px-2.5 py-1 text-xs font-mono font-bold text-[#34D399] w-24 outline-none"
+                  onBlur={(e) => {
+                    const val = e.target.value;
+                    if (!val || parseInt(val, 10) <= 0) {
+                      setDefaultQuestionTimer(60);
+                    }
+                  }}
+                  className="bg-[#0B111D] border border-[#2D436B] focus:border-[#34D399] rounded-lg px-2.5 py-1 text-xs font-mono font-bold text-[#34D399] w-24 outline-none placeholder:text-[#64748B]/60"
                 />
                 <button
                   type="button"
@@ -847,7 +911,9 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
           <div key={q.id || qIdx} id={`question-card-${q.id || qIdx}`} className="space-y-3">
             
             {/* Question Card */}
-            <div className="dashboard-card p-6 space-y-4 hover:border-[#2D436B] transition-all relative group">
+            <div className={`dashboard-card p-6 space-y-4 hover:border-[#2D436B] transition-all duration-500 relative group ${
+              highlightedQId === (q.id || qIdx) ? 'ring-2 ring-[#10B981] shadow-2xl shadow-[#10B981]/25 scale-[1.008]' : ''
+            }`}>
               
               {/* Question Card Header */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#1B2A44]">
@@ -938,16 +1004,31 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
                   </select>
 
                   {/* Question Time Limit Input */}
-                  <div className="flex items-center gap-1 bg-[#132238] border border-[#1F304E] rounded-xl px-2 py-1" title="Time limit for this question in seconds">
+                  <div className="flex items-center gap-1 bg-[#132238] border border-[#1F304E] rounded-xl px-2.5 py-1" title="Time limit for this question in seconds (defaults to 60s if empty)">
                     <Clock size={11} className="text-[#38BDF8]" />
                     <span className="text-[10px] font-bold text-[#64748B]">Time:</span>
                     <input
                       type="number"
                       min="5"
                       step="5"
-                      value={q.time_limit_sec || defaultQuestionTimer}
-                      onChange={(e) => handleUpdateQuestion(qIdx, { time_limit_sec: Math.max(5, parseInt(e.target.value) || 30) })}
-                      className="w-8 bg-transparent text-xs font-bold text-[#38BDF8] text-center outline-none"
+                      placeholder="60"
+                      value={q.time_limit_sec !== undefined && q.time_limit_sec !== null ? q.time_limit_sec : ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === '') {
+                          handleUpdateQuestion(qIdx, { time_limit_sec: '' });
+                        } else {
+                          const parsed = parseInt(val, 10);
+                          handleUpdateQuestion(qIdx, { time_limit_sec: isNaN(parsed) ? '' : parsed });
+                        }
+                      }}
+                      onBlur={(e) => {
+                        const val = e.target.value;
+                        if (!val || parseInt(val, 10) <= 0) {
+                          handleUpdateQuestion(qIdx, { time_limit_sec: 60 });
+                        }
+                      }}
+                      className="w-9 bg-transparent text-xs font-bold text-[#38BDF8] text-center outline-none placeholder:text-[#64748B]/60"
                     />
                     <span className="text-[10px] text-[#64748B] font-semibold pr-0.5">s</span>
                   </div>
