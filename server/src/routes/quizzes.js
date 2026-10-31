@@ -310,6 +310,20 @@ router.post('/', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (req,
       pass_percentage = 60,
       showExplanations = 'AFTER_SUBMIT',
       show_explanations = 'AFTER_SUBMIT',
+      shuffleQuestions = false,
+      shuffle_questions = false,
+      shuffleOptions = false,
+      shuffle_options = false,
+      negativeMarking = false,
+      negative_marking = false,
+      negativeMarksRatio = 0.25,
+      negative_marks_ratio = 0.25,
+      allowFlagging = true,
+      allow_flagging = true,
+      allowBacktrack = true,
+      allow_backtrack = true,
+      showCorrectAnswers = true,
+      show_correct_answers = true,
       questions = null
     } = req.body;
 
@@ -331,8 +345,10 @@ router.post('/', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (req,
     await dbRun(
       `INSERT INTO quizzes (
         id, creator_id, title, description, category, difficulty, tags,
-        status, visibility, time_limit_sec, passing_percentage, show_explanations
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'DRAFT', ?, ?, ?, ?)`,
+        status, visibility, time_limit_sec, passing_percentage, show_explanations,
+        shuffle_questions, shuffle_options, negative_marking, negative_marks_ratio,
+        allow_flagging, allow_backtrack, show_correct_answers
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'DRAFT', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         quizId,
         userId,
@@ -344,7 +360,14 @@ router.post('/', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (req,
         visibility === 'PRIVATE' ? 'PRIVATE' : 'PUBLIC',
         effectiveTimeLimit,
         effectivePassing,
-        effectiveExplanations
+        effectiveExplanations,
+        (shuffleQuestions || shuffle_questions) ? 1 : 0,
+        (shuffleOptions || shuffle_options) ? 1 : 0,
+        (negativeMarking || negative_marking) ? 1 : 0,
+        parseFloat(negativeMarksRatio || negative_marks_ratio) || 0.25,
+        (allowFlagging !== undefined ? allowFlagging : allow_flagging) ? 1 : 0,
+        (allowBacktrack !== undefined ? allowBacktrack : allow_backtrack) ? 1 : 0,
+        (showCorrectAnswers !== undefined ? showCorrectAnswers : show_correct_answers) ? 1 : 0
       ]
     );
 
@@ -590,6 +613,12 @@ router.put('/:id', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (re
       negativeMarksRatio,
       showExplanations,
       maxAttempts,
+      allowFlagging,
+      allow_flagging,
+      allowBacktrack,
+      allow_backtrack,
+      showCorrectAnswers,
+      show_correct_answers,
       questions = []
     } = req.body;
 
@@ -602,12 +631,29 @@ router.put('/:id', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (re
     const updatedVis = visibility !== undefined ? visibility : existing.visibility;
     const updatedTimeLimit = timeLimitSec !== undefined ? parseInt(timeLimitSec) : existing.time_limit_sec;
     const updatedPass = passingPercentage !== undefined ? parseInt(passingPercentage) : existing.passing_percentage;
-    const updatedShufQ = shuffleQuestions !== undefined ? (shuffleQuestions ? 1 : 0) : existing.shuffle_questions;
-    const updatedShufO = shuffleOptions !== undefined ? (shuffleOptions ? 1 : 0) : existing.shuffle_options;
-    const updatedNeg = negativeMarking !== undefined ? (negativeMarking ? 1 : 0) : existing.negative_marking;
-    const updatedNegRatio = negativeMarksRatio !== undefined ? parseFloat(negativeMarksRatio) : existing.negative_marks_ratio;
+    const updatedShufQ = (shuffleQuestions !== undefined || req.body.shuffle_questions !== undefined)
+      ? (shuffleQuestions || req.body.shuffle_questions ? 1 : 0)
+      : existing.shuffle_questions;
+    const updatedShufO = (shuffleOptions !== undefined || req.body.shuffle_options !== undefined)
+      ? (shuffleOptions || req.body.shuffle_options ? 1 : 0)
+      : existing.shuffle_options;
+    const updatedNeg = (negativeMarking !== undefined || req.body.negative_marking !== undefined)
+      ? (negativeMarking || req.body.negative_marking ? 1 : 0)
+      : existing.negative_marking;
+    const updatedNegRatio = (negativeMarksRatio !== undefined || req.body.negative_marks_ratio !== undefined)
+      ? parseFloat(negativeMarksRatio || req.body.negative_marks_ratio)
+      : existing.negative_marks_ratio;
     const updatedExp = showExplanations !== undefined ? showExplanations : existing.show_explanations;
     const updatedAttempts = maxAttempts !== undefined ? parseInt(maxAttempts) : existing.max_attempts;
+    const updatedFlag = (allowFlagging !== undefined || allow_flagging !== undefined)
+      ? (allowFlagging || allow_flagging ? 1 : 0)
+      : (existing.allow_flagging !== undefined ? existing.allow_flagging : 1);
+    const updatedBacktrack = (allowBacktrack !== undefined || allow_backtrack !== undefined)
+      ? (allowBacktrack || allow_backtrack ? 1 : 0)
+      : (existing.allow_backtrack !== undefined ? existing.allow_backtrack : 1);
+    const updatedShowAnswers = (showCorrectAnswers !== undefined || show_correct_answers !== undefined)
+      ? (showCorrectAnswers || show_correct_answers ? 1 : 0)
+      : (existing.show_correct_answers !== undefined ? existing.show_correct_answers : 1);
 
     await dbRun(
       `UPDATE quizzes SET 
@@ -615,12 +661,14 @@ router.put('/:id', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (re
         visibility = ?, time_limit_sec = ?, passing_percentage = ?,
         shuffle_questions = ?, shuffle_options = ?, negative_marking = ?,
         negative_marks_ratio = ?, show_explanations = ?, max_attempts = ?,
+        allow_flagging = ?, allow_backtrack = ?, show_correct_answers = ?,
         updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
       [
         updatedTitle, updatedDesc, updatedCat, updatedDiff, updatedTags,
         updatedVis, updatedTimeLimit, updatedPass, updatedShufQ, updatedShufO,
-        updatedNeg, updatedNegRatio, updatedExp, updatedAttempts, id
+        updatedNeg, updatedNegRatio, updatedExp, updatedAttempts,
+        updatedFlag, updatedBacktrack, updatedShowAnswers, id
       ]
     );
 

@@ -13,7 +13,8 @@ import {
   Award,
   HelpCircle,
   Hash,
-  FileText
+  FileText,
+  Flag
 } from 'lucide-react';
 
 export default function QuizAttemptView({ attemptId: initialAttemptId, quizId, onComplete, onExit }) {
@@ -30,6 +31,7 @@ export default function QuizAttemptView({ attemptId: initialAttemptId, quizId, o
   const [saveStatus, setSaveStatus] = useState('saved'); // 'saving' | 'saved' | 'error'
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [flaggedQuestions, setFlaggedQuestions] = useState(new Set());
   const saveTimeoutRef = useRef(null);
 
   // Fullscreen & Anti-Cheat State
@@ -145,6 +147,11 @@ export default function QuizAttemptView({ attemptId: initialAttemptId, quizId, o
           setQuiz(data.data.quiz);
           setQuestions(data.data.questions || []);
           setAnswers(data.data.savedAnswers || {});
+          if (data.data.flaggedQuestionIds) {
+            setFlaggedQuestions(new Set(data.data.flaggedQuestionIds));
+          } else if (data.data.attempt?.flaggedQuestionIds) {
+            setFlaggedQuestions(new Set(data.data.attempt.flaggedQuestionIds));
+          }
           if (data.data.attempt.remainingSeconds !== null) {
             setRemainingSec(data.data.attempt.remainingSeconds);
           }
@@ -168,6 +175,9 @@ export default function QuizAttemptView({ attemptId: initialAttemptId, quizId, o
           setQuiz(data.data.quiz);
           setQuestions(data.data.questions || []);
           setAnswers(data.data.savedAnswers || {});
+          if (data.data.flaggedQuestionIds) {
+            setFlaggedQuestions(new Set(data.data.flaggedQuestionIds));
+          }
           if (data.data.remainingSeconds !== null) {
             setRemainingSec(data.data.remainingSeconds);
           }
@@ -250,6 +260,33 @@ export default function QuizAttemptView({ attemptId: initialAttemptId, quizId, o
       return copy;
     });
     persistAnswerToServer(questionId, '');
+  };
+
+  const handleToggleFlag = async (qId) => {
+    if (!qId) return;
+    const isCurrentlyFlagged = flaggedQuestions.has(qId);
+    const nextSet = new Set(flaggedQuestions);
+    if (isCurrentlyFlagged) {
+      nextSet.delete(qId);
+    } else {
+      nextSet.add(qId);
+    }
+    setFlaggedQuestions(nextSet);
+
+    if (attemptId) {
+      try {
+        await fetch(`/api/v1/attempts/${attemptId}/flag`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ questionId: qId, flagged: !isCurrentlyFlagged })
+        });
+      } catch (err) {
+        console.error('Failed to toggle flag', err);
+      }
+    }
   };
 
   const handleAutoSubmit = async () => {
@@ -467,8 +504,26 @@ export default function QuizAttemptView({ attemptId: initialAttemptId, quizId, o
                 )}
               </div>
 
-              <div className="text-xs font-bold text-[#38BDF8] bg-[#0E2A47] px-2.5 py-1 rounded-lg border border-[#1E3A5F]">
-                {currentQ.marks || 1} {Number(currentQ.marks) === 1 ? 'Mark' : 'Marks'}
+              <div className="flex items-center gap-2">
+                {quiz?.allow_flagging !== 0 && (
+                  <button
+                    type="button"
+                    onClick={() => handleToggleFlag(currentQ.id)}
+                    className={`px-3 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 border transition-all ${
+                      flaggedQuestions.has(currentQ.id)
+                        ? 'bg-[#F59E0B]/20 text-[#F59E0B] border-[#F59E0B]/40 shadow-sm'
+                        : 'bg-[#121D32] text-[#94A3B8] border-[#1F304E] hover:text-white'
+                    }`}
+                    title="Flag this question to review later"
+                  >
+                    <Flag size={13} className={flaggedQuestions.has(currentQ.id) ? 'fill-current' : ''} />
+                    <span>{flaggedQuestions.has(currentQ.id) ? 'Flagged' : 'Flag for Review'}</span>
+                  </button>
+                )}
+
+                <div className="text-xs font-bold text-[#38BDF8] bg-[#0E2A47] px-2.5 py-1 rounded-lg border border-[#1E3A5F]">
+                  {currentQ.marks || 1} {Number(currentQ.marks) === 1 ? 'Mark' : 'Marks'}
+                </div>
               </div>
             </div>
 
@@ -710,11 +765,17 @@ export default function QuizAttemptView({ attemptId: initialAttemptId, quizId, o
                 const ans = answers[q.id];
                 const isAnswered = ans !== undefined && ans !== null && String(ans).trim() !== '' && (!Array.isArray(ans) || ans.length > 0);
                 const isCurrent = idx === currentIndex;
+                const isFlaggedForReview = flaggedQuestions.has(q.id);
 
                 return (
                   <button
                     key={q.id || idx}
-                    onClick={() => setCurrentIndex(idx)}
+                    onClick={() => {
+                      if (quiz?.allow_backtrack === 0 && idx < currentIndex) {
+                        return; // Backtracking not permitted by quiz policy
+                      }
+                      setCurrentIndex(idx);
+                    }}
                     className={`h-9 rounded-lg font-mono text-xs font-bold transition-all relative ${
                       isCurrent
                         ? 'ring-2 ring-[#38BDF8] ring-offset-2 ring-offset-[#0B111D] text-white z-10'
@@ -726,6 +787,9 @@ export default function QuizAttemptView({ attemptId: initialAttemptId, quizId, o
                     }`}
                   >
                     {idx + 1}
+                    {isFlaggedForReview && (
+                      <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-[#F59E0B] rounded-full ring-2 ring-[#0B111D]" title="Flagged for review" />
+                    )}
                   </button>
                 );
               })}
@@ -741,6 +805,12 @@ export default function QuizAttemptView({ attemptId: initialAttemptId, quizId, o
                 <span className="w-3 h-3 rounded bg-[#121D32] border border-[#1F304E]" />
                 <span>Unanswered ({totalQuestions - answeredCount})</span>
               </div>
+              {flaggedQuestions.size > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="w-3 h-3 rounded-full bg-[#F59E0B]" />
+                  <span className="text-[#F59E0B] font-semibold">Flagged for Review ({flaggedQuestions.size})</span>
+                </div>
+              )}
               <div className="flex items-center gap-2">
                 <span className="w-3 h-3 rounded ring-2 ring-[#38BDF8] bg-[#121D32]" />
                 <span>Current Question</span>
@@ -798,7 +868,20 @@ export default function QuizAttemptView({ attemptId: initialAttemptId, quizId, o
                     {totalQuestions - answeredCount}
                   </span>
                 </div>
+                {flaggedQuestions.size > 0 && (
+                  <div className="flex justify-between text-[#F59E0B]">
+                    <span>Flagged for Review:</span>
+                    <span className="font-bold">{flaggedQuestions.size}</span>
+                  </div>
+                )}
               </div>
+
+              {flaggedQuestions.size > 0 && (
+                <div className="p-2.5 rounded-lg bg-[#F59E0B]/10 border border-[#F59E0B]/30 text-[#F59E0B] text-[11px] flex items-center gap-2">
+                  <Flag size={14} className="shrink-0 fill-current" />
+                  <span>Notice: You have {flaggedQuestions.size} question(s) marked for review.</span>
+                </div>
+              )}
 
               {totalQuestions - answeredCount > 0 && (
                 <div className="p-2.5 rounded-lg bg-[#F59E0B]/10 border border-[#F59E0B]/20 text-[#F59E0B] text-[11px] flex items-center gap-2">

@@ -1416,18 +1416,82 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
                 </label>
 
                 <label className="flex items-center justify-between cursor-pointer">
-                  <span>Enable Negative Marking (-0.25 pt penalty)</span>
+                  <span>Allow Question Flagging for Review</span>
                   <input
                     type="checkbox"
-                    checked={Boolean(quiz.negative_marking)}
+                    checked={quiz.allow_flagging !== undefined ? Boolean(quiz.allow_flagging) : true}
                     onChange={(e) => {
-                      const updated = { ...quiz, negative_marking: e.target.checked ? 1 : 0 };
+                      const updated = { ...quiz, allow_flagging: e.target.checked ? 1 : 0 };
                       setQuiz(updated);
                       triggerAutosave(updated, questions);
                     }}
                     className="rounded bg-[#0B111D]"
                   />
                 </label>
+
+                <label className="flex items-center justify-between cursor-pointer">
+                  <span>Allow Backtracking (Free Navigation)</span>
+                  <input
+                    type="checkbox"
+                    checked={quiz.allow_backtrack !== undefined ? Boolean(quiz.allow_backtrack) : true}
+                    onChange={(e) => {
+                      const updated = { ...quiz, allow_backtrack: e.target.checked ? 1 : 0 };
+                      setQuiz(updated);
+                      triggerAutosave(updated, questions);
+                    }}
+                    className="rounded bg-[#0B111D]"
+                  />
+                </label>
+
+                <label className="flex items-center justify-between cursor-pointer">
+                  <span>Show Correct Answers After Submission</span>
+                  <input
+                    type="checkbox"
+                    checked={quiz.show_correct_answers !== undefined ? Boolean(quiz.show_correct_answers) : true}
+                    onChange={(e) => {
+                      const updated = { ...quiz, show_correct_answers: e.target.checked ? 1 : 0 };
+                      setQuiz(updated);
+                      triggerAutosave(updated, questions);
+                    }}
+                    className="rounded bg-[#0B111D]"
+                  />
+                </label>
+
+                <div className="space-y-2 pt-2 border-t border-[#1F304E]">
+                  <label className="flex items-center justify-between cursor-pointer">
+                    <span>Enable Negative Marking</span>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(quiz.negative_marking)}
+                      onChange={(e) => {
+                        const updated = { ...quiz, negative_marking: e.target.checked ? 1 : 0 };
+                        setQuiz(updated);
+                        triggerAutosave(updated, questions);
+                      }}
+                      className="rounded bg-[#0B111D]"
+                    />
+                  </label>
+
+                  {Boolean(quiz.negative_marking) && (
+                    <div className="flex items-center justify-between pl-4 text-[11px] text-[#94A3B8]">
+                      <span>Penalty per incorrect answer:</span>
+                      <select
+                        value={quiz.negative_marks_ratio ?? 0.25}
+                        onChange={(e) => {
+                          const updated = { ...quiz, negative_marks_ratio: parseFloat(e.target.value) || 0.25 };
+                          setQuiz(updated);
+                          triggerAutosave(updated, questions);
+                        }}
+                        className="bg-[#0B111D] border border-[#1F304E] rounded px-2 py-1 text-white text-xs font-mono"
+                      >
+                        <option value="0.25">-0.25 (25% penalty)</option>
+                        <option value="0.33">-0.33 (33% penalty)</option>
+                        <option value="0.50">-0.50 (50% penalty)</option>
+                        <option value="1.00">-1.00 (Full deduction)</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
 
                 <label className="flex items-center justify-between cursor-pointer pt-2 border-t border-[#1F304E]">
                   <div>

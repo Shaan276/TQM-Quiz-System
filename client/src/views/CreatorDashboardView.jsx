@@ -28,10 +28,12 @@ import {
   Play,
   Calendar,
   X,
-  Rocket
+  Rocket,
+  BarChart3
 } from 'lucide-react';
+import TeacherInsightsView from './TeacherInsightsView';
 
-export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onOpenPreview, onHostLive }) {
+export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onOpenPreview, onHostLive, initialTab }) {
   const { user, accessToken, setSession } = useAuth();
   const [metrics, setMetrics] = useState({
     totalQuizzes: 0,
@@ -62,10 +64,16 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
   const [loadingAttempts, setLoadingAttempts] = useState(false);
   const [teacherAnalytics, setTeacherAnalytics] = useState(null);
 
-  // Live sessions history state (Phase P4 & P6)
-  const [dashboardTab, setDashboardTab] = useState('quizzes'); // 'quizzes' | 'live-history' | 'all-tests'
+  // Live sessions history state (Phase P4, P6 & P8)
+  const [dashboardTab, setDashboardTab] = useState(initialTab || 'quizzes'); // 'quizzes' | 'insights' | 'all-tests' | 'live-history'
   const [liveSessionsHistory, setLiveSessionsHistory] = useState([]);
   const [copiedCodeId, setCopiedCodeId] = useState(null);
+
+  useEffect(() => {
+    if (initialTab) {
+      setDashboardTab(initialTab);
+    }
+  }, [initialTab]);
 
   // Phase P6 Unified Assessment Analytics State
   const [allTestsData, setAllTestsData] = useState({ liveBattles: [], selfPacedAttempts: [], scheduledAssignments: [] });
@@ -507,10 +515,10 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
       </div>
 
       {/* Primary Dashboard Navigation Tabs */}
-      <div className="flex items-center gap-4 border-b border-[#1B2A44] pb-2">
+      <div className="flex items-center gap-4 border-b border-[#1B2A44] pb-2 overflow-x-auto">
         <button
           onClick={() => setDashboardTab('quizzes')}
-          className={`pb-2 px-1 text-sm font-bold flex items-center gap-2 border-b-2 transition-all ${
+          className={`pb-2 px-1 text-sm font-bold flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${
             dashboardTab === 'quizzes'
               ? 'border-[#10B981] text-[#34D399]'
               : 'border-transparent text-[#94A3B8] hover:text-white'
@@ -521,15 +529,15 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
         </button>
 
         <button
-          onClick={() => setDashboardTab('live-history')}
-          className={`pb-2 px-1 text-sm font-bold flex items-center gap-2 border-b-2 transition-all ${
-            dashboardTab === 'live-history'
-              ? 'border-[#10B981] text-[#34D399]'
+          onClick={() => setDashboardTab('insights')}
+          className={`pb-2 px-1 text-sm font-bold flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${
+            dashboardTab === 'insights'
+              ? 'border-[#38BDF8] text-[#38BDF8]'
               : 'border-transparent text-[#94A3B8] hover:text-white'
           }`}
         >
-          <Radio size={16} className={liveSessionsHistory.some(s => s.status !== 'COMPLETED') ? 'animate-pulse text-[#34D399]' : ''} />
-          Hosted Live History ({liveSessionsHistory.length})
+          <BarChart3 size={16} />
+          Assessment Insights &amp; Analytics
         </button>
 
         <button
@@ -537,7 +545,7 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
             setDashboardTab('all-tests');
             fetchMetricsAndQuizzes();
           }}
-          className={`pb-2 px-1 text-sm font-bold flex items-center gap-2 border-b-2 transition-all ${
+          className={`pb-2 px-1 text-sm font-bold flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${
             dashboardTab === 'all-tests'
               ? 'border-[#10B981] text-[#34D399]'
               : 'border-transparent text-[#94A3B8] hover:text-white'
@@ -545,6 +553,18 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
         >
           <Award size={16} className="text-[#38BDF8]" />
           All Tests &amp; Student Data ({ (allTestsData?.liveBattles?.length || 0) + (allTestsData?.selfPacedAttempts?.length || 0) + (allTestsData?.scheduledAssignments?.length || 0) })
+        </button>
+
+        <button
+          onClick={() => setDashboardTab('live-history')}
+          className={`pb-2 px-1 text-sm font-bold flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${
+            dashboardTab === 'live-history'
+              ? 'border-[#10B981] text-[#34D399]'
+              : 'border-transparent text-[#94A3B8] hover:text-white'
+          }`}
+        >
+          <Radio size={16} className={liveSessionsHistory.some(s => s.status !== 'COMPLETED') ? 'animate-pulse text-[#34D399]' : ''} />
+          Hosted Live History ({liveSessionsHistory.length})
         </button>
       </div>
 
@@ -1245,6 +1265,11 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
             </div>
           </div>
         </div>
+      )}
+
+      {/* TAB 4: ADVANCED ASSESSMENT INSIGHTS (PHASE P8) */}
+      {dashboardTab === 'insights' && (
+        <TeacherInsightsView onNavigateToQuizStudio={(qId) => onOpenStudio(qId)} />
       )}
 
       {/* Delete Confirmation Modal */}

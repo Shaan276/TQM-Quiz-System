@@ -659,6 +659,41 @@ const MIGRATIONS = [
       await dbRun('CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_logs(user_id);', [], db);
       await dbRun('CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at);', [], db);
     }
+  },
+  {
+    version: 9,
+    name: '009_advanced_insights_and_quiz_settings',
+    up: async (db) => {
+      // 1. Quizzes table settings columns
+      const quizCols = await dbAll('PRAGMA table_info(quizzes);', [], db);
+      if (!quizCols.some(c => c.name === 'allow_flagging')) {
+        await dbRun('ALTER TABLE quizzes ADD COLUMN allow_flagging INTEGER NOT NULL DEFAULT 1;', [], db);
+      }
+      if (!quizCols.some(c => c.name === 'allow_backtrack')) {
+        await dbRun('ALTER TABLE quizzes ADD COLUMN allow_backtrack INTEGER NOT NULL DEFAULT 1;', [], db);
+      }
+      if (!quizCols.some(c => c.name === 'show_correct_answers')) {
+        await dbRun('ALTER TABLE quizzes ADD COLUMN show_correct_answers INTEGER NOT NULL DEFAULT 1;', [], db);
+      }
+
+      // 2. Quiz Attempts presentation order and student flagging
+      const attemptCols = await dbAll('PRAGMA table_info(quiz_attempts);', [], db);
+      if (!attemptCols.some(c => c.name === 'displayed_question_order')) {
+        await dbRun('ALTER TABLE quiz_attempts ADD COLUMN displayed_question_order TEXT NULL;', [], db);
+      }
+      if (!attemptCols.some(c => c.name === 'displayed_option_order')) {
+        await dbRun('ALTER TABLE quiz_attempts ADD COLUMN displayed_option_order TEXT NULL;', [], db);
+      }
+      if (!attemptCols.some(c => c.name === 'flagged_question_ids')) {
+        await dbRun('ALTER TABLE quiz_attempts ADD COLUMN flagged_question_ids TEXT NULL;', [], db);
+      }
+
+      // 3. Performance Indexes for Question-Level Analytics
+      await dbRun('CREATE INDEX IF NOT EXISTS idx_attempt_answers_q_correct ON attempt_answers(question_id, is_correct);', [], db);
+      await dbRun('CREATE INDEX IF NOT EXISTS idx_attempt_answers_user_ans ON attempt_answers(question_id, user_answer);', [], db);
+      await dbRun('CREATE INDEX IF NOT EXISTS idx_quiz_attempts_quiz_status ON quiz_attempts(quiz_id, status);', [], db);
+      await dbRun('CREATE INDEX IF NOT EXISTS idx_quiz_attempts_user_status ON quiz_attempts(user_id, status);', [], db);
+    }
   }
 ];
 

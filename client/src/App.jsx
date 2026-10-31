@@ -47,7 +47,7 @@ export default function App() {
     const VALID_ROUTES = [
       'landing', 'register', 'login', 'forgot-password', 'reset-password',
       'verify-email', 'profile', 'creator-dashboard', 'quiz-studio',
-      'question-bank', 'learner-dashboard', 'quiz-attempt', 'quiz-result',
+      'question-bank', 'teacher-insights', 'learner-dashboard', 'quiz-attempt', 'quiz-result',
       'mistake-notebook', 'attempt-history', 'admin-dashboard',
       'live-host', 'live-session'
     ];
@@ -100,7 +100,7 @@ export default function App() {
     const isStudent = role === 'STUDENT' || role === 'LEARNER';
 
     // Student blocked from Teacher Studio and Admin Console
-    if (isStudent && ['creator-dashboard', 'quiz-studio', 'question-bank', 'admin-dashboard'].includes(activeRoute)) {
+    if (isStudent && ['creator-dashboard', 'quiz-studio', 'question-bank', 'teacher-insights', 'admin-dashboard'].includes(activeRoute)) {
       setActiveRoute('learner-dashboard');
     }
 
@@ -208,6 +208,16 @@ export default function App() {
               onOpenStudio={handleOpenStudio}
               onOpenPreview={handleOpenPreview}
               onHostLive={handleHostLive}
+            />
+          )}
+
+          {activeRoute === 'teacher-insights' && (
+            <CreatorDashboardView
+              setActiveRoute={setActiveRoute}
+              onOpenStudio={handleOpenStudio}
+              onOpenPreview={handleOpenPreview}
+              onHostLive={handleHostLive}
+              initialTab="insights"
             />
           )}
 

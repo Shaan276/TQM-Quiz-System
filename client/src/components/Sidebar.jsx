@@ -16,7 +16,8 @@ import {
   BookMarked,
   History,
   Shield,
-  Radio
+  Radio,
+  BarChart3
 } from 'lucide-react';
 
 export default function Sidebar({ activeRoute, setActiveRoute }) {
@@ -171,6 +172,16 @@ export default function Sidebar({ activeRoute, setActiveRoute }) {
                   >
                     <FolderKanban size={15} />
                     Quiz Studio & Builder
+                  </button>
+
+                  <button
+                    onClick={() => setActiveRoute('teacher-insights')}
+                    className={`w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
+                      activeRoute === 'teacher-insights' ? 'bg-[#38BDF8]/15 text-[#38BDF8] border border-[#38BDF8]/40' : 'text-[#94A3B8] hover:text-white hover:bg-[#0E1626]'
+                    }`}
+                  >
+                    <BarChart3 size={15} />
+                    Assessment Insights
                   </button>
 
                   <button

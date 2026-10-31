@@ -42,6 +42,71 @@ function maskQuestionsForAttempt(questions) {
 }
 
 /**
+ * Robust in-place Fisher-Yates array shuffling
+ */
+function shuffleArray(array) {
+  const arr = [...array];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+/**
+ * Reconstructs exact presented order of questions and options using persisted IDs
+ */
+function applyOrderToQuestions(questions, displayedQuestionOrder, displayedOptionOrder) {
+  let ordered = [...questions];
+  if (displayedQuestionOrder) {
+    try {
+      const qIds = typeof displayedQuestionOrder === 'string' ? JSON.parse(displayedQuestionOrder) : displayedQuestionOrder;
+      if (Array.isArray(qIds) && qIds.length > 0) {
+        const qMap = new Map(questions.map(q => [q.id, q]));
+        const sorted = [];
+        for (const id of qIds) {
+          if (qMap.has(id)) {
+            sorted.push(qMap.get(id));
+            qMap.delete(id);
+          }
+        }
+        for (const remaining of qMap.values()) {
+          sorted.push(remaining);
+        }
+        ordered = sorted;
+      }
+    } catch (e) {}
+  }
+
+  if (displayedOptionOrder) {
+    try {
+      const optOrderMap = typeof displayedOptionOrder === 'string' ? JSON.parse(displayedOptionOrder) : displayedOptionOrder;
+      if (optOrderMap && typeof optOrderMap === 'object') {
+        ordered = ordered.map(q => {
+          if (optOrderMap[q.id] && Array.isArray(q.options) && q.options.length > 0) {
+            const optMap = new Map(q.options.map(o => [o.id, o]));
+            const sortedOpts = [];
+            for (const optId of optOrderMap[q.id]) {
+              if (optMap.has(optId)) {
+                sortedOpts.push(optMap.get(optId));
+                optMap.delete(optId);
+              }
+            }
+            for (const remaining of optMap.values()) {
+              sortedOpts.push(remaining);
+            }
+            return { ...q, options: sortedOpts };
+          }
+          return q;
+        });
+      }
+    } catch (e) {}
+  }
+
+  return ordered;
+}
+
+/**
  * Helper to retrieve snapshot or active questions for a quiz
  */
 async function getQuizVersionQuestions(quizId, version) {
@@ -149,6 +214,16 @@ router.post('/start', authenticateToken, async (req, res, next) => {
       } else {
         // Return existing in-progress attempt
         const { questions } = await getQuizVersionQuestions(quizId, existingAttempt.quiz_version);
+        const orderedResumedQuestions = applyOrderToQuestions(
+          questions,
+          existingAttempt.displayed_question_order,
+          existingAttempt.displayed_option_order
+        );
+        let flaggedIds = [];
+        try {
+          flaggedIds = JSON.parse(existingAttempt.flagged_question_ids || '[]');
+        } catch (e) {}
+
         const savedAnswers = await dbAll(
           `SELECT question_id, user_answer FROM attempt_answers WHERE attempt_id = ?`,
           [existingAttempt.id]
@@ -178,10 +253,14 @@ router.post('/start', authenticateToken, async (req, res, next) => {
               time_limit_sec: quiz.time_limit_sec,
               pass_percentage: quiz.passing_percentage ?? quiz.pass_percentage ?? 60,
               total_questions: existingAttempt.total_questions,
-              max_score: existingAttempt.max_score
+              max_score: existingAttempt.max_score,
+              allow_flagging: quiz.allow_flagging !== undefined ? quiz.allow_flagging : 1,
+              allow_backtrack: quiz.allow_backtrack !== undefined ? quiz.allow_backtrack : 1,
+              show_correct_answers: quiz.show_correct_answers !== undefined ? quiz.show_correct_answers : 1
             },
-            questions: maskQuestionsForAttempt(questions),
+            questions: maskQuestionsForAttempt(orderedResumedQuestions),
             savedAnswers: answersMap,
+            flaggedQuestionIds: flaggedIds,
             startedAt: existingAttempt.started_at,
             expiresAt: existingAttempt.expires_at,
             remainingSeconds
@@ -288,12 +367,33 @@ router.post('/start', authenticateToken, async (req, res, next) => {
 
     const attemptId = generateUUID();
 
+    // 1. Shuffle questions if quiz settings dictate (using Fisher-Yates)
+    let orderedQuestions = [...questions];
+    if (quiz.shuffle_questions) {
+      orderedQuestions = shuffleArray(orderedQuestions);
+    }
+    const displayedQuestionOrder = orderedQuestions.map(q => q.id);
+
+    // 2. Shuffle options per question if quiz settings dictate (using Fisher-Yates with stable IDs)
+    const displayedOptionOrder = {};
+    orderedQuestions = orderedQuestions.map(q => {
+      if (Array.isArray(q.options) && q.options.length > 0) {
+        let opts = [...q.options];
+        if (quiz.shuffle_options) {
+          opts = shuffleArray(opts);
+        }
+        displayedOptionOrder[q.id] = opts.map(o => o.id);
+        return { ...q, options: opts };
+      }
+      return q;
+    });
+
     await dbRun(
       `INSERT INTO quiz_attempts (
         id, quiz_id, quiz_version, user_id, status, score, max_score, 
         total_questions, time_limit_sec, started_at, expires_at,
-        assignment_id, recipient_id
-      ) VALUES (?, ?, ?, ?, 'IN_PROGRESS', 0.0, ?, ?, ?, ?, ?, ?, ?)`,
+        assignment_id, recipient_id, displayed_question_order, displayed_option_order, flagged_question_ids
+      ) VALUES (?, ?, ?, ?, 'IN_PROGRESS', 0.0, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]')`,
       [
         attemptId,
         quizId,
@@ -305,7 +405,9 @@ router.post('/start', authenticateToken, async (req, res, next) => {
         startedAt.toISOString(),
         expiresAt ? expiresAt.toISOString() : null,
         assignmentRecip?.assignment_id || null,
-        assignmentRecip?.id || null
+        assignmentRecip?.id || null,
+        JSON.stringify(displayedQuestionOrder),
+        JSON.stringify(displayedOptionOrder)
       ]
     );
 
@@ -314,22 +416,6 @@ router.post('/start', authenticateToken, async (req, res, next) => {
         `UPDATE assignment_recipients SET status = 'STARTED', attempt_id = ? WHERE id = ? AND status = 'ASSIGNED'`,
         [attemptId, assignmentRecip.id]
       );
-    }
-
-    // Shuffle questions if quiz settings dictate
-    let orderedQuestions = [...questions];
-    if (quiz.shuffle_questions) {
-      orderedQuestions = orderedQuestions.sort(() => Math.random() - 0.5);
-    }
-
-    // Shuffle options if quiz settings dictate
-    if (quiz.shuffle_options) {
-      orderedQuestions = orderedQuestions.map(q => {
-        if (Array.isArray(q.options)) {
-          return { ...q, options: [...q.options].sort(() => Math.random() - 0.5) };
-        }
-        return q;
-      });
     }
 
     res.status(201).json({
@@ -347,10 +433,14 @@ router.post('/start', authenticateToken, async (req, res, next) => {
           time_limit_sec: quizTimeLimit,
           pass_percentage: quiz.passing_percentage ?? quiz.pass_percentage ?? 60,
           total_questions: totalQuestions,
-          max_score: maxScore
+          max_score: maxScore,
+          allow_flagging: quiz.allow_flagging !== undefined ? quiz.allow_flagging : 1,
+          allow_backtrack: quiz.allow_backtrack !== undefined ? quiz.allow_backtrack : 1,
+          show_correct_answers: quiz.show_correct_answers !== undefined ? quiz.show_correct_answers : 1
         },
         questions: maskQuestionsForAttempt(orderedQuestions),
         savedAnswers: {},
+        flaggedQuestionIds: [],
         startedAt: startedAt.toISOString(),
         expiresAt: expiresAt ? expiresAt.toISOString() : null,
         remainingSeconds
@@ -541,6 +631,17 @@ router.get('/:id', authenticateToken, async (req, res, next) => {
 
     const quiz = await dbGet(`SELECT * FROM quizzes WHERE id = ?`, [attempt.quiz_id]);
     const { questions } = await getQuizVersionQuestions(attempt.quiz_id, attempt.quiz_version);
+    const orderedQuestions = applyOrderToQuestions(
+      questions,
+      attempt.displayed_question_order,
+      attempt.displayed_option_order
+    );
+
+    let flaggedIds = [];
+    try {
+      flaggedIds = JSON.parse(attempt.flagged_question_ids || '[]');
+    } catch (e) {}
+
     const savedAnswers = await dbAll(
       `SELECT question_id, user_answer FROM attempt_answers WHERE attempt_id = ?`,
       [id]
@@ -575,7 +676,8 @@ router.get('/:id', authenticateToken, async (req, res, next) => {
           remainingSeconds,
           warningCount: attempt.warning_count || 0,
           isFlagged: attempt.is_flagged === 1,
-          flagReason: attempt.flag_reason || ''
+          flagReason: attempt.flag_reason || '',
+          flaggedQuestionIds: flaggedIds
         },
         quiz: {
           id: quiz?.id,
@@ -584,10 +686,14 @@ router.get('/:id', authenticateToken, async (req, res, next) => {
           category: quiz?.category,
           difficulty: quiz?.difficulty,
           time_limit_sec: attempt.time_limit_sec,
-          pass_percentage: quiz?.passing_percentage ?? quiz?.pass_percentage ?? 60
+          pass_percentage: quiz?.passing_percentage ?? quiz?.pass_percentage ?? 60,
+          allow_flagging: quiz?.allow_flagging !== undefined ? quiz?.allow_flagging : 1,
+          allow_backtrack: quiz?.allow_backtrack !== undefined ? quiz?.allow_backtrack : 1,
+          show_correct_answers: quiz?.show_correct_answers !== undefined ? quiz?.show_correct_answers : 1
         },
-        questions: maskQuestionsForAttempt(questions),
-        savedAnswers: answersMap
+        questions: maskQuestionsForAttempt(orderedQuestions),
+        savedAnswers: answersMap,
+        flaggedQuestionIds: flaggedIds
       }
     });
   } catch (err) {
@@ -1084,6 +1190,12 @@ router.get('/:id/summary', authenticateToken, async (req, res, next) => {
 
     const quiz = await dbGet(`SELECT * FROM quizzes WHERE id = ?`, [attempt.quiz_id]);
     const { questions } = await getQuizVersionQuestions(attempt.quiz_id, attempt.quiz_version);
+    const orderedQuestions = applyOrderToQuestions(
+      questions,
+      attempt.displayed_question_order,
+      attempt.displayed_option_order
+    );
+
     const answers = await dbAll(`SELECT * FROM attempt_answers WHERE attempt_id = ?`, [id]);
     const answerMap = {};
     answers.forEach(a => {
@@ -1091,9 +1203,9 @@ router.get('/:id/summary', authenticateToken, async (req, res, next) => {
     });
 
     const showExplanations = quiz?.show_explanations || 'AFTER_SUBMIT';
-    const canSeeExplanations = showExplanations === 'ALWAYS' || showExplanations === 'AFTER_SUBMIT';
+    const canSeeExplanations = (quiz?.show_correct_answers !== 0) && (showExplanations === 'ALWAYS' || showExplanations === 'AFTER_SUBMIT');
 
-    const reviewQuestions = questions.map(q => {
+    const reviewQuestions = orderedQuestions.map(q => {
       const userAns = answerMap[q.id];
       const isCorrect = userAns ? userAns.is_correct === 1 : false;
       const earnedScore = userAns ? userAns.earned_score : 0;
@@ -1147,7 +1259,10 @@ router.get('/:id/summary', authenticateToken, async (req, res, next) => {
           submittedAt: attempt.submitted_at,
           warningCount: attempt.warning_count || 0,
           isFlagged: attempt.is_flagged === 1,
-          flagReason: attempt.flag_reason || ''
+          flagReason: attempt.flag_reason || '',
+          flaggedQuestionIds: (() => {
+            try { return JSON.parse(attempt.flagged_question_ids || '[]'); } catch (e) { return []; }
+          })()
         },
         quiz: {
           id: quiz?.id,
@@ -1156,7 +1271,8 @@ router.get('/:id/summary', authenticateToken, async (req, res, next) => {
           category: quiz?.category,
           difficulty: quiz?.difficulty,
           pass_percentage: quiz?.passing_percentage ?? quiz?.pass_percentage ?? 60,
-          show_explanations: showExplanations
+          show_explanations: showExplanations,
+          show_correct_answers: quiz?.show_correct_answers !== undefined ? quiz.show_correct_answers : 1
         },
         reviewQuestions
       }
@@ -1164,6 +1280,68 @@ router.get('/:id/summary', authenticateToken, async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+// -------------------------------------------------------------
+// 6. PUT /api/v1/attempts/:id/flag - Student toggles flag for question review
+// -------------------------------------------------------------
+router.put('/:id/flag', authenticateToken, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    const { questionId, flagged, flaggedQuestionIds } = req.body;
+
+    const attempt = await dbGet(`SELECT * FROM quiz_attempts WHERE id = ?`, [id]);
+    if (!attempt) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'ERR_NOT_FOUND', message: 'Attempt not found' }
+      });
+    }
+
+    if (attempt.user_id !== userId && req.user.role !== 'SUPER_ADMIN' && req.user.role !== 'ADMIN') {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'ERR_FORBIDDEN', message: 'Unauthorized' }
+      });
+    }
+
+    let currentFlags = [];
+    try {
+      currentFlags = JSON.parse(attempt.flagged_question_ids || '[]');
+    } catch (e) {}
+
+    let updatedFlags = [];
+    if (Array.isArray(flaggedQuestionIds)) {
+      updatedFlags = Array.from(new Set(flaggedQuestionIds));
+    } else if (questionId) {
+      const set = new Set(currentFlags);
+      if (flagged === false) {
+        set.delete(questionId);
+      } else {
+        set.add(questionId);
+      }
+      updatedFlags = Array.from(set);
+    } else {
+      updatedFlags = currentFlags;
+    }
+
+    await dbRun(`UPDATE quiz_attempts SET flagged_question_ids = ? WHERE id = ?`, [JSON.stringify(updatedFlags), id]);
+
+    res.json({
+      success: true,
+      data: {
+        flaggedQuestionIds: updatedFlags
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/:id/flag', authenticateToken, async (req, res, next) => {
+  req.method = 'PUT';
+  router.handle(req, res, next);
 });
 
 module.exports = router;
