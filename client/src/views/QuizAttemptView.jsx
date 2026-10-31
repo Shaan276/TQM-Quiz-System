@@ -319,14 +319,20 @@ export default function QuizAttemptView({ attemptId: initialAttemptId, quizId, o
           <div className="dashboard-card p-6 md:p-8 space-y-6">
             
             {/* Question Header */}
-            <div className="flex items-center justify-between pb-4 border-b border-[#1B2A44]">
-              <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-4 border-b border-[#1B2A44]">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="px-2.5 py-1 rounded-lg bg-[#121D32] border border-[#1F304E] text-xs font-bold text-[#34D399]">
                   Question {currentIndex + 1} of {totalQuestions}
                 </span>
                 <span className="text-xs text-[#64748B] font-mono">
                   Type: {currentQ.question_type?.replace('_', ' ')}
                 </span>
+                {currentQ.time_limit_sec && (
+                  <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#132238] border border-[#1F304E] text-xs font-bold text-[#38BDF8]">
+                    <Clock size={12} className="text-[#38BDF8]" />
+                    <span>Time: {currentQ.time_limit_sec}s</span>
+                  </span>
+                )}
               </div>
 
               <div className="text-xs font-bold text-[#38BDF8] bg-[#0E2A47] px-2.5 py-1 rounded-lg border border-[#1E3A5F]">

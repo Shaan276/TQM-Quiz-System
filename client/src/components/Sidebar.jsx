@@ -33,7 +33,7 @@ export default function Sidebar({ activeRoute, setActiveRoute }) {
   };
 
   return (
-    <aside className="w-64 bg-[#0B111D] border-r border-[#1B2A44] flex flex-col justify-between shrink-0 select-none min-h-screen">
+    <aside className="w-64 bg-[#0B111D] border-r border-[#1B2A44] flex flex-col justify-between shrink-0 select-none h-screen sticky top-0 overflow-y-auto z-30">
       
       {/* Top Header & Brand */}
       <div className="p-5 space-y-5">

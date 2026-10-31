@@ -56,6 +56,19 @@ router.get('/', authenticateToken, async (req, res, next) => {
       [...params, parseInt(limit), offset]
     );
 
+    // Resolve any legacy UUIDs in user_answer to human-readable option text
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    for (const m of mistakes) {
+      if (m.user_answer && uuidRegex.test(m.user_answer.trim())) {
+        const optRow = await dbGet(`SELECT option_text FROM question_options WHERE id = ?`, [m.user_answer.trim()]);
+        if (optRow && optRow.option_text) {
+          m.user_answer = optRow.option_text;
+          // Asynchronously update in DB to keep storage clean
+          dbRun(`UPDATE mistake_notebook SET user_answer = ? WHERE id = ?`, [optRow.option_text, m.id]).catch(() => {});
+        }
+      }
+    }
+
     res.json({
       success: true,
       data: {

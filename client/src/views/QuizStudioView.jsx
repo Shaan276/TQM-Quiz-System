@@ -81,6 +81,12 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
   // Autosave timer ref
   const autosaveTimerRef = useRef(null);
 
+  // Auto-calculated total quiz duration from all individual questions
+  const totalCalculatedSeconds = questions.reduce((sum, q) => {
+    const qSec = parseInt(q.time_limit_sec, 10);
+    return sum + (isNaN(qSec) || qSec <= 0 ? (parseInt(defaultQuestionTimer, 10) || 60) : qSec);
+  }, 0);
+
   // Load Quiz
   useEffect(() => {
     async function fetchQuiz() {
@@ -127,6 +133,11 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
     autosaveTimerRef.current = setTimeout(async () => {
       setSaveStatus('SAVING');
       try {
+        const totalDuration = (updatedQuestions || []).reduce((sum, q) => {
+          const qSec = parseInt(q.time_limit_sec, 10);
+          return sum + (isNaN(qSec) || qSec <= 0 ? 60 : qSec);
+        }, 0);
+
         const res = await fetch(`/api/v1/quizzes/${quizId}`, {
           method: 'PUT',
           headers: {
@@ -140,9 +151,7 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
             difficulty: updatedQuiz.difficulty,
             tags: updatedQuiz.tags,
             visibility: updatedQuiz.visibility,
-            timeLimitSec: (updatedQuiz.time_limit_sec !== '' && updatedQuiz.time_limit_sec !== undefined && updatedQuiz.time_limit_sec !== null)
-              ? parseInt(updatedQuiz.time_limit_sec, 10) || 0
-              : 0,
+            timeLimitSec: totalDuration,
             passingPercentage: updatedQuiz.passing_percentage,
             shuffleQuestions: updatedQuiz.shuffle_questions,
             shuffleOptions: updatedQuiz.shuffle_options,
@@ -757,63 +766,41 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
           </div>
         </div>
 
-        {/* Whole Quiz Timing & Default Question Timing Configuration */}
+        {/* Timing Configuration: Auto-calculated Quiz Duration & Default Question Timer */}
         <div className="pt-3 border-t border-[#1B2A44] grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-          <div className="flex items-center gap-3 bg-[#132238]/70 p-2.5 rounded-xl border border-[#1F304E]">
-            <div className="w-8 h-8 rounded-lg bg-[#38BDF8]/15 border border-[#38BDF8]/30 flex items-center justify-center text-[#38BDF8] shrink-0">
-              <Clock size={15} />
+          <div className="flex items-center gap-3 bg-[#132238]/70 p-3 rounded-xl border border-[#1F304E]">
+            <div className="w-9 h-9 rounded-lg bg-[#38BDF8]/15 border border-[#38BDF8]/30 flex items-center justify-center text-[#38BDF8] shrink-0">
+              <Clock size={18} />
             </div>
             <div className="flex-1">
-              <label className="block text-[10px] font-bold text-[#94A3B8] uppercase tracking-wider mb-0.5">
-                Whole Quiz Timer (Seconds, 0 = Untimed)
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min="0"
-                  step="30"
-                  placeholder="600"
-                  value={quiz.time_limit_sec !== undefined && quiz.time_limit_sec !== null ? quiz.time_limit_sec : ''}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    if (val === '') {
-                      const updated = { ...quiz, time_limit_sec: '' };
-                      setQuiz(updated);
-                    } else {
-                      const parsed = parseInt(val, 10);
-                      const updated = { ...quiz, time_limit_sec: isNaN(parsed) ? 0 : parsed };
-                      setQuiz(updated);
-                      triggerAutosave(updated, questions);
-                    }
-                  }}
-                  onBlur={(e) => {
-                    const val = e.target.value;
-                    if (val === '') {
-                      const updated = { ...quiz, time_limit_sec: 0 };
-                      setQuiz(updated);
-                      triggerAutosave(updated, questions);
-                    }
-                  }}
-                  className="bg-[#0B111D] border border-[#2D436B] focus:border-[#38BDF8] rounded-lg px-2.5 py-1 text-xs font-mono font-bold text-white w-24 outline-none placeholder:text-[#64748B]/60"
-                />
-                <span className="text-[11px] text-[#64748B] font-medium">
-                  {!quiz.time_limit_sec || quiz.time_limit_sec === 0 || quiz.time_limit_sec === ''
-                    ? '(Untimed)'
-                    : `≈ ${Math.floor((parseInt(quiz.time_limit_sec, 10) || 0)/60)}m ${(parseInt(quiz.time_limit_sec, 10) || 0)%60}s`}
+              <div className="flex items-center justify-between">
+                <label className="block text-[10px] font-bold text-[#94A3B8] uppercase tracking-wider mb-0.5">
+                  Total Quiz Duration
+                </label>
+                <span className="text-[9px] font-bold bg-[#38BDF8]/20 text-[#38BDF8] px-2 py-0.5 rounded-full border border-[#38BDF8]/30">
+                  Auto-Calculated
+                </span>
+              </div>
+              <div className="flex items-baseline gap-2 mt-0.5">
+                <span className="text-base font-black text-white font-mono tracking-wide">
+                  {Math.floor(totalCalculatedSeconds / 60)}m {totalCalculatedSeconds % 60}s
+                </span>
+                <span className="text-[11px] text-[#64748B] font-mono">
+                  ({totalCalculatedSeconds}s total from {questions.length} questions)
                 </span>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-3 bg-[#132238]/70 p-2.5 rounded-xl border border-[#1F304E]">
-            <div className="w-8 h-8 rounded-lg bg-[#10B981]/15 border border-[#10B981]/30 flex items-center justify-center text-[#34D399] shrink-0">
-              <Sparkles size={15} />
+          <div className="flex items-center gap-3 bg-[#132238]/70 p-3 rounded-xl border border-[#1F304E]">
+            <div className="w-9 h-9 rounded-lg bg-[#10B981]/15 border border-[#10B981]/30 flex items-center justify-center text-[#34D399] shrink-0">
+              <Sparkles size={18} />
             </div>
             <div className="flex-1">
               <label className="block text-[10px] font-bold text-[#94A3B8] uppercase tracking-wider mb-0.5">
-                Default Time Per Question (Seconds, Default: 60s)
+                Default Timer Per Question (Seconds)
               </label>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 mt-0.5">
                 <input
                   type="number"
                   min="5"
@@ -840,7 +827,7 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
                 <button
                   type="button"
                   onClick={handleApplyDefaultTimerToAll}
-                  className="px-2.5 py-1 rounded-lg bg-[#10B981]/15 hover:bg-[#10B981]/25 text-[#34D399] text-[11px] font-bold border border-[#10B981]/30 transition-colors whitespace-nowrap"
+                  className="px-3 py-1.5 rounded-lg bg-[#10B981]/15 hover:bg-[#10B981]/25 text-[#34D399] text-[11px] font-bold border border-[#10B981]/30 transition-colors whitespace-nowrap"
                   title="Apply this timer to all questions in this quiz"
                 >
                   ⚡ Apply to All Questions
@@ -1004,9 +991,9 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
                   </select>
 
                   {/* Question Time Limit Input */}
-                  <div className="flex items-center gap-1 bg-[#132238] border border-[#1F304E] rounded-xl px-2.5 py-1" title="Time limit for this question in seconds (defaults to 60s if empty)">
-                    <Clock size={11} className="text-[#38BDF8]" />
-                    <span className="text-[10px] font-bold text-[#64748B]">Time:</span>
+                  <div className="flex items-center gap-1.5 bg-[#121D32] border border-[#2D436B] rounded-xl px-2.5 py-1" title="Time limit for this question in seconds (defaults to 60s if empty)">
+                    <Clock size={13} className="text-[#38BDF8]" />
+                    <span className="text-[11px] font-bold text-[#94A3B8]">Timer:</span>
                     <input
                       type="number"
                       min="5"
@@ -1028,9 +1015,9 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
                           handleUpdateQuestion(qIdx, { time_limit_sec: 60 });
                         }
                       }}
-                      className="w-9 bg-transparent text-xs font-bold text-[#38BDF8] text-center outline-none placeholder:text-[#64748B]/60"
+                      className="w-12 bg-[#080D14] border border-[#1F304E] focus:border-[#38BDF8] rounded px-1.5 py-0.5 text-xs font-mono font-bold text-[#38BDF8] text-center outline-none placeholder:text-[#64748B]/60"
                     />
-                    <span className="text-[10px] text-[#64748B] font-semibold pr-0.5">s</span>
+                    <span className="text-[11px] text-[#94A3B8] font-semibold pr-0.5">sec</span>
                   </div>
 
                   {/* Points Input */}
@@ -1375,19 +1362,11 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
             <div className="space-y-4 text-xs">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block font-semibold text-[#94A3B8] mb-1">Time Limit (Sec, 0 = untimed)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="30"
-                    value={quiz.time_limit_sec}
-                    onChange={(e) => {
-                      const updated = { ...quiz, time_limit_sec: parseInt(e.target.value) || 0 };
-                      setQuiz(updated);
-                      triggerAutosave(updated, questions);
-                    }}
-                    className="input-field text-xs font-mono"
-                  />
+                  <label className="block font-semibold text-[#94A3B8] mb-1">Total Duration (Auto-calculated)</label>
+                  <div className="input-field text-xs font-mono bg-[#0B111D] text-[#38BDF8] flex items-center justify-between cursor-not-allowed">
+                    <span>{totalCalculatedSeconds}s ({Math.floor(totalCalculatedSeconds / 60)}m {totalCalculatedSeconds % 60}s)</span>
+                    <span className="text-[10px] text-[#64748B]">Sum of Questions</span>
+                  </div>
                 </div>
 
                 <div>

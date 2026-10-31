@@ -739,6 +739,26 @@ router.post('/:id/submit', authenticateToken, async (req, res, next) => {
 
       // If answered incorrectly, record in Mistake Notebook
       if (isCorrect === 0 && hasAnswer) {
+        let displayUserAnswer = rawUserAns;
+
+        if (['MCQ_SINGLE', 'TRUE_FALSE'].includes(q.question_type)) {
+          const opt = (q.options || []).find(o => o.id === rawUserAns || o.option_key === rawUserAns || o.option_text === rawUserAns);
+          if (opt) displayUserAnswer = opt.option_text;
+        } else if (q.question_type === 'MCQ_MULTI') {
+          let selectedValues = [];
+          try {
+            selectedValues = JSON.parse(rawUserAns);
+            if (!Array.isArray(selectedValues)) selectedValues = [rawUserAns];
+          } catch (e) {
+            selectedValues = rawUserAns.split(',').map(s => s.trim());
+          }
+          const mapped = selectedValues.map(val => {
+            const opt = (q.options || []).find(o => o.id === val || o.option_key === val || o.option_text === val);
+            return opt ? opt.option_text : val;
+          });
+          displayUserAnswer = mapped.join(', ');
+        }
+
         mistakesToRecord.push({
           userId,
           attemptId: id,
@@ -748,7 +768,7 @@ router.post('/:id/submit', authenticateToken, async (req, res, next) => {
           questionText: q.question_text,
           questionType: q.question_type,
           subject: quiz?.category || 'General',
-          userAnswer: rawUserAns,
+          userAnswer: displayUserAnswer,
           correctAnswer: correctAnswerDisplay,
           explanation: q.explanation || ''
         });

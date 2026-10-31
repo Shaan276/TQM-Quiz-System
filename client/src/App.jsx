@@ -171,7 +171,7 @@ export default function App() {
       />
 
       {/* Main Content Viewport protected by ErrorBoundary */}
-      <main className="flex-1 p-6 lg:p-8 overflow-y-auto">
+      <main className="flex-1 min-w-0 p-6 lg:p-8">
         <ErrorBoundary onReset={() => setActiveRoute('landing')}>
           {activeRoute === 'landing' && <LandingView setActiveRoute={setActiveRoute} />}
           {activeRoute === 'register' && <RegisterView setActiveRoute={setActiveRoute} />}
