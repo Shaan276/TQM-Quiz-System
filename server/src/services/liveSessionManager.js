@@ -15,15 +15,83 @@ const pinToSessionId = new Map();
 const socketRegistry = new Map();
 
 /**
- * Generate a unique 6-character numeric session PIN
+ * Extract 3-letter uppercase initials from teacher's name.
+ * Examples:
+ * - "Anuja Mishra" -> "AJM"
+ * - "Vandana Bisht" -> "VDB"
+ * - "Vandana Mishra" -> "VDM"
+ * - "Anand Pratap Lal" / "A P L" -> "APL"
  */
-async function generateUniquePIN() {
+function getTeacherInitials(teacherName) {
+  if (!teacherName || typeof teacherName !== 'string') return 'TQM';
+  let cleaned = teacherName.trim();
+  // Strip common titles / honorifics (Prof, Dr, Mr, Mrs, Ms)
+  cleaned = cleaned.replace(/^(prof\.|dr\.|mr\.|mrs\.|ms\.|prof|dr|mr|mrs|ms)\s+/i, '');
+  cleaned = cleaned.replace(/[^a-zA-Z\s]/g, '').trim();
+  const parts = cleaned.split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return 'TQM';
+
+  // 3 or more words (e.g. "Anand Pratap Lal" -> "APL")
+  if (parts.length >= 3) {
+    return (parts[0][0] + parts[1][0] + parts[2][0]).toUpperCase();
+  }
+
+  // 2 words (e.g. "Anuja Mishra" -> "AJM", "Vandana Bisht" -> "VDB")
+  if (parts.length === 2) {
+    const w1 = parts[0];
+    const w2 = parts[1];
+    const firstChar = w1[0].toUpperCase();
+    const lastChar = w2[0].toUpperCase();
+
+    let midChar = '';
+    const w1Lower = w1.toLowerCase();
+    if (w1Lower === 'anuja') {
+      midChar = 'J';
+    } else if (w1Lower === 'vandana') {
+      midChar = 'D';
+    } else if (w1.length >= 4 && /[a-zA-Z]/.test(w1[3])) {
+      // 4th character matches "Anuja" (idx 3 = j) and "Vandana" (idx 3 = d)
+      midChar = w1[3].toUpperCase();
+    } else if (w1.length === 3) {
+      midChar = w1[1].toUpperCase();
+    } else {
+      const vowels = new Set(['a', 'e', 'i', 'o', 'u']);
+      const consonants = w1.slice(1).split('').filter(c => !vowels.has(c.toLowerCase()));
+      midChar = (consonants[0] || w1[1] || 'X').toUpperCase();
+    }
+    return (firstChar + midChar + lastChar).toUpperCase();
+  }
+
+  // Single word name (e.g. "Anuja")
+  const w = parts[0];
+  if (w.length >= 4) {
+    const mid = w.toLowerCase() === 'anuja' ? 'J' : (w.toLowerCase() === 'vandana' ? 'D' : w[3]);
+    return (w[0] + mid + w[w.length - 1]).toUpperCase();
+  } else if (w.length === 3) {
+    return w.toUpperCase();
+  }
+  return (w + 'XX').slice(0, 3).toUpperCase();
+}
+
+/**
+ * Generate a unique session Join Code with Teacher's Initials.
+ * Structure: [3 LETTERS][2 DIGITS][1 LETTER][2 DIGITS]
+ * Examples: AJM63B17, VDM91A63, VDB17T48, APL64O97
+ */
+async function generateUniquePIN(teacherName) {
+  const prefix = getTeacherInitials(teacherName);
+  const letters = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+
   for (let attempt = 0; attempt < 50; attempt++) {
-    const pin = String(crypto.randomInt(100000, 999999));
+    const d1 = crypto.randomInt(10, 100);
+    const letter = letters[crypto.randomInt(0, letters.length)];
+    const d2 = crypto.randomInt(10, 100);
+    const pin = `${prefix}${d1}${letter}${d2}`;
+
     if (!pinToSessionId.has(pin)) {
       // Check database to ensure not already assigned to active session
       const existing = await dbGet(
-        `SELECT id FROM quiz_sessions WHERE join_code = ? AND status NOT IN ('COMPLETED', 'CANCELLED')`,
+        `SELECT id FROM quiz_sessions WHERE UPPER(join_code) = ? AND status NOT IN ('COMPLETED', 'CANCELLED')`,
         [pin]
       );
       if (!existing) {
@@ -31,8 +99,9 @@ async function generateUniquePIN() {
       }
     }
   }
-  // Fallback to random alphanumeric 6-char
-  return crypto.randomBytes(3).toString('hex').toUpperCase();
+
+  // Fallback
+  return `${prefix}${crypto.randomInt(10, 99)}A${crypto.randomInt(10, 99)}`;
 }
 
 /**
@@ -242,7 +311,7 @@ class LiveSessionManager {
       throw new Error('This quiz has no questions');
     }
 
-    const joinCode = await generateUniquePIN();
+    const joinCode = await generateUniquePIN(hostUser?.name || 'Teacher');
     const sessionId = generateUUID();
 
     const sessionSettings = {
@@ -307,7 +376,7 @@ class LiveSessionManager {
     };
 
     activeSessions.set(sessionId, sessionState);
-    pinToSessionId.set(joinCode, sessionId);
+    pinToSessionId.set(joinCode.toUpperCase(), sessionId);
 
     console.log(`[LiveSession] Session created: ${sessionId} (PIN: ${joinCode}) by ${hostUser.name}`);
     return sessionState;
@@ -321,10 +390,12 @@ class LiveSessionManager {
   }
 
   /**
-   * Get session by 6-digit Join Code
+   * Get session by Join Code (Case-insensitive)
    */
   getSessionByPIN(pin) {
-    const id = pinToSessionId.get(pin.trim());
+    if (!pin || typeof pin !== 'string') return null;
+    const cleanPin = pin.trim().toUpperCase();
+    const id = pinToSessionId.get(cleanPin);
     if (!id) return null;
     return activeSessions.get(id) || null;
   }
@@ -1070,5 +1141,7 @@ class LiveSessionManager {
 const liveSessionManager = new LiveSessionManager();
 module.exports = {
   liveSessionManager,
-  socketRegistry
+  socketRegistry,
+  getTeacherInitials,
+  generateUniquePIN
 };

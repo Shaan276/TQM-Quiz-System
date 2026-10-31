@@ -19,6 +19,13 @@ router.post('/', authenticateToken, requireRole('TEACHER', 'SUPER_ADMIN'), async
       });
     }
 
+    if (!req.user.name) {
+      const userRow = await dbGet(`SELECT name FROM users WHERE id = ?`, [req.user.id]);
+      if (userRow?.name) {
+        req.user.name = userRow.name;
+      }
+    }
+
     const sessionState = await liveSessionManager.createSession(quizId, req.user, {
       shuffleQuestions,
       shuffleOptions,
@@ -71,7 +78,7 @@ router.get('/my', authenticateToken, requireRole('TEACHER', 'SUPER_ADMIN'), asyn
 // -------------------------------------------------------------
 router.get('/code/:joinCode', authenticateToken, async (req, res, next) => {
   try {
-    const joinCode = req.params.joinCode.trim();
+    const joinCode = req.params.joinCode.trim().toUpperCase();
     const session = liveSessionManager.getSessionByPIN(joinCode);
 
     if (!session) {
@@ -81,7 +88,7 @@ router.get('/code/:joinCode', authenticateToken, async (req, res, next) => {
          FROM quiz_sessions s 
          JOIN quizzes q ON s.quiz_id = q.id 
          JOIN users u ON s.host_id = u.id 
-         WHERE s.join_code = ?`,
+         WHERE UPPER(s.join_code) = ?`,
         [joinCode]
       );
 

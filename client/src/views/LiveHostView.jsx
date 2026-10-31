@@ -41,12 +41,32 @@ export default function LiveHostView({ sessionId, onBack }) {
   const wsRef = useRef(null);
   const timerRef = useRef(null);
 
+  // Fetch initial session metadata immediately via REST on mount
+  useEffect(() => {
+    if (!sessionId || !accessToken) return;
+
+    fetch(`/api/v1/live-sessions/${sessionId}`, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.data) {
+          setSession(prev => ({ ...(prev || {}), ...data.data }));
+          if (data.data.status) setStatus(data.data.status);
+          if (data.data.totalQuestions) setTotalQuestions(data.data.totalQuestions);
+        }
+      })
+      .catch(err => {
+        console.error('[LiveHost] Failed to fetch session metadata:', err);
+      });
+  }, [sessionId, accessToken]);
+
   // Initialize WebSocket Connection
   useEffect(() => {
     if (!sessionId || !accessToken) return;
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
+    const host = window.location.port === '3000' ? `${window.location.hostname}:5000` : window.location.host;
     const wsUrl = `${protocol}//${host}/ws/live?token=${encodeURIComponent(accessToken)}`;
 
     const ws = new WebSocket(wsUrl);
@@ -68,7 +88,7 @@ export default function LiveHostView({ sessionId, onBack }) {
 
         switch (evt) {
           case 'host_state_snapshot':
-            setSession(payload);
+            setSession(prev => ({ ...(prev || {}), ...payload }));
             setStatus(payload.status);
             setQuestionIndex(payload.currentQuestionIndex);
             setTotalQuestions(payload.totalQuestions);
@@ -280,7 +300,7 @@ export default function LiveHostView({ sessionId, onBack }) {
               Live Multiplayer Game Lobby
             </span>
             <p className="text-sm text-[#94A3B8]">
-              Ask students to go to the Student Dashboard and enter this 6-digit Join PIN:
+              Ask students to go to the Student Dashboard and enter this Session Join Code:
             </p>
 
             <div className="flex items-center justify-center gap-3 py-2">

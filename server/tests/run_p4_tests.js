@@ -212,7 +212,13 @@ async function runP4Tests() {
     });
 
     // Test 3: Teacher creates a Live Session (REST)
-    await test('Session Creation: Teacher creates live session and receives 6-digit PIN', async () => {
+    await test('Session Creation: Teacher creates live session and receives formatted Join Code (Initials + Digits/Letter)', async () => {
+      const { getTeacherInitials } = require('../src/services/liveSessionManager');
+      assert.strictEqual(getTeacherInitials('Anuja Mishra'), 'AJM');
+      assert.strictEqual(getTeacherInitials('Vandana Bisht'), 'VDB');
+      assert.strictEqual(getTeacherInitials('Vandana Mishra'), 'VDM');
+      assert.strictEqual(getTeacherInitials('Anand Pratap Lal'), 'APL');
+
       const res = await fetch(`${BASE_URL}/live-sessions`, {
         method: 'POST',
         headers: {
@@ -230,7 +236,9 @@ async function runP4Tests() {
       assert.strictEqual(data.success, true);
       assert.ok(data.data.sessionId);
       assert.ok(data.data.joinCode);
-      assert.strictEqual(data.data.joinCode.length, 6);
+      assert.strictEqual(data.data.joinCode.length, 8);
+      // Validates pattern: 3 uppercase letters, 2 digits, 1 uppercase letter, 2 digits (e.g. AJM63B17, VDM91A63)
+      assert.ok(/^[A-Z]{3}[0-9]{2}[A-Z][0-9]{2}$/.test(data.data.joinCode), `Code ${data.data.joinCode} matches format`);
       assert.strictEqual(data.data.status, 'LOBBY');
       assert.strictEqual(data.data.totalQuestions, 2);
 
@@ -239,7 +247,7 @@ async function runP4Tests() {
     });
 
     // Test 4: Students validate PIN before joining (REST)
-    await test('Join Validation: Student validates 6-digit PIN and retrieves session preview', async () => {
+    await test('Join Validation: Student validates Join Code and retrieves session preview', async () => {
       const res = await fetch(`${BASE_URL}/live-sessions/code/${joinCode}`, {
         headers: { Authorization: `Bearer ${studentAliceToken}` }
       });

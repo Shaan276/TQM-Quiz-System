@@ -165,7 +165,7 @@ export default function LearnerDashboardView({ onOpenPreview, onStartAttempt, on
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#34D399]/20 text-[#34D399] font-bold border border-[#34D399]/30">Live Multiplayer</span>
             </h3>
             <p className="text-xs text-[#94A3B8]">
-              Enter the 6-digit session PIN from your teacher to join the real-time live assessment.
+              Enter the session PIN from your teacher to join the real-time live assessment.
             </p>
           </div>
         </div>
@@ -181,11 +181,11 @@ export default function LearnerDashboardView({ onOpenPreview, onStartAttempt, on
         >
           <input
             type="text"
-            maxLength={8}
+            maxLength={12}
             value={joinPinInput}
             onChange={(e) => setJoinPinInput(e.target.value.replace(/[^0-9a-zA-Z]/g, '').toUpperCase())}
-            placeholder="6-Digit PIN"
-            className="w-32 bg-[#0B111D] border border-[#2D436B] focus:border-[#34D399] rounded-xl px-3 py-2 text-xs font-mono font-bold text-center text-white outline-none placeholder:text-[#64748B]"
+            placeholder="e.g. AJM63B17"
+            className="w-36 bg-[#0B111D] border border-[#2D436B] focus:border-[#34D399] rounded-xl px-3 py-2 text-xs font-mono font-bold text-center text-white outline-none placeholder:text-[#64748B]"
           />
           <button
             type="submit"

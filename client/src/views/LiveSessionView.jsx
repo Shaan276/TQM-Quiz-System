@@ -52,7 +52,7 @@ export default function LiveSessionView({ initialPin = '', onBack }) {
     setErrorMessage('');
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
+    const host = window.location.port === '3000' ? `${window.location.hostname}:5000` : window.location.host;
     const wsUrl = `${protocol}//${host}/ws/live?token=${encodeURIComponent(accessToken)}`;
 
     if (wsRef.current && wsRef.current.readyState === 1) {
@@ -269,18 +269,18 @@ export default function LiveSessionView({ initialPin = '', onBack }) {
           <div className="space-y-1">
             <h2 className="text-2xl font-black text-white">Join Live Quiz</h2>
             <p className="text-xs text-[#94A3B8]">
-              Enter the 6-digit Game PIN displayed on your teacher's screen:
+              Enter the Game Code displayed on your teacher's screen:
             </p>
           </div>
 
           <form onSubmit={(e) => { e.preventDefault(); handleConnectAndJoin(pin); }} className="max-w-xs mx-auto space-y-4">
             <input
               type="text"
-              maxLength={8}
+              maxLength={12}
               value={pin}
               onChange={(e) => setPin(e.target.value.replace(/[^0-9a-zA-Z]/g, '').toUpperCase())}
-              placeholder="e.g. 591024"
-              className="w-full text-center tracking-widest text-3xl font-black font-mono py-3.5 px-4 rounded-2xl bg-[#0B111D] border-2 border-[#2D436B] focus:border-[#34D399] text-white outline-none placeholder:text-[#64748B]/50 transition-all"
+              placeholder="e.g. AJM63B17"
+              className="w-full text-center tracking-widest text-2xl font-black font-mono py-3.5 px-4 rounded-2xl bg-[#0B111D] border-2 border-[#2D436B] focus:border-[#34D399] text-white outline-none placeholder:text-[#64748B]/50 transition-all"
               autoFocus
             />
 
