@@ -86,11 +86,13 @@ const ROLE_CONFIGS = {
 export default function LoginView({ setActiveRoute }) {
   const { setSession } = useAuth();
   
+  const isDevLoginsEnabled = !import.meta.env.PROD || import.meta.env.VITE_ENABLE_DEV_LOGINS === 'true';
+
   // Selected role tab for quick presets
   const [selectedRole, setSelectedRole] = useState('STUDENT');
   
-  const [email, setEmail] = useState(ROLE_CONFIGS.STUDENT.email);
-  const [password, setPassword] = useState(ROLE_CONFIGS.STUDENT.password);
+  const [email, setEmail] = useState(isDevLoginsEnabled ? ROLE_CONFIGS.STUDENT.email : '');
+  const [password, setPassword] = useState(isDevLoginsEnabled ? ROLE_CONFIGS.STUDENT.password : '');
   const [showPassword, setShowPassword] = useState(false);
   
   const [fieldErrors, setFieldErrors] = useState({});
@@ -103,8 +105,10 @@ export default function LoginView({ setActiveRoute }) {
     setSelectedRole(roleKey);
     const config = ROLE_CONFIGS[roleKey];
     if (config) {
-      setEmail(config.email);
-      setPassword(config.password);
+      if (isDevLoginsEnabled) {
+        setEmail(config.email);
+        setPassword(config.password);
+      }
       setFieldErrors({});
       setErrorMsg('');
     }
@@ -300,36 +304,45 @@ export default function LoginView({ setActiveRoute }) {
               </div>
             )}
 
-            {/* 1-Click Instant Login Button */}
-            <div className="pt-3">
-              <button
-                type="button"
-                disabled={loading}
-                onClick={() => handleQuickLogin(selectedRole)}
-                className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-lg ${
-                  selectedRole === 'STUDENT'
-                    ? 'bg-[#10B981] hover:bg-[#059669] text-[#042F2E] shadow-[#10B981]/20'
-                    : selectedRole === 'TEACHER'
-                    ? 'bg-[#8B5CF6] hover:bg-[#7C3AED] text-white shadow-[#8B5CF6]/20'
-                    : selectedRole === 'SUPER_ADMIN'
-                    ? 'bg-[#F59E0B] hover:bg-[#D97706] text-[#042F2E] shadow-[#F59E0B]/20'
-                    : 'bg-[#38BDF8] hover:bg-[#0284C7] text-[#042F2E] shadow-[#38BDF8]/20'
-                }`}
-              >
-                {quickLoadingRole === selectedRole ? (
-                  <div className="flex items-center gap-2">
-                    <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                    Signing in as {activeRoleConfig.title}...
-                  </div>
-                ) : (
-                  <>
-                    <Sparkles size={14} />
-                    1-Click Login as {activeRoleConfig.title}
-                    <ArrowRight size={14} />
-                  </>
-                )}
-              </button>
-            </div>
+            {/* 1-Click Instant Login Button (Development / Demo only) */}
+            {isDevLoginsEnabled ? (
+              <div className="pt-3">
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => handleQuickLogin(selectedRole)}
+                  className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-lg ${
+                    selectedRole === 'STUDENT'
+                      ? 'bg-[#10B981] hover:bg-[#059669] text-[#042F2E] shadow-[#10B981]/20'
+                      : selectedRole === 'TEACHER'
+                      ? 'bg-[#8B5CF6] hover:bg-[#7C3AED] text-white shadow-[#8B5CF6]/20'
+                      : selectedRole === 'SUPER_ADMIN'
+                      ? 'bg-[#F59E0B] hover:bg-[#D97706] text-[#042F2E] shadow-[#F59E0B]/20'
+                      : 'bg-[#38BDF8] hover:bg-[#0284C7] text-[#042F2E] shadow-[#38BDF8]/20'
+                  }`}
+                >
+                  {quickLoadingRole === selectedRole ? (
+                    <div className="flex items-center gap-2">
+                      <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                      Signing in as {activeRoleConfig.title}...
+                    </div>
+                  ) : (
+                    <>
+                      <Sparkles size={14} />
+                      1-Click Login as {activeRoleConfig.title}
+                      <ArrowRight size={14} />
+                    </>
+                  )}
+                </button>
+              </div>
+            ) : (
+              <div className="pt-3">
+                <div className="p-3 bg-[#0B111D] rounded-xl border border-[#1B2A44] text-center text-xs text-[#64748B] flex items-center justify-center gap-2 font-mono">
+                  <Lock size={14} className="text-[#38BDF8]" />
+                  <span>Production Credentials Enforced</span>
+                </div>
+              </div>
+            )}
 
           </div>
 

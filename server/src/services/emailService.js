@@ -32,6 +32,13 @@ async function sendEmail({ to, subject, html, text }) {
   };
   simulatedOutbox.push(emailRecord);
 
+  // In production, NEVER log verification/reset tokens to console
+  if (config.isProd) {
+    console.warn(`[EmailService] Notice: SMTP server not configured in production. Email to ${to} recorded in internal buffer without logging sensitive token.`);
+    return { success: true, mode: 'simulated_redacted', outboxSize: simulatedOutbox.length };
+  }
+
+  // Development mode: print formatted notification for testing
   console.log(`\n======================================================`);
   console.log(`📧 [EMAIL NOTIFICATION DISPATCHED] (Development Mode)`);
   console.log(`To: ${to}`);

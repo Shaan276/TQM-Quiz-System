@@ -68,9 +68,27 @@ function dbAll(sql, params = [], db = null) {
   });
 }
 
+function closeDatabase() {
+  return new Promise((resolve, reject) => {
+    if (!globalDbInstance) {
+      return resolve();
+    }
+    globalDbInstance.close((err) => {
+      if (err) {
+        console.error('[Database] Error closing SQLite database:', err.message);
+        reject(err);
+      } else {
+        globalDbInstance = null;
+        resolve();
+      }
+    });
+  });
+}
+
 module.exports = {
   getDatabase,
   setDatabaseInstance,
+  closeDatabase,
   dbRun,
   dbGet,
   dbAll

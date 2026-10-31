@@ -638,6 +638,27 @@ const MIGRATIONS = [
         VALUES ('demo-ay-2025-2026', 'demo-org-uuid', '2025-2026', '2025-08-01', '2026-06-30', 1);
       `, [], db);
     }
+  },
+  {
+    version: 8,
+    name: '008_production_audit_logging',
+    up: async (db) => {
+      // Enhance audit_logs with target tracking if columns not present
+      const auditCols = await dbAll('PRAGMA table_info(audit_logs);', [], db);
+      if (!auditCols.some(c => c.name === 'actor_role')) {
+        await dbRun('ALTER TABLE audit_logs ADD COLUMN actor_role TEXT NULL;', [], db);
+      }
+      if (!auditCols.some(c => c.name === 'target_id')) {
+        await dbRun('ALTER TABLE audit_logs ADD COLUMN target_id TEXT NULL;', [], db);
+      }
+      if (!auditCols.some(c => c.name === 'target_type')) {
+        await dbRun('ALTER TABLE audit_logs ADD COLUMN target_type TEXT NULL;', [], db);
+      }
+
+      await dbRun('CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_logs(action);', [], db);
+      await dbRun('CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_logs(user_id);', [], db);
+      await dbRun('CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at);', [], db);
+    }
   }
 ];
 
