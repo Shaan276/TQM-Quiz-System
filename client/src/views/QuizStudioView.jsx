@@ -161,8 +161,8 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
     setTimeout(() => setToastMsg(null), 3500);
   };
 
-  // Google Forms: Add Question Below a specific index
-  const handleAddQuestionBelow = (index, type = 'MCQ_SINGLE') => {
+  // Google Forms: Add Question Below a specific index (or at end if -1)
+  const handleAddQuestionBelow = (index = -1, type = 'MCQ_SINGLE') => {
     let initialOptions = [];
     let initialAnswers = [];
 
@@ -211,7 +211,11 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
     };
 
     const updated = [...questions];
-    updated.splice(index + 1, 0, newQuestion);
+    if (index === -1 || index === undefined || index >= questions.length) {
+      updated.push(newQuestion);
+    } else {
+      updated.splice(index + 1, 0, newQuestion);
+    }
     setQuestions(updated);
     triggerAutosave(quiz, updated);
   };
@@ -581,6 +585,15 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
         {/* Actions */}
         <div className="flex items-center gap-2">
           <button
+            onClick={() => handleAddQuestionBelow(questions.length - 1, 'MCQ_SINGLE')}
+            className="btn-emerald-primary text-xs py-2 px-3 gap-1.5 font-bold shadow-md shadow-[#10B981]/15"
+            title="Add a new question (Google Forms style)"
+          >
+            <Plus size={15} />
+            Add Question
+          </button>
+
+          <button
             onClick={handleOpenBankModal}
             className="btn-secondary text-xs py-2 px-3 gap-1.5 text-[#06B6D4]"
             title="Import whole quiz or questions from Bank"
@@ -728,8 +741,62 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
       </div>
 
       {/* GOOGLE FORMS QUESTION CARDS (Vertical Cascade) */}
-      <div className="space-y-6">
-        {questions.map((q, qIdx) => (
+      {questions.length === 0 ? (
+        <div className="dashboard-card p-10 text-center space-y-6 border-dashed border-2 border-[#2D436B] hover:border-[#34D399] transition-all bg-[#0A101D]/80 animate-fadeIn">
+          <div className="w-16 h-16 mx-auto rounded-3xl bg-[#10B981]/15 border border-[#10B981]/30 flex items-center justify-center text-[#34D399] shadow-xl shadow-[#10B981]/10">
+            <Plus size={32} />
+          </div>
+
+          <div className="space-y-2 max-w-md mx-auto">
+            <h3 className="text-lg font-bold text-white">No Questions in this Quiz Yet</h3>
+            <p className="text-xs text-[#94A3B8] leading-relaxed">
+              Add your first question directly just like in Google Forms, or import existing questions from your Question Bank.
+            </p>
+          </div>
+
+          {/* Quick Primary Actions */}
+          <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
+            <button
+              type="button"
+              onClick={() => handleAddQuestionBelow(-1, 'MCQ_SINGLE')}
+              className="btn-emerald-primary text-xs py-3 px-6 gap-2.5 font-bold shadow-lg shadow-[#10B981]/25 hover:scale-105 transition-all text-sm"
+            >
+              <Plus size={18} />
+              Add First Question (MCQ)
+            </button>
+
+            <button
+              type="button"
+              onClick={handleOpenBankModal}
+              className="btn-secondary text-xs py-3 px-5 gap-2.5 text-[#38BDF8] border-[#38BDF8]/40 hover:bg-[#38BDF8]/10 font-bold transition-all"
+            >
+              <Database size={16} />
+              Import from Question Bank
+            </button>
+          </div>
+
+          {/* Direct Question Type Selector Pills */}
+          <div className="pt-4 border-t border-[#1B2A44] flex flex-wrap items-center justify-center gap-2">
+            <span className="text-[11px] font-semibold text-[#64748B] mr-2">Or choose question type:</span>
+            {QUESTION_TYPES.map((t) => {
+              const Icon = t.icon;
+              return (
+                <button
+                  key={t.type}
+                  type="button"
+                  onClick={() => handleAddQuestionBelow(-1, t.type)}
+                  className="px-3 py-1.5 rounded-xl bg-[#121D32] border border-[#1F304E] hover:border-[#34D399] hover:bg-[#10B981]/15 text-xs font-semibold text-[#94A3B8] hover:text-[#34D399] flex items-center gap-1.5 transition-all"
+                >
+                  <Icon size={13} />
+                  <span>{t.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {questions.map((q, qIdx) => (
           <div key={q.id || qIdx} className="space-y-3">
             
             {/* Question Card */}
@@ -1072,6 +1139,79 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
 
           </div>
         ))}
+
+        {/* Bottom Add Question Button (Always available at the bottom of the form) */}
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 py-4">
+          <button
+            type="button"
+            onClick={() => handleAddQuestionBelow(questions.length - 1, 'MCQ_SINGLE')}
+            className="btn-emerald-primary text-xs py-2.5 px-6 gap-2 font-bold shadow-md shadow-[#10B981]/15 hover:scale-105 transition-all"
+          >
+            <Plus size={16} />
+            Add Next Question
+          </button>
+          
+          <button
+            type="button"
+            onClick={handleOpenBankModal}
+            className="btn-secondary text-xs py-2.5 px-4 gap-2 text-[#38BDF8] border-[#38BDF8]/30 hover:bg-[#38BDF8]/10 font-semibold transition-all"
+          >
+            <Database size={15} />
+            Import from Question Bank
+          </button>
+        </div>
+      </div>
+      )}
+
+      {/* GOOGLE FORMS FLOATING TOOL PALETTE */}
+      <div className="fixed right-6 top-1/2 -translate-y-1/2 z-40 hidden lg:flex flex-col items-center gap-2.5 bg-[#0D1526]/90 backdrop-blur-md p-2 rounded-2xl border border-[#1F304E] shadow-2xl shadow-black/80">
+        <button
+          type="button"
+          onClick={() => handleAddQuestionBelow(questions.length - 1, 'MCQ_SINGLE')}
+          className="w-11 h-11 rounded-xl bg-[#10B981] hover:bg-[#059669] text-white flex items-center justify-center shadow-lg shadow-[#10B981]/30 transition-all hover:scale-110 active:scale-95 group relative"
+          title="Add Question"
+        >
+          <Plus size={22} />
+          <span className="absolute right-14 bg-[#0F172A] border border-[#334155] text-white text-xs font-semibold px-2.5 py-1 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-lg">
+            Add Question
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={handleOpenBankModal}
+          className="w-10 h-10 rounded-xl bg-[#132238] hover:bg-[#1E293B] text-[#38BDF8] border border-[#2D436B] flex items-center justify-center transition-all hover:scale-105 group relative"
+          title="Import Questions"
+        >
+          <Database size={17} />
+          <span className="absolute right-14 bg-[#0F172A] border border-[#334155] text-white text-xs font-semibold px-2.5 py-1 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-lg">
+            Import from Bank
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setShowSettings(true)}
+          className="w-10 h-10 rounded-xl bg-[#132238] hover:bg-[#1E293B] text-[#94A3B8] hover:text-white border border-[#2D436B] flex items-center justify-center transition-all hover:scale-105 group relative"
+          title="Quiz Settings"
+        >
+          <Settings size={17} />
+          <span className="absolute right-14 bg-[#0F172A] border border-[#334155] text-white text-xs font-semibold px-2.5 py-1 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-lg">
+            Settings
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onOpenPreview(quizId)}
+          className="w-10 h-10 rounded-xl bg-[#132238] hover:bg-[#1E293B] text-[#94A3B8] hover:text-white border border-[#2D436B] flex items-center justify-center transition-all hover:scale-105 group relative"
+          title="Preview Quiz"
+        >
+          <Eye size={17} />
+          <span className="absolute right-14 bg-[#0F172A] border border-[#334155] text-white text-xs font-semibold px-2.5 py-1 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-lg">
+            Preview
+          </span>
+        </button>
       </div>
 
       {/* Settings Modal */}
