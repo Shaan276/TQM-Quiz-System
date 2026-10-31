@@ -295,7 +295,147 @@ router.post('/start', authenticateToken, async (req, res, next) => {
 });
 
 // -------------------------------------------------------------
-// 2. GET /api/v1/attempts/:id - Get in-progress attempt state
+// 2. GET /api/v1/attempts/history/my - Learner's historical attempts (STATIC ROUTE MUST PRECEDE /:id)
+// -------------------------------------------------------------
+router.get('/history/my', authenticateToken, async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const { page = 1, limit = 10, status = '' } = req.query;
+    const offset = (Math.max(1, parseInt(page)) - 1) * parseInt(limit);
+
+    let whereClauses = [`a.user_id = ?`];
+    const params = [userId];
+
+    if (status) {
+      whereClauses.push(`a.status = ?`);
+      params.push(status);
+    }
+
+    const whereSQL = `WHERE ${whereClauses.join(' AND ')}`;
+
+    const countRow = await dbGet(`SELECT COUNT(*) as total FROM quiz_attempts a ${whereSQL}`, params);
+    const total = countRow?.total || 0;
+
+    const attempts = await dbAll(
+      `SELECT 
+        a.id,
+        a.quiz_id,
+        a.quiz_version,
+        a.status,
+        a.score,
+        a.max_score,
+        a.score_percentage,
+        a.is_passed,
+        a.total_questions,
+        a.correct_answers,
+        a.incorrect_answers,
+        a.time_taken_sec,
+        a.started_at,
+        a.submitted_at,
+        q.title as quiz_title,
+        q.category as quiz_category,
+        q.difficulty as quiz_difficulty,
+        q.cover_image_url as quiz_cover_image
+       FROM quiz_attempts a
+       JOIN quizzes q ON a.quiz_id = q.id
+       ${whereSQL}
+       ORDER BY a.started_at DESC
+       LIMIT ? OFFSET ?`,
+      [...params, parseInt(limit), offset]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        attempts,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total,
+          totalPages: Math.ceil(total / parseInt(limit))
+        }
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// -------------------------------------------------------------
+// 2b. GET /api/v1/attempts/quiz/:quizId - Teacher attempt breakdown (STATIC ROUTE MUST PRECEDE /:id)
+// -------------------------------------------------------------
+router.get('/quiz/:quizId', authenticateToken, requireRole('TEACHER', 'CREATOR', 'SUPER_ADMIN'), async (req, res, next) => {
+  try {
+    const { quizId } = req.params;
+    const { page = 1, limit = 20 } = req.query;
+    const offset = (Math.max(1, parseInt(page)) - 1) * parseInt(limit);
+
+    const quiz = await dbGet(`SELECT id, title, creator_id FROM quizzes WHERE id = ?`, [quizId]);
+    if (!quiz) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'ERR_NOT_FOUND', message: 'Quiz not found' }
+      });
+    }
+
+    // Verify creator ownership (or super admin)
+    if (quiz.creator_id !== req.user.id && req.user.role !== 'SUPER_ADMIN' && req.user.role !== 'ADMIN') {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'ERR_FORBIDDEN', message: 'You can only view attempts for quizzes you authored' }
+      });
+    }
+
+    const countRow = await dbGet(
+      `SELECT COUNT(*) as total FROM quiz_attempts WHERE quiz_id = ? AND status = 'COMPLETED'`,
+      [quizId]
+    );
+    const total = countRow?.total || 0;
+
+    const attempts = await dbAll(
+      `SELECT 
+        a.id,
+        a.user_id,
+        u.name as student_name,
+        u.email as student_email,
+        a.score,
+        a.max_score,
+        a.score_percentage,
+        a.is_passed,
+        a.total_questions,
+        a.correct_answers,
+        a.incorrect_answers,
+        a.time_taken_sec,
+        a.started_at,
+        a.submitted_at
+       FROM quiz_attempts a
+       JOIN users u ON a.user_id = u.id
+       WHERE a.quiz_id = ? AND a.status = 'COMPLETED'
+       ORDER BY a.submitted_at DESC
+       LIMIT ? OFFSET ?`,
+      [quizId, parseInt(limit), offset]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        quiz: { id: quiz.id, title: quiz.title },
+        attempts,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total,
+          totalPages: Math.ceil(total / parseInt(limit))
+        }
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// -------------------------------------------------------------
+// 3. GET /api/v1/attempts/:id - Get in-progress attempt state
 // -------------------------------------------------------------
 router.get('/:id', authenticateToken, async (req, res, next) => {
   try {
@@ -824,146 +964,6 @@ router.get('/:id/summary', authenticateToken, async (req, res, next) => {
           show_explanations: showExplanations
         },
         reviewQuestions
-      }
-    });
-  } catch (err) {
-    next(err);
-  }
-});
-
-// -------------------------------------------------------------
-// 6. GET /api/v1/attempts/history/my - Learner's historical attempts
-// -------------------------------------------------------------
-router.get('/history/my', authenticateToken, async (req, res, next) => {
-  try {
-    const userId = req.user.id;
-    const { page = 1, limit = 10, status = '' } = req.query;
-    const offset = (Math.max(1, parseInt(page)) - 1) * parseInt(limit);
-
-    let whereClauses = [`a.user_id = ?`];
-    const params = [userId];
-
-    if (status) {
-      whereClauses.push(`a.status = ?`);
-      params.push(status);
-    }
-
-    const whereSQL = `WHERE ${whereClauses.join(' AND ')}`;
-
-    const countRow = await dbGet(`SELECT COUNT(*) as total FROM quiz_attempts a ${whereSQL}`, params);
-    const total = countRow?.total || 0;
-
-    const attempts = await dbAll(
-      `SELECT 
-        a.id,
-        a.quiz_id,
-        a.quiz_version,
-        a.status,
-        a.score,
-        a.max_score,
-        a.score_percentage,
-        a.is_passed,
-        a.total_questions,
-        a.correct_answers,
-        a.incorrect_answers,
-        a.time_taken_sec,
-        a.started_at,
-        a.submitted_at,
-        q.title as quiz_title,
-        q.category as quiz_category,
-        q.difficulty as quiz_difficulty,
-        q.cover_image_url as quiz_cover_image
-       FROM quiz_attempts a
-       JOIN quizzes q ON a.quiz_id = q.id
-       ${whereSQL}
-       ORDER BY a.started_at DESC
-       LIMIT ? OFFSET ?`,
-      [...params, parseInt(limit), offset]
-    );
-
-    res.json({
-      success: true,
-      data: {
-        attempts,
-        pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
-          total,
-          totalPages: Math.ceil(total / parseInt(limit))
-        }
-      }
-    });
-  } catch (err) {
-    next(err);
-  }
-});
-
-// -------------------------------------------------------------
-// 7. GET /api/v1/attempts/quiz/:quizId - Teacher attempt breakdown
-// -------------------------------------------------------------
-router.get('/quiz/:quizId', authenticateToken, requireRole('TEACHER', 'CREATOR', 'SUPER_ADMIN'), async (req, res, next) => {
-  try {
-    const { quizId } = req.params;
-    const { page = 1, limit = 20 } = req.query;
-    const offset = (Math.max(1, parseInt(page)) - 1) * parseInt(limit);
-
-    const quiz = await dbGet(`SELECT id, title, creator_id FROM quizzes WHERE id = ?`, [quizId]);
-    if (!quiz) {
-      return res.status(404).json({
-        success: false,
-        error: { code: 'ERR_NOT_FOUND', message: 'Quiz not found' }
-      });
-    }
-
-    // Verify creator ownership (or super admin)
-    if (quiz.creator_id !== req.user.id && req.user.role !== 'SUPER_ADMIN' && req.user.role !== 'ADMIN') {
-      return res.status(403).json({
-        success: false,
-        error: { code: 'ERR_FORBIDDEN', message: 'You can only view attempts for quizzes you authored' }
-      });
-    }
-
-    const countRow = await dbGet(
-      `SELECT COUNT(*) as total FROM quiz_attempts WHERE quiz_id = ? AND status = 'COMPLETED'`,
-      [quizId]
-    );
-    const total = countRow?.total || 0;
-
-    const attempts = await dbAll(
-      `SELECT 
-        a.id,
-        a.user_id,
-        u.name as student_name,
-        u.email as student_email,
-        a.score,
-        a.max_score,
-        a.score_percentage,
-        a.is_passed,
-        a.total_questions,
-        a.correct_answers,
-        a.incorrect_answers,
-        a.time_taken_sec,
-        a.started_at,
-        a.submitted_at
-       FROM quiz_attempts a
-       JOIN users u ON a.user_id = u.id
-       WHERE a.quiz_id = ? AND a.status = 'COMPLETED'
-       ORDER BY a.submitted_at DESC
-       LIMIT ? OFFSET ?`,
-      [quizId, parseInt(limit), offset]
-    );
-
-    res.json({
-      success: true,
-      data: {
-        quiz: { id: quiz.id, title: quiz.title },
-        attempts,
-        pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
-          total,
-          totalPages: Math.ceil(total / parseInt(limit))
-        }
       }
     });
   } catch (err) {

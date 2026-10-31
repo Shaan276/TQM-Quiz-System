@@ -22,7 +22,9 @@ import {
   TrendingUp,
   Sparkles,
   Award,
-  Radio
+  Radio,
+  FolderKanban,
+  Users
 } from 'lucide-react';
 
 export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onOpenPreview, onHostLive }) {
