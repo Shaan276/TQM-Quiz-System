@@ -19,7 +19,9 @@ import {
   Trophy,
   Sparkles,
   Star,
-  Users
+  Users,
+  Layers,
+  Calendar
 } from 'lucide-react';
 
 export default function LearnerDashboardView({ onOpenPreview, onStartAttempt, onJoinLive, setActiveRoute }) {
@@ -32,7 +34,7 @@ export default function LearnerDashboardView({ onOpenPreview, onStartAttempt, on
   const [selectedSubject, setSelectedSubject] = useState('');
   const [selectedDifficulty, setSelectedDifficulty] = useState('');
   const [subjects, setSubjects] = useState([]);
-  const [learnerTab, setLearnerTab] = useState('self-paced'); // 'self-paced' | 'live-history'
+  const [learnerTab, setLearnerTab] = useState('all'); // 'all' | 'self-paced' | 'live-battles' | 'assessments'
   const [liveHistory, setLiveHistory] = useState([]);
 
   // Fetch subjects for filter
@@ -302,191 +304,365 @@ export default function LearnerDashboardView({ onOpenPreview, onStartAttempt, on
       )}
 
       {/* Primary Learner Navigation Tabs */}
-      <div className="flex items-center gap-4 border-b border-[#1B2A44] pb-2">
+      <div className="flex items-center gap-2 sm:gap-4 border-b border-[#1B2A44] pb-2 overflow-x-auto">
+        <button
+          onClick={() => setLearnerTab('all')}
+          className={`pb-2 px-1 text-sm font-bold flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${
+            learnerTab === 'all'
+              ? 'border-[#10B981] text-[#34D399]'
+              : 'border-transparent text-[#94A3B8] hover:text-white'
+          }`}
+        >
+          <Layers size={16} />
+          All Quizzes ({quizzes.length})
+        </button>
+
         <button
           onClick={() => setLearnerTab('self-paced')}
-          className={`pb-2 px-1 text-sm font-bold flex items-center gap-2 border-b-2 transition-all ${
+          className={`pb-2 px-1 text-sm font-bold flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${
             learnerTab === 'self-paced'
               ? 'border-[#10B981] text-[#34D399]'
               : 'border-transparent text-[#94A3B8] hover:text-white'
           }`}
         >
           <BookOpen size={16} />
-          Self-Paced Quizzes ({quizzes.length})
+          Self-Paced ({quizzes.length})
         </button>
 
         <button
-          onClick={() => setLearnerTab('live-history')}
-          className={`pb-2 px-1 text-sm font-bold flex items-center gap-2 border-b-2 transition-all ${
-            learnerTab === 'live-history'
+          onClick={() => setLearnerTab('live-battles')}
+          className={`pb-2 px-1 text-sm font-bold flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${
+            learnerTab === 'live-battles'
               ? 'border-[#10B981] text-[#34D399]'
               : 'border-transparent text-[#94A3B8] hover:text-white'
           }`}
         >
           <Radio size={16} className={liveHistory.length > 0 ? 'text-[#34D399]' : ''} />
-          My Live Quiz History ({liveHistory.length})
+          Live Battles (Hosted) ({liveHistory.length})
+        </button>
+
+        <button
+          onClick={() => setLearnerTab('assessments')}
+          className={`pb-2 px-1 text-sm font-bold flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${
+            learnerTab === 'assessments'
+              ? 'border-[#10B981] text-[#34D399]'
+              : 'border-transparent text-[#94A3B8] hover:text-white'
+          }`}
+        >
+          <Calendar size={16} />
+          Assessments &amp; Assignments
         </button>
       </div>
 
-      {/* TAB 1: SELF-PACED QUIZZES */}
-      {learnerTab === 'self-paced' && (
-        <div className="space-y-6 animate-fadeIn">
-          {/* Discovery Filters Toolbar */}
-          <div className="dashboard-card p-4 space-y-3">
-        <div className="flex flex-col md:flex-row items-center gap-3">
-          
-          <div className="relative flex-1 w-full">
-            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#64748B]" />
-            <input
-              type="text"
-              placeholder="Search published quizzes by title, subject or author..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="input-field pl-10 text-xs w-full"
-            />
+      {/* Discovery Filters Toolbar (Shown for All, Self-Paced, and Assessments) */}
+      {['all', 'self-paced', 'assessments'].includes(learnerTab) && (
+        <div className="dashboard-card p-4 space-y-3 animate-fadeIn">
+          <div className="flex flex-col md:flex-row items-center gap-3">
+            <div className="relative flex-1 w-full">
+              <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#64748B]" />
+              <input
+                type="text"
+                placeholder="Search published quizzes by title, subject or author..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="input-field pl-10 text-xs w-full"
+              />
+            </div>
+
+            {/* Subject Filter */}
+            <select
+              value={selectedSubject}
+              onChange={(e) => setSelectedSubject(e.target.value)}
+              className="input-field text-xs py-2 px-3 shrink-0 max-w-xs"
+            >
+              <option value="">All Subjects</option>
+              {subjects.map(s => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+
+            {/* Difficulty Filter */}
+            <select
+              value={selectedDifficulty}
+              onChange={(e) => setSelectedDifficulty(e.target.value)}
+              className="input-field text-xs py-2 px-3 shrink-0"
+            >
+              <option value="">All Difficulties</option>
+              <option value="EASY">Easy</option>
+              <option value="MEDIUM">Medium</option>
+              <option value="HARD">Hard</option>
+            </select>
           </div>
-
-          {/* Subject Filter */}
-          <select
-            value={selectedSubject}
-            onChange={(e) => setSelectedSubject(e.target.value)}
-            className="input-field text-xs py-2 px-3 shrink-0 max-w-xs"
-          >
-            <option value="">All Subjects</option>
-            {subjects.map(s => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
-
-          {/* Difficulty Filter */}
-          <select
-            value={selectedDifficulty}
-            onChange={(e) => setSelectedDifficulty(e.target.value)}
-            className="input-field text-xs py-2 px-3 shrink-0"
-          >
-            <option value="">All Difficulties</option>
-            <option value="EASY">Easy</option>
-            <option value="MEDIUM">Medium</option>
-            <option value="HARD">Hard</option>
-          </select>
-
         </div>
-      </div>
-
-      {/* Published Quizzes Discovery Grid */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between pb-1">
-          <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-            <BookOpen size={16} className="text-[#34D399]" />
-            Available Assessments ({quizzes.length})
-          </h2>
-          <span className="text-xs text-[#64748B] font-mono">Real-time taking enabled</span>
-        </div>
-
-        {loading ? (
-          <div className="text-center py-16 text-xs text-[#94A3B8] font-mono">
-            Discovering published assessments...
-          </div>
-        ) : quizzes.length === 0 ? (
-          <div className="dashboard-card p-12 text-center space-y-3 border-dashed border-[#1F304E] max-w-md mx-auto">
-            <BookOpen size={28} className="text-[#64748B] mx-auto" />
-            <h3 className="text-base font-bold text-white">No Published Quizzes Found</h3>
-            <p className="text-xs text-[#94A3B8]">
-              No active quizzes match your search or filter criteria. Check back shortly as instructors publish new content.
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {quizzes.map((quiz) => {
-              const timeLimitMins = quiz.time_limit_sec > 0 ? Math.round(quiz.time_limit_sec / 60) : 0;
-
-              return (
-                <div
-                  key={quiz.id}
-                  className="dashboard-card p-5 space-y-4 flex flex-col justify-between hover:border-[#34D399] transition-all relative group"
-                >
-                  <div className="space-y-3">
-                    
-                    {/* Top Badges */}
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="px-2 py-0.5 rounded bg-[#10B981]/15 text-[#34D399] font-mono font-bold">
-                        {quiz.category}
-                      </span>
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                        quiz.difficulty === 'HARD' ? 'bg-[#F43F5E]/20 text-[#FB7185]' :
-                        quiz.difficulty === 'EASY' ? 'bg-[#10B981]/20 text-[#34D399]' :
-                        'bg-[#F59E0B]/20 text-[#FBBF24]'
-                      }`}>
-                        {quiz.difficulty}
-                      </span>
-                    </div>
-
-                    {/* Title & Description */}
-                    <div>
-                      <h3 className="text-base font-bold text-white line-clamp-1 group-hover:text-[#34D399] transition-colors">
-                        {quiz.title}
-                      </h3>
-                      <p className="text-xs text-[#94A3B8] line-clamp-2 mt-1 leading-relaxed">
-                        {quiz.description || 'Self-paced evaluation.'}
-                      </p>
-                    </div>
-
-                    {/* Stats pills */}
-                    <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#1B2A44]/60 text-center font-mono">
-                      <div className="p-1.5 rounded bg-[#121D32]">
-                        <span className="text-[10px] text-[#64748B] block">Questions</span>
-                        <span className="text-xs font-bold text-white">{quiz.question_count || 0}</span>
-                      </div>
-                      <div className="p-1.5 rounded bg-[#121D32]">
-                        <span className="text-[10px] text-[#64748B] block">Points</span>
-                        <span className="text-xs font-bold text-white">{quiz.total_marks || 0}</span>
-                      </div>
-                      <div className="p-1.5 rounded bg-[#121D32]">
-                        <span className="text-[10px] text-[#64748B] block">Time</span>
-                        <span className="text-xs font-bold text-[#38BDF8]">
-                          {timeLimitMins > 0 ? `${timeLimitMins}m` : 'Untimed'}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between text-[11px] text-[#64748B] pt-1">
-                      <span>By <strong className="text-[#94A3B8]">{quiz.creator_name}</strong></span>
-                      <span>Pass: {quiz.pass_percentage}%</span>
-                    </div>
-
-                  </div>
-
-                  {/* Actions */}
-                  <div className="grid grid-cols-2 gap-2 pt-2">
-                    <button
-                      onClick={() => onOpenPreview(quiz.id)}
-                      className="btn-secondary text-xs py-2 font-semibold gap-1 justify-center"
-                    >
-                      <Eye size={13} />
-                      Preview
-                    </button>
-
-                    <button
-                      onClick={() => onStartAttempt(quiz.id)}
-                      className="btn-emerald-primary text-xs py-2 font-bold gap-1.5 justify-center shadow-lg shadow-[#10B981]/20"
-                    >
-                      <Play size={13} className="fill-current" />
-                      Take Self-Paced Quiz
-                    </button>
-                  </div>
-
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-      </div>
       )}
 
-      {/* TAB 2: MY LIVE MULTIPLAYER GAME HISTORY */}
-      {learnerTab === 'live-history' && (
+      {/* SECTION 1: ALL QUIZZES */}
+      {learnerTab === 'all' && (
         <div className="space-y-4 animate-fadeIn">
+          <div className="flex items-center justify-between pb-1">
+            <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+              <Layers size={16} className="text-[#34D399]" />
+              All Available Assessments &amp; Quizzes ({quizzes.length})
+            </h2>
+            <span className="text-xs text-[#64748B] font-mono">Complete catalog</span>
+          </div>
+
+          {loading ? (
+            <div className="text-center py-16 text-xs text-[#94A3B8] font-mono">
+              Discovering published assessments...
+            </div>
+          ) : quizzes.length === 0 ? (
+            <div className="dashboard-card p-12 text-center space-y-3 border-dashed border-[#1F304E] max-w-md mx-auto">
+              <BookOpen size={28} className="text-[#64748B] mx-auto" />
+              <h3 className="text-base font-bold text-white">No Quizzes Found</h3>
+              <p className="text-xs text-[#94A3B8]">
+                No quizzes match your search or filter criteria. Check back shortly as instructors publish new content.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {quizzes.map((quiz) => {
+                const timeLimitMins = quiz.time_limit_sec > 0 ? Math.round(quiz.time_limit_sec / 60) : 0;
+                return (
+                  <div
+                    key={quiz.id}
+                    className="dashboard-card p-5 space-y-4 flex flex-col justify-between hover:border-[#34D399] transition-all relative group"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="px-2 py-0.5 rounded bg-[#10B981]/15 text-[#34D399] font-mono font-bold">
+                          {quiz.category}
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#38BDF8]/15 text-[#38BDF8]">
+                            Self-Paced Ready
+                          </span>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                            quiz.difficulty === 'HARD' ? 'bg-[#F43F5E]/20 text-[#FB7185]' :
+                            quiz.difficulty === 'EASY' ? 'bg-[#10B981]/20 text-[#34D399]' :
+                            'bg-[#F59E0B]/20 text-[#FBBF24]'
+                          }`}>
+                            {quiz.difficulty}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <h3 className="text-base font-bold text-white line-clamp-1 group-hover:text-[#34D399] transition-colors">
+                          {quiz.title}
+                        </h3>
+                        <p className="text-xs text-[#94A3B8] line-clamp-2 mt-1 leading-relaxed">
+                          {quiz.description || 'Comprehensive evaluation assessment.'}
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#1B2A44]/60 text-center font-mono">
+                        <div className="p-1.5 rounded bg-[#121D32]">
+                          <span className="text-[10px] text-[#64748B] block">Questions</span>
+                          <span className="text-xs font-bold text-white">{quiz.question_count || 0}</span>
+                        </div>
+                        <div className="p-1.5 rounded bg-[#121D32]">
+                          <span className="text-[10px] text-[#64748B] block">Points</span>
+                          <span className="text-xs font-bold text-white">{quiz.total_marks || 0}</span>
+                        </div>
+                        <div className="p-1.5 rounded bg-[#121D32]">
+                          <span className="text-[10px] text-[#64748B] block">Time</span>
+                          <span className="text-xs font-bold text-[#38BDF8]">
+                            {timeLimitMins > 0 ? `${timeLimitMins}m` : 'Untimed'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between text-[11px] text-[#64748B] pt-1">
+                        <span>By <strong className="text-[#94A3B8]">{quiz.creator_name}</strong></span>
+                        <span>Pass: {quiz.pass_percentage}%</span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 pt-2">
+                      <button
+                        onClick={() => onOpenPreview(quiz.id)}
+                        className="btn-secondary text-xs py-2 font-semibold gap-1 justify-center"
+                      >
+                        <Eye size={13} />
+                        Preview
+                      </button>
+                      <button
+                        onClick={() => onStartAttempt(quiz.id)}
+                        className="btn-emerald-primary text-xs py-2 font-bold gap-1.5 justify-center shadow-lg shadow-[#10B981]/20"
+                      >
+                        <Play size={13} className="fill-current" />
+                        Start Quiz
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* SECTION 2: SELF-PACED QUIZZES */}
+      {learnerTab === 'self-paced' && (
+        <div className="space-y-4 animate-fadeIn">
+          <div className="flex items-center justify-between pb-1">
+            <div>
+              <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                <BookOpen size={16} className="text-[#34D399]" />
+                Self-Paced Practice &amp; Exams ({quizzes.length})
+              </h2>
+              <p className="text-xs text-[#94A3B8] mt-0.5">
+                Take tests on your own schedule with individual per-question timers and instant scoring.
+              </p>
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="text-center py-16 text-xs text-[#94A3B8] font-mono">
+              Loading self-paced quizzes...
+            </div>
+          ) : quizzes.length === 0 ? (
+            <div className="dashboard-card p-12 text-center space-y-3 border-dashed border-[#1F304E] max-w-md mx-auto">
+              <BookOpen size={28} className="text-[#64748B] mx-auto" />
+              <h3 className="text-base font-bold text-white">No Self-Paced Quizzes Available</h3>
+              <p className="text-xs text-[#94A3B8]">
+                Check back shortly as teachers publish new self-paced quizzes.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {quizzes.map((quiz) => {
+                const timeLimitMins = quiz.time_limit_sec > 0 ? Math.round(quiz.time_limit_sec / 60) : 0;
+                return (
+                  <div
+                    key={quiz.id}
+                    className="dashboard-card p-5 space-y-4 flex flex-col justify-between hover:border-[#38BDF8] transition-all relative group"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="px-2 py-0.5 rounded bg-[#38BDF8]/15 text-[#38BDF8] font-mono font-bold">
+                          {quiz.category}
+                        </span>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                          quiz.difficulty === 'HARD' ? 'bg-[#F43F5E]/20 text-[#FB7185]' :
+                          quiz.difficulty === 'EASY' ? 'bg-[#10B981]/20 text-[#34D399]' :
+                          'bg-[#F59E0B]/20 text-[#FBBF24]'
+                        }`}>
+                          {quiz.difficulty}
+                        </span>
+                      </div>
+
+                      <div>
+                        <h3 className="text-base font-bold text-white line-clamp-1 group-hover:text-[#38BDF8] transition-colors">
+                          {quiz.title}
+                        </h3>
+                        <p className="text-xs text-[#94A3B8] line-clamp-2 mt-1 leading-relaxed">
+                          {quiz.description || 'Flexible self-paced evaluation.'}
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#1B2A44]/60 text-center font-mono">
+                        <div className="p-1.5 rounded bg-[#121D32]">
+                          <span className="text-[10px] text-[#64748B] block">Questions</span>
+                          <span className="text-xs font-bold text-white">{quiz.question_count || 0}</span>
+                        </div>
+                        <div className="p-1.5 rounded bg-[#121D32]">
+                          <span className="text-[10px] text-[#64748B] block">Points</span>
+                          <span className="text-xs font-bold text-white">{quiz.total_marks || 0}</span>
+                        </div>
+                        <div className="p-1.5 rounded bg-[#121D32]">
+                          <span className="text-[10px] text-[#64748B] block">Duration</span>
+                          <span className="text-xs font-bold text-[#38BDF8]">
+                            {timeLimitMins > 0 ? `${timeLimitMins}m` : 'Untimed'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between text-[11px] text-[#64748B] pt-1">
+                        <span>Instructor: <strong className="text-[#94A3B8]">{quiz.creator_name}</strong></span>
+                        <span>Pass: {quiz.pass_percentage}%</span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 pt-2">
+                      <button
+                        onClick={() => onOpenPreview(quiz.id)}
+                        className="btn-secondary text-xs py-2 font-semibold gap-1 justify-center"
+                      >
+                        <Eye size={13} />
+                        Preview
+                      </button>
+                      <button
+                        onClick={() => onStartAttempt(quiz.id)}
+                        className="btn-emerald-primary text-xs py-2 font-bold gap-1.5 justify-center shadow-lg shadow-[#10B981]/20"
+                      >
+                        <Play size={13} className="fill-current" />
+                        Take Self-Paced
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* SECTION 3: LIVE BATTLES (HOSTED LIVE MULTIPLAYER) */}
+      {learnerTab === 'live-battles' && (
+        <div className="space-y-6 animate-fadeIn">
+          {/* Quick PIN Join Card */}
+          <div className="dashboard-card p-6 border-2 border-[#10B981]/40 bg-gradient-to-r from-[#10B981]/15 via-[#0E1626] to-[#0A1220] flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-xl shadow-[#10B981]/10">
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 rounded-2xl bg-[#10B981]/20 border border-[#10B981]/30 flex items-center justify-center text-[#34D399] shrink-0">
+                <Radio size={28} className="animate-pulse" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-[#34D399]/20 text-[#34D399] border border-[#34D399]/30">
+                    Real-Time Arena
+                  </span>
+                  <span className="text-xs text-[#94A3B8]">Synchronized Gameplay</span>
+                </div>
+                <h3 className="text-lg font-black text-white mt-1">
+                  Ready for a Live Multiplayer Battle?
+                </h3>
+                <p className="text-xs text-[#94A3B8]">
+                  Enter the 8-character Session Join Code from your teacher's screen to enter the arena.
+                </p>
+              </div>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (joinPinInput.trim() && onJoinLive) {
+                  onJoinLive(joinPinInput.trim());
+                }
+              }}
+              className="flex items-center gap-2.5 shrink-0"
+            >
+              <input
+                type="text"
+                maxLength={12}
+                value={joinPinInput}
+                onChange={(e) => setJoinPinInput(e.target.value.replace(/[^0-9a-zA-Z]/g, '').toUpperCase())}
+                placeholder="e.g. AJM63B17"
+                className="w-40 bg-[#0B111D] border-2 border-[#2D436B] focus:border-[#34D399] rounded-xl px-4 py-2.5 text-sm font-mono font-black text-center text-white outline-none tracking-widest placeholder:text-[#64748B] placeholder:tracking-normal"
+              />
+              <button
+                type="submit"
+                disabled={!joinPinInput.trim()}
+                className="btn-emerald-primary text-xs py-2.5 px-5 font-bold shadow-lg shadow-[#10B981]/25 flex items-center gap-1.5"
+              >
+                <Radio size={14} className="animate-pulse" />
+                <span>Join Battle</span>
+              </button>
+            </form>
+          </div>
+
+          {/* Participated Live Battles Audit History */}
           <div className="dashboard-card p-6 border border-[#1F304E]">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#1B2A44]">
               <div>
@@ -495,17 +671,20 @@ export default function LearnerDashboardView({ onOpenPreview, onStartAttempt, on
                   My Live Multiplayer Battles History
                 </h3>
                 <p className="text-xs text-[#94A3B8]">
-                  All synchronized live quiz sessions you have joined and competed in.
+                  Audit log of all synchronized live quiz sessions you joined and competed in.
                 </p>
               </div>
+              <span className="text-xs font-mono text-[#94A3B8]">
+                {liveHistory.length} Battle{liveHistory.length === 1 ? '' : 's'} Logged
+              </span>
             </div>
 
             {liveHistory.length === 0 ? (
               <div className="text-center py-12 text-xs text-[#94A3B8] space-y-3">
                 <Radio size={32} className="mx-auto text-[#64748B] opacity-50" />
                 <p className="font-semibold text-white">No live multiplayer battles joined yet.</p>
-                <p className="text-[11px] text-[#64748B]">
-                  Enter a 8-character PIN from your teacher in the box above to jump into your first battle!
+                <p className="text-[11px] text-[#64748B] max-w-sm mx-auto">
+                  When your instructor hosts a live battle, enter the Session PIN above to compete in real-time!
                 </p>
               </div>
             ) : (
@@ -541,7 +720,10 @@ export default function LearnerDashboardView({ onOpenPreview, onStartAttempt, on
                       <div className="text-right">
                         <div className="flex items-center gap-1.5 justify-end">
                           <span className={`w-7 h-7 rounded-lg flex items-center justify-center font-mono font-bold text-xs ${
-                            item.rank === 1 ? 'bg-[#F59E0B] text-black shadow-md shadow-[#F59E0B]/30' : item.rank === 2 ? 'bg-[#94A3B8] text-black' : item.rank === 3 ? 'bg-[#D97706] text-white' : 'bg-[#1F304E] text-[#94A3B8]'
+                            item.rank === 1 ? 'bg-[#F59E0B] text-black shadow-md shadow-[#F59E0B]/30' :
+                            item.rank === 2 ? 'bg-[#94A3B8] text-black' :
+                            item.rank === 3 ? 'bg-[#D97706] text-white' :
+                            'bg-[#1F304E] text-[#94A3B8]'
                           }`}>
                             #{item.rank || '-'}
                           </span>
@@ -559,6 +741,108 @@ export default function LearnerDashboardView({ onOpenPreview, onStartAttempt, on
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* SECTION 4: ASSESSMENTS & ASSIGNMENTS */}
+      {learnerTab === 'assessments' && (
+        <div className="space-y-4 animate-fadeIn">
+          <div className="flex items-center justify-between pb-1">
+            <div>
+              <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                <Calendar size={16} className="text-[#F59E0B]" />
+                Scheduled Assessments &amp; Assignments ({quizzes.length})
+              </h2>
+              <p className="text-xs text-[#94A3B8] mt-0.5">
+                Official course evaluations, graded homework, and scheduled class tests.
+              </p>
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="text-center py-16 text-xs text-[#94A3B8] font-mono">
+              Loading assessments...
+            </div>
+          ) : quizzes.length === 0 ? (
+            <div className="dashboard-card p-12 text-center space-y-3 border-dashed border-[#1F304E] max-w-md mx-auto">
+              <Calendar size={28} className="text-[#64748B] mx-auto" />
+              <h3 className="text-base font-bold text-white">No Scheduled Assessments</h3>
+              <p className="text-xs text-[#94A3B8]">
+                You currently have no pending homework or scheduled assessments.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {quizzes.map((quiz) => {
+                const timeLimitMins = quiz.time_limit_sec > 0 ? Math.round(quiz.time_limit_sec / 60) : 0;
+                return (
+                  <div
+                    key={quiz.id}
+                    className="dashboard-card p-5 space-y-4 flex flex-col justify-between hover:border-[#F59E0B] transition-all relative group"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="px-2 py-0.5 rounded bg-[#F59E0B]/15 text-[#F59E0B] font-mono font-bold">
+                          {quiz.category}
+                        </span>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/30">
+                          Graded Assessment
+                        </span>
+                      </div>
+
+                      <div>
+                        <h3 className="text-base font-bold text-white line-clamp-1 group-hover:text-[#F59E0B] transition-colors">
+                          {quiz.title}
+                        </h3>
+                        <p className="text-xs text-[#94A3B8] line-clamp-2 mt-1 leading-relaxed">
+                          {quiz.description || 'Graded evaluation assessment.'}
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#1B2A44]/60 text-center font-mono">
+                        <div className="p-1.5 rounded bg-[#121D32]">
+                          <span className="text-[10px] text-[#64748B] block">Questions</span>
+                          <span className="text-xs font-bold text-white">{quiz.question_count || 0}</span>
+                        </div>
+                        <div className="p-1.5 rounded bg-[#121D32]">
+                          <span className="text-[10px] text-[#64748B] block">Points</span>
+                          <span className="text-xs font-bold text-white">{quiz.total_marks || 0}</span>
+                        </div>
+                        <div className="p-1.5 rounded bg-[#121D32]">
+                          <span className="text-[10px] text-[#64748B] block">Time</span>
+                          <span className="text-xs font-bold text-[#F59E0B]">
+                            {timeLimitMins > 0 ? `${timeLimitMins}m` : 'Timed'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between text-[11px] text-[#64748B] pt-1">
+                        <span>Teacher: <strong className="text-[#94A3B8]">{quiz.creator_name}</strong></span>
+                        <span className="text-[#34D399]">Passing: {quiz.pass_percentage}%</span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 pt-2">
+                      <button
+                        onClick={() => onOpenPreview(quiz.id)}
+                        className="btn-secondary text-xs py-2 font-semibold gap-1 justify-center"
+                      >
+                        <Eye size={13} />
+                        Preview
+                      </button>
+                      <button
+                        onClick={() => onStartAttempt(quiz.id)}
+                        className="btn-emerald-primary text-xs py-2 font-bold gap-1.5 justify-center bg-[#F59E0B] hover:bg-[#D97706] text-black border-none shadow-lg shadow-[#F59E0B]/20"
+                      >
+                        <Play size={13} className="fill-current text-black" />
+                        Start Assessment
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 

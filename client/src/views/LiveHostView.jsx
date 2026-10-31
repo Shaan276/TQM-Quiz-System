@@ -243,6 +243,22 @@ export default function LiveHostView({ sessionId, onBack }) {
     }
   };
 
+  const handleLeaveView = async () => {
+    if (status === 'LOBBY') {
+      const confirmLeave = window.confirm('Quit lobby? Since this live battle was not started, it will not be saved in history.');
+      if (!confirmLeave) return;
+      try {
+        await fetch(`/api/v1/live-sessions/${sessionId}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${accessToken}` }
+        });
+      } catch (err) {
+        console.error('Failed to clean up unstarted lobby:', err);
+      }
+    }
+    onBack();
+  };
+
   // Dedicated Permanent Leaderboard Renderer
   const renderLeaderboardTable = () => {
     if (!isLeaderboardVisible) {
@@ -322,7 +338,7 @@ export default function LiveHostView({ sessionId, onBack }) {
       <div className="dashboard-card p-4 flex flex-wrap items-center justify-between gap-4 border-b border-[#1B2A44] sticky top-4 z-40 bg-[#0B111D]/95 backdrop-blur-md">
         <div className="flex items-center gap-3">
           <button
-            onClick={onBack}
+            onClick={handleLeaveView}
             className="w-9 h-9 rounded-xl bg-[#132238] border border-[#1F304E] flex items-center justify-center text-[#94A3B8] hover:text-white transition-colors"
             title="Leave Host View"
           >

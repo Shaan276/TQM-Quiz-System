@@ -525,6 +525,45 @@ async function runP4Tests() {
       assert.strictEqual(aData.data.liveSessionsPlayed, 1);
     });
 
+    await test('Session Cleanup: Lobbies are excluded from history and DELETE /api/v1/live-sessions/:id deletes session', async () => {
+      // 1. Create a dummy session that stays in LOBBY
+      const createRes = await fetch(`${BASE_URL}/live-sessions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${teacherToken}`
+        },
+        body: JSON.stringify({ quizId })
+      });
+      assert.strictEqual(createRes.status, 201);
+      const createData = await createRes.json();
+      const unstartedSessionId = createData.data.sessionId;
+
+      // 2. Fetch teacher history - verify unstarted lobby is NOT present in history
+      const histRes = await fetch(`${BASE_URL}/live-sessions/my`, {
+        headers: { 'Authorization': `Bearer ${teacherToken}` }
+      });
+      const histData = await histRes.json();
+      assert.strictEqual(histData.success, true);
+      const foundLobby = histData.data.sessions.find(s => s.id === unstartedSessionId);
+      assert.strictEqual(foundLobby, undefined, 'Unstarted lobby session must not appear in history');
+
+      // 3. Delete the session via DELETE /api/v1/live-sessions/:id
+      const delRes = await fetch(`${BASE_URL}/live-sessions/${unstartedSessionId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${teacherToken}` }
+      });
+      assert.strictEqual(delRes.status, 200);
+      const delData = await delRes.json();
+      assert.strictEqual(delData.success, true);
+
+      // 4. Verify 404 after deletion
+      const getRes = await fetch(`${BASE_URL}/live-sessions/${unstartedSessionId}`, {
+        headers: { 'Authorization': `Bearer ${teacherToken}` }
+      });
+      assert.strictEqual(getRes.status, 404);
+    });
+
   } finally {
     if (hostWs && hostWs.readyState === 1) hostWs.close();
     if (aliceWs && aliceWs.readyState === 1) aliceWs.close();

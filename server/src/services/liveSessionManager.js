@@ -1142,6 +1142,21 @@ class LiveSessionManager {
       this.broadcastRosterUpdate(session);
     }
   }
+
+  /**
+   * Clean up and remove an active session from memory
+   */
+  removeSession(sessionId) {
+    const session = activeSessions.get(sessionId);
+    if (session) {
+      if (session.timer) {
+        clearTimeout(session.timer);
+        session.timer = null;
+      }
+      pinToSessionId.delete(session.joinCode);
+      activeSessions.delete(sessionId);
+    }
+  }
 }
 
 const liveSessionManager = new LiveSessionManager();

@@ -1,5 +1,5 @@
 const express = require('express');
-const { dbGet, dbAll } = require('../database');
+const { dbGet, dbAll, dbRun } = require('../database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const { liveSessionManager } = require('../services/liveSessionManager');
 
@@ -61,7 +61,7 @@ router.get('/my', authenticateToken, requireRole('TEACHER', 'SUPER_ADMIN'), asyn
         (SELECT MAX(score) FROM session_participants WHERE session_id = s.id) as highest_score
        FROM quiz_sessions s
        JOIN quizzes q ON s.quiz_id = q.id
-       WHERE s.host_id = ?
+       WHERE s.host_id = ? AND s.status NOT IN ('LOBBY', 'CANCELLED')
        ORDER BY s.created_at DESC LIMIT 50`,
       [req.user.id]
     );
@@ -90,7 +90,7 @@ router.get('/history/my', authenticateToken, async (req, res, next) => {
        JOIN quiz_sessions qs ON sp.session_id = qs.id
        JOIN quizzes q ON qs.quiz_id = q.id
        JOIN users u ON qs.host_id = u.id
-       WHERE sp.user_id = ?
+       WHERE sp.user_id = ? AND qs.status NOT IN ('LOBBY', 'CANCELLED')
        ORDER BY sp.joined_at DESC LIMIT 50`,
       [req.user.id]
     );
@@ -300,6 +300,44 @@ router.get('/:id/results', authenticateToken, async (req, res, next) => {
           third: participants[2] || null
         }
       }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// -------------------------------------------------------------
+// 7. DELETE /api/v1/live-sessions/:id - Delete session from history
+// -------------------------------------------------------------
+router.delete('/:id', authenticateToken, requireRole('TEACHER', 'SUPER_ADMIN'), async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const session = await dbGet(`SELECT * FROM quiz_sessions WHERE id = ?`, [id]);
+    if (!session) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'ERR_NOT_FOUND', message: 'Session not found' }
+      });
+    }
+
+    if (req.user.role !== 'SUPER_ADMIN' && session.host_id !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'ERR_FORBIDDEN', message: 'You can only delete your own hosted sessions' }
+      });
+    }
+
+    // Clean up active in-memory state
+    liveSessionManager.removeSession(id);
+
+    // Delete child records first to ensure clean deletion
+    await dbRun(`DELETE FROM session_answers WHERE session_id = ?`, [id]);
+    await dbRun(`DELETE FROM session_participants WHERE session_id = ?`, [id]);
+    await dbRun(`DELETE FROM quiz_sessions WHERE id = ?`, [id]);
+
+    res.json({
+      success: true,
+      message: 'Live session deleted successfully'
     });
   } catch (err) {
     next(err);

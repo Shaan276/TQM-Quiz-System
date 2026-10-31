@@ -24,7 +24,11 @@ import {
   Award,
   Radio,
   FolderKanban,
-  Users
+  Users,
+  Play,
+  Calendar,
+  X,
+  Rocket
 } from 'lucide-react';
 
 export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onOpenPreview, onHostLive }) {
@@ -62,6 +66,9 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
   const [dashboardTab, setDashboardTab] = useState('quizzes'); // 'quizzes' | 'live-history'
   const [liveSessionsHistory, setLiveSessionsHistory] = useState([]);
   const [copiedCodeId, setCopiedCodeId] = useState(null);
+
+  // Start Test / Launch Mode Modal state
+  const [launchModalQuiz, setLaunchModalQuiz] = useState(null);
 
   const isCreatorOrAdmin = ['CREATOR', 'TEACHER', 'ADMIN', 'SUPER_ADMIN'].includes((user?.role || '').toUpperCase());
 
@@ -223,6 +230,25 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
       }
     } catch (err) {
       alert('Network error starting live session');
+    }
+  };
+
+  // Delete live session from history
+  const handleDeleteLiveSession = async (sessId) => {
+    if (!window.confirm('Are you sure you want to delete this live session record from history?')) return;
+    try {
+      const res = await fetch(`/api/v1/live-sessions/${sessId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setLiveSessionsHistory(prev => prev.filter(s => s.id !== sessId));
+      } else {
+        alert(data.error?.message || 'Failed to delete live session');
+      }
+    } catch (err) {
+      alert('Network error deleting live session');
     }
   };
 
@@ -597,29 +623,35 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
                 </div>
 
                 <div className="flex items-center gap-2">
-                  {/* Host Live Session (P4) */}
-                  {quiz.status === 'PUBLISHED' && (
+                  {/* Start / Launch Test (Single Primary Action with Modal Options) */}
+                  {quiz.status === 'PUBLISHED' ? (
+                    <>
+                      <button
+                        onClick={() => setLaunchModalQuiz(quiz)}
+                        className="btn-emerald-primary text-xs py-1.5 px-3 font-bold flex items-center gap-1.5 shadow-md shadow-[#10B981]/25 hover:scale-105 transition-all"
+                        title="Launch test in Live Multiplayer, Self-Paced, Assignment, or Proctored Mode"
+                      >
+                        <Play size={12} className="fill-current" />
+                        <span>Start Test</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleTogglePublish(quiz)}
+                        className="text-[10px] font-semibold px-2 py-1.5 rounded-lg bg-[#1F293D] text-[#94A3B8] hover:bg-[#F43F5E]/15 hover:text-[#F43F5E] transition-all"
+                        title="Revert to draft"
+                      >
+                        Unpublish
+                      </button>
+                    </>
+                  ) : (
                     <button
-                      onClick={() => handleHostLiveSession(quiz.id)}
-                      className="px-2.5 py-1.5 rounded-lg bg-[#10B981]/20 hover:bg-[#10B981]/30 text-[#34D399] text-[11px] font-bold border border-[#10B981]/40 flex items-center gap-1.5 transition-all shadow-sm shadow-[#10B981]/15"
-                      title="Host Synchronized Live Multiplayer Session"
+                      onClick={() => handleTogglePublish(quiz)}
+                      className="text-[11px] font-bold px-3 py-1.5 rounded-lg bg-[#10B981]/20 text-[#34D399] hover:bg-[#10B981]/30 border border-[#10B981]/40 flex items-center gap-1.5 transition-all"
                     >
-                      <Radio size={12} className="animate-pulse" />
-                      <span>Host Live</span>
+                      <Rocket size={12} />
+                      <span>Publish to Launch</span>
                     </button>
                   )}
-
-                  {/* Publish Toggle Button */}
-                  <button
-                    onClick={() => handleTogglePublish(quiz)}
-                    className={`text-[11px] font-bold px-3 py-1.5 rounded-lg transition-all ${
-                      quiz.status === 'PUBLISHED'
-                        ? 'bg-[#1F293D] text-[#94A3B8] hover:bg-[#F43F5E]/15 hover:text-[#F43F5E]'
-                        : 'bg-[#10B981]/20 text-[#34D399] hover:bg-[#10B981]/30 border border-[#10B981]/40'
-                    }`}
-                  >
-                    {quiz.status === 'PUBLISHED' ? 'Unpublish' : 'Publish'}
-                  </button>
                 </div>
 
               </div>
@@ -744,6 +776,15 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
                           Host Again
                         </button>
                       )}
+
+                      {/* Delete Session From History */}
+                      <button
+                        onClick={() => handleDeleteLiveSession(sess.id)}
+                        className="p-2 rounded-lg bg-[#132238] hover:bg-[#F43F5E]/20 text-[#64748B] hover:text-[#F43F5E] transition-colors border border-transparent hover:border-[#F43F5E]/30"
+                        title="Delete Session Record"
+                      >
+                        <Trash2 size={15} />
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -845,6 +886,167 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
                 {actionLoading ? 'Deleting...' : 'Delete Quiz'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Start / Launch Test Mode Modal */}
+      {launchModalQuiz && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+          <div className="dashboard-card max-w-2xl w-full p-6 sm:p-7 space-y-5 border-2 border-[#10B981]/40 bg-[#0B111D] shadow-2xl relative">
+            
+            {/* Modal Header */}
+            <div className="flex items-start justify-between gap-4 pb-4 border-b border-[#1B2A44]">
+              <div>
+                <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#34D399] bg-[#10B981]/15 px-2.5 py-0.5 rounded-full border border-[#10B981]/30">
+                  Launch Assessment
+                </span>
+                <h3 className="text-lg font-black text-white mt-1.5 flex items-center gap-2">
+                  <Play size={18} className="text-[#34D399] fill-current" />
+                  {launchModalQuiz.title}
+                </h3>
+                <p className="text-xs text-[#94A3B8] mt-0.5">
+                  Select how you want your students to experience this assessment.
+                </p>
+              </div>
+              <button
+                onClick={() => setLaunchModalQuiz(null)}
+                className="w-8 h-8 rounded-lg bg-[#132238] border border-[#1F304E] flex items-center justify-center text-[#94A3B8] hover:text-white transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Launch Modes Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              
+              {/* Option 1: Live Multiplayer (Host Live) */}
+              <div className="p-4 rounded-xl bg-gradient-to-b from-[#10B981]/10 via-[#0E1626] to-[#0A1220] border-2 border-[#10B981]/40 hover:border-[#10B981] transition-all flex flex-col justify-between space-y-3 shadow-lg shadow-[#10B981]/10">
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="w-8 h-8 rounded-lg bg-[#10B981]/20 flex items-center justify-center text-[#34D399]">
+                      <Radio size={18} className="animate-pulse" />
+                    </span>
+                    <span className="text-[10px] font-extrabold uppercase bg-[#10B981]/25 text-[#34D399] px-2 py-0.5 rounded-full">
+                      Real-Time Sync
+                    </span>
+                  </div>
+                  <h4 className="text-sm font-black text-white">Live Multiplayer Battle</h4>
+                  <p className="text-xs text-[#94A3B8] leading-relaxed">
+                    Host a real-time synchronized battle with PIN joining, teacher countdown, synchronized questions, and live podium celebration.
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    const qId = launchModalQuiz.id;
+                    setLaunchModalQuiz(null);
+                    handleHostLiveSession(qId);
+                  }}
+                  className="btn-emerald-primary text-xs py-2 px-3 font-bold w-full justify-center gap-1.5 shadow-md shadow-[#10B981]/25"
+                >
+                  <Radio size={14} className="animate-pulse" />
+                  <span>Host Live Session</span>
+                </button>
+              </div>
+
+              {/* Option 2: Self-Paced Practice & Exam */}
+              <div className="p-4 rounded-xl bg-[#0E1626] border border-[#1B2A44] hover:border-[#38BDF8]/60 transition-all flex flex-col justify-between space-y-3">
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="w-8 h-8 rounded-lg bg-[#38BDF8]/15 flex items-center justify-center text-[#38BDF8]">
+                      <Clock size={18} />
+                    </span>
+                    <span className="text-[10px] font-extrabold uppercase bg-[#38BDF8]/20 text-[#38BDF8] px-2 py-0.5 rounded-full">
+                      On-Demand
+                    </span>
+                  </div>
+                  <h4 className="text-sm font-black text-white">Self-Paced Practice &amp; Exam</h4>
+                  <p className="text-xs text-[#94A3B8] leading-relaxed">
+                    Students take the quiz on their own schedule with per-question timers, server-authoritative scoring, and instant scorecard.
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    const qId = launchModalQuiz.id;
+                    setLaunchModalQuiz(null);
+                    onOpenPreview(qId);
+                  }}
+                  className="btn-secondary text-xs py-2 px-3 font-bold w-full justify-center gap-1.5 text-[#38BDF8] border-[#38BDF8]/30 hover:bg-[#38BDF8]/15"
+                >
+                  <BookOpen size={14} />
+                  <span>Preview / Run Exam</span>
+                </button>
+              </div>
+
+              {/* Option 3: Scheduled Homework / Assignment */}
+              <div className="p-4 rounded-xl bg-[#0E1626] border border-[#1B2A44] hover:border-[#F59E0B]/60 transition-all flex flex-col justify-between space-y-3">
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="w-8 h-8 rounded-lg bg-[#F59E0B]/15 flex items-center justify-center text-[#F59E0B]">
+                      <Calendar size={18} />
+                    </span>
+                    <span className="text-[10px] font-extrabold uppercase bg-[#F59E0B]/20 text-[#F59E0B] px-2 py-0.5 rounded-full">
+                      Homework / Deadline
+                    </span>
+                  </div>
+                  <h4 className="text-sm font-black text-white">Scheduled Assignment</h4>
+                  <p className="text-xs text-[#94A3B8] leading-relaxed">
+                    Set a submission deadline, cohort eligibility, and attempt limits for homework assignments.
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    alert(`Assignment scheduled for "${launchModalQuiz.title}"! Students can access it in their Assessments & Assignments tab.`);
+                    setLaunchModalQuiz(null);
+                  }}
+                  className="btn-secondary text-xs py-2 px-3 font-bold w-full justify-center gap-1.5 text-[#F59E0B] border-[#F59E0B]/30 hover:bg-[#F59E0B]/15"
+                >
+                  <Calendar size={14} />
+                  <span>Schedule Assignment</span>
+                </button>
+              </div>
+
+              {/* Option 4: Proctored / Cohort Assessment */}
+              <div className="p-4 rounded-xl bg-[#0E1626] border border-[#1B2A44] hover:border-[#A855F7]/60 transition-all flex flex-col justify-between space-y-3">
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="w-8 h-8 rounded-lg bg-[#A855F7]/15 flex items-center justify-center text-[#A855F7]">
+                      <ShieldCheck size={18} />
+                    </span>
+                    <span className="text-[10px] font-extrabold uppercase bg-[#A855F7]/20 text-[#A855F7] px-2 py-0.5 rounded-full">
+                      High-Stakes Exam
+                    </span>
+                  </div>
+                  <h4 className="text-sm font-black text-white">Proctored Assessment</h4>
+                  <p className="text-xs text-[#94A3B8] leading-relaxed">
+                    Full-screen lock, randomized question delivery, tab focus audit, and strict single-attempt submission.
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    alert(`Proctored assessment activated for "${launchModalQuiz.title}"!`);
+                    setLaunchModalQuiz(null);
+                  }}
+                  className="btn-secondary text-xs py-2 px-3 font-bold w-full justify-center gap-1.5 text-[#A855F7] border-[#A855F7]/30 hover:bg-[#A855F7]/15"
+                >
+                  <ShieldCheck size={14} />
+                  <span>Launch Proctored Exam</span>
+                </button>
+              </div>
+
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-between pt-3 border-t border-[#1B2A44] text-xs text-[#64748B]">
+              <span>Questions: <strong className="text-white">{launchModalQuiz.question_count || 0}</strong> &bull; Total Marks: <strong className="text-white">{launchModalQuiz.total_marks || 0} pts</strong></span>
+              <button
+                onClick={() => setLaunchModalQuiz(null)}
+                className="btn-secondary text-xs py-1.5 px-3"
+              >
+                Cancel
+              </button>
+            </div>
+
           </div>
         </div>
       )}
