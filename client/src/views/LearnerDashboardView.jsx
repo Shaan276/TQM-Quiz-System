@@ -717,6 +717,16 @@ export default function LearnerDashboardView({ onOpenPreview, onStartAttempt, on
                     </div>
 
                     <div className="flex items-center gap-4 shrink-0">
+                      {item.is_flagged ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-[#F43F5E]/20 text-[#FB7185] border border-[#F43F5E]/40 animate-pulse shrink-0" title={item.flag_reason || 'Flagged for multiple tab switches or window exits'}>
+                          🚩 Flagged
+                        </span>
+                      ) : item.warning_count > 0 ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/40 shrink-0" title="1 tab switch warning logged">
+                          ⚠️ 1 Warning
+                        </span>
+                      ) : null}
+
                       <div className="text-right">
                         <div className="flex items-center gap-1.5 justify-end">
                           <span className={`w-7 h-7 rounded-lg flex items-center justify-center font-mono font-bold text-xs ${

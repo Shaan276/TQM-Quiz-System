@@ -82,6 +82,7 @@ router.get('/history/my', authenticateToken, async (req, res, next) => {
   try {
     const participations = await dbAll(
       `SELECT sp.id as participation_id, sp.score, sp.correct_count, sp.rank, sp.joined_at,
+              sp.warning_count, sp.is_flagged, sp.flag_reason,
               qs.id as session_id, qs.join_code, qs.status as session_status, qs.created_at as session_date,
               qs.total_questions,
               q.id as quiz_id, q.title as quiz_title, q.category as quiz_category,
@@ -223,7 +224,10 @@ router.get('/:id/leaderboard', authenticateToken, async (req, res, next) => {
         displayName: p.displayName,
         score: p.score,
         correctCount: p.correctCount,
-        rank: p.rank
+        rank: p.rank,
+        warningCount: p.warningCount || 0,
+        isFlagged: p.isFlagged || false,
+        flagReason: p.flagReason || ''
       }));
       list.sort((a, b) => b.score - a.score);
 
@@ -234,7 +238,7 @@ router.get('/:id/leaderboard', authenticateToken, async (req, res, next) => {
     }
 
     const participants = await dbAll(
-      `SELECT id, user_id, display_name, score, correct_count, rank 
+      `SELECT id, user_id, display_name, score, correct_count, rank, warning_count, is_flagged, flag_reason 
        FROM session_participants 
        WHERE session_id = ? 
        ORDER BY score DESC, rank ASC`,
@@ -273,7 +277,7 @@ router.get('/:id/results', authenticateToken, async (req, res, next) => {
     }
 
     const participants = await dbAll(
-      `SELECT id, user_id, display_name, score, correct_count, rank 
+      `SELECT id, user_id, display_name, score, correct_count, rank, warning_count, is_flagged, flag_reason 
        FROM session_participants 
        WHERE session_id = ? 
        ORDER BY score DESC`,

@@ -519,6 +519,83 @@ async function runP3Tests() {
       assert.strictEqual(json.data.mistakes.resolved, 1); // was marked resolved in Test 9
     });
 
+    // Test 14: Anti-Cheat Fullscreen & Tab Monitoring (1st = Warning, 2nd+ = Flagged)
+    await test('Anti-Cheat: 1st violation issues Warning, 2nd violation Flags attempt and notifies Teacher', async () => {
+      // 0. Start a fresh attempt to test in-progress anti-cheat monitoring
+      const startRes = await fetch(`${BASE_URL}/attempts/start`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${studentToken}`
+        },
+        body: JSON.stringify({ quizId })
+      });
+      assert.strictEqual(startRes.status, 201);
+      const startData = await startRes.json();
+      const testAttemptId = startData.data.attemptId;
+
+      // 1. First violation (Warning)
+      const v1Res = await fetch(`${BASE_URL}/attempts/${testAttemptId}/violation`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${studentToken}`
+        },
+        body: JSON.stringify({ type: 'FULLSCREEN_EXIT', details: 'Exited fullscreen mode' })
+      });
+      assert.strictEqual(v1Res.status, 200);
+      const v1 = await v1Res.json();
+      assert.strictEqual(v1.success, true);
+      assert.strictEqual(v1.action, 'WARNING');
+      assert.strictEqual(v1.warningCount, 1);
+      assert.strictEqual(v1.isFlagged, false);
+
+      // 2. Second violation (Flag)
+      const v2Res = await fetch(`${BASE_URL}/attempts/${testAttemptId}/violation`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${studentToken}`
+        },
+        body: JSON.stringify({ type: 'TAB_SWITCH', details: 'User blurred tab window' })
+      });
+      assert.strictEqual(v2Res.status, 200);
+      const v2 = await v2Res.json();
+      assert.strictEqual(v2.success, true);
+      assert.strictEqual(v2.action, 'FLAG');
+      assert.strictEqual(v2.warningCount, 2);
+      assert.strictEqual(v2.isFlagged, true);
+
+      // 3. Submit attempt and verify summary returns warningCount and isFlagged
+      await fetch(`${BASE_URL}/attempts/${testAttemptId}/submit`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${studentToken}`
+        },
+        body: JSON.stringify({ answers: [] })
+      });
+
+      const sumRes = await fetch(`${BASE_URL}/attempts/${testAttemptId}/summary`, {
+        headers: { Authorization: `Bearer ${studentToken}` }
+      });
+      assert.strictEqual(sumRes.status, 200);
+      const sumJson = await sumRes.json();
+      assert.strictEqual(sumJson.data.attempt.warningCount, 2);
+      assert.strictEqual(sumJson.data.attempt.isFlagged, true);
+
+      // 4. Verify teacher attempts view reflects the flag and warning count
+      const tViewRes = await fetch(`${BASE_URL}/attempts/quiz/${quizId}`, {
+        headers: { Authorization: `Bearer ${teacherToken}` }
+      });
+      assert.strictEqual(tViewRes.status, 200);
+      const tView = await tViewRes.json();
+      const att = tView.data.attempts.find(a => a.id === testAttemptId);
+      assert.ok(att, 'Attempt must exist in teacher view');
+      assert.strictEqual(att.warning_count, 2);
+      assert.strictEqual(Boolean(att.is_flagged), true);
+    });
+
   } finally {
     server.close();
   }

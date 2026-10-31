@@ -564,6 +564,84 @@ async function runP4Tests() {
       assert.strictEqual(getRes.status, 404);
     });
 
+    await test('Live Anti-Cheat: Participant tab switch triggers 1st warning and 2nd flag alert to host and student', async () => {
+      // 1. Create a session for anti-cheat verification
+      const createRes = await fetch(`${BASE_URL}/live-sessions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${teacherToken}`
+        },
+        body: JSON.stringify({ quizId })
+      });
+      const createData = await createRes.json();
+      const acSessionId = createData.data.sessionId;
+      const acJoinCode = createData.data.joinCode;
+
+      // 2. Connect Host and Student Alice
+      const acHostWs = await openSocket(teacherToken);
+      acHostWs.send(JSON.stringify({
+        event: 'host_join',
+        sessionId: acSessionId,
+        payload: { sessionId: acSessionId, token: teacherToken }
+      }));
+      await waitForEvent(acHostWs, 'host_state_snapshot');
+
+      const acAliceWs = await openSocket(studentAliceToken);
+      acAliceWs.send(JSON.stringify({
+        event: 'join_session',
+        payload: { joinCode: acJoinCode, token: studentAliceToken }
+      }));
+      await waitForEvent(acAliceWs, 'joined_session_success');
+
+      // 3. Alice triggers 1st tab switch / fullscreen exit
+      const hostP1 = waitForEvent(acHostWs, 'participant_violation');
+      const aliceP1 = waitForEvent(acAliceWs, 'violation_recorded');
+      acAliceWs.send(JSON.stringify({
+        event: 'tab_violation',
+        sessionId: acSessionId,
+        payload: { sessionId: acSessionId, type: 'FULLSCREEN_EXIT', details: 'User left fullscreen' }
+      }));
+
+      const hostEv1 = await hostP1;
+      const aliceEv1 = await aliceP1;
+      assert.strictEqual(hostEv1.payload.warningCount, 1);
+      assert.strictEqual(hostEv1.payload.isFlagged, false);
+      assert.strictEqual(aliceEv1.payload.warningCount, 1);
+      assert.strictEqual(aliceEv1.payload.action, 'WARNING');
+
+      // 4. Alice triggers 2nd tab switch / blur
+      const hostP2 = waitForEvent(acHostWs, 'participant_violation');
+      const aliceP2 = waitForEvent(acAliceWs, 'violation_recorded');
+      acAliceWs.send(JSON.stringify({
+        event: 'tab_violation',
+        sessionId: acSessionId,
+        payload: { sessionId: acSessionId, type: 'TAB_SWITCH', details: 'User changed tab' }
+      }));
+
+      const hostEv2 = await hostP2;
+      const aliceEv2 = await aliceP2;
+      assert.strictEqual(hostEv2.payload.warningCount, 2);
+      assert.strictEqual(hostEv2.payload.isFlagged, true);
+      assert.strictEqual(aliceEv2.payload.warningCount, 2);
+      assert.strictEqual(aliceEv2.payload.action, 'FLAG');
+
+      // 5. Verify live leaderboard REST endpoint reflects warnings and flag
+      const lbRes = await fetch(`${BASE_URL}/live-sessions/${acSessionId}/leaderboard`, {
+        headers: { 'Authorization': `Bearer ${teacherToken}` }
+      });
+      assert.strictEqual(lbRes.status, 200);
+      const lbData = await lbRes.json();
+      const aliceEntry = lbData.data.leaderboard.find(p => p.userId === studentAliceId);
+      assert.ok(aliceEntry, 'Alice must be in leaderboard');
+      assert.strictEqual(aliceEntry.warningCount, 2);
+      assert.strictEqual(Boolean(aliceEntry.isFlagged), true);
+
+      // Clean up sockets
+      acHostWs.close();
+      acAliceWs.close();
+    });
+
   } finally {
     if (hostWs && hostWs.readyState === 1) hostWs.close();
     if (aliceWs && aliceWs.readyState === 1) aliceWs.close();

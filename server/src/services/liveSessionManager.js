@@ -198,7 +198,10 @@ function calculateLeaderboard(session) {
     correctCount: p.correctCount,
     totalAnswered: p.totalAnswered || 0,
     totalTimeMs: p.totalTimeMs || 0,
-    isConnected: p.isConnected
+    isConnected: p.isConnected,
+    warningCount: p.warningCount || 0,
+    isFlagged: p.isFlagged || false,
+    flagReason: p.flagReason || ''
   }));
 
   // Sort descending by score, tie-break by lower total response time
@@ -463,6 +466,10 @@ class LiveSessionManager {
         totalAnswered: 0,
         totalTimeMs: 0,
         isConnected: true,
+        warningCount: 0,
+        isFlagged: false,
+        flagReason: '',
+        violations: [],
         sockets: new Set()
       };
       session.participants.set(user.id, participant);
@@ -534,7 +541,10 @@ class LiveSessionManager {
       userId: p.userId,
       displayName: p.displayName,
       score: p.score,
-      isConnected: p.isConnected
+      isConnected: p.isConnected,
+      warningCount: p.warningCount || 0,
+      isFlagged: p.isFlagged || false,
+      flagReason: p.flagReason || ''
     }));
 
     broadcastHost(session, 'player_roster_update', {
@@ -624,7 +634,10 @@ class LiveSessionManager {
         displayName: p.displayName,
         score: p.score,
         correctCount: p.correctCount,
-        isConnected: p.isConnected
+        isConnected: p.isConnected,
+        warningCount: p.warningCount || 0,
+        isFlagged: p.isFlagged || false,
+        flagReason: p.flagReason || ''
       })),
       remainingSeconds: Math.ceil(remainingMs / 1000),
       isPaused: session.status === 'PAUSED',
@@ -1141,6 +1154,71 @@ class LiveSessionManager {
       }
       this.broadcastRosterUpdate(session);
     }
+  }
+
+  /**
+   * Record a fullscreen exit or tab switch violation from a participant
+   */
+  async recordParticipantViolation(sessionId, userId, type, details, ws) {
+    const session = activeSessions.get(sessionId);
+    if (!session) return;
+    const participant = session.participants.get(userId);
+    if (!participant) return;
+
+    participant.warningCount = (participant.warningCount || 0) + 1;
+    if (participant.warningCount >= 2) {
+      participant.isFlagged = true;
+      participant.flagReason = `Multiple test window violations (${type}: tab switch / fullscreen exit)`;
+    }
+
+    if (!participant.violations) participant.violations = [];
+    participant.violations.push({
+      type,
+      details,
+      timestamp: new Date().toISOString(),
+      action: participant.isFlagged ? 'FLAG' : 'WARNING'
+    });
+
+    // Update DB asynchronously
+    dbRun(
+      `UPDATE session_participants 
+       SET warning_count = ?, is_flagged = ?, flag_reason = ?, violations_log = ? 
+       WHERE id = ?`,
+      [
+        participant.warningCount,
+        participant.isFlagged ? 1 : 0,
+        participant.flagReason || null,
+        JSON.stringify(participant.violations),
+        participant.id
+      ]
+    ).catch(err => console.error('[LiveSession] Error saving violation:', err));
+
+    // Send acknowledgement to the student socket
+    if (ws && ws.readyState === 1) {
+      sendToSocket(ws, 'violation_recorded', {
+        warningCount: participant.warningCount,
+        isFlagged: participant.isFlagged,
+        action: participant.isFlagged ? 'FLAG' : 'WARNING',
+        message: participant.isFlagged
+          ? '🚩 Flagged: Multiple tab switches or fullscreen exits detected! Your teacher has been notified.'
+          : '⚠️ Warning: Fullscreen exit or tab switch detected! Next infraction will flag your test for your teacher.'
+      }, session.id);
+    }
+
+    // Broadcast violation alert to host in real-time
+    broadcastHost(session, 'participant_violation', {
+      userId: participant.userId,
+      participantId: participant.id,
+      displayName: participant.displayName,
+      warningCount: participant.warningCount,
+      isFlagged: participant.isFlagged,
+      flagReason: participant.flagReason,
+      type,
+      timestamp: new Date().toISOString()
+    });
+
+    // Broadcast updated player roster so the host UI updates immediately
+    this.broadcastRosterUpdate(session);
   }
 
   /**

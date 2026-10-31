@@ -39,8 +39,86 @@ export default function LiveSessionView({ initialPin = '', onBack }) {
   const [podiumData, setPodiumData] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
 
+  // Fullscreen & Anti-Cheat State
+  const [warningCount, setWarningCount] = useState(0);
+  const [isFlagged, setIsFlagged] = useState(false);
+  const [violationModal, setViolationModal] = useState(null);
+  const [isFullscreen, setIsFullscreen] = useState(Boolean(document.fullscreenElement || document.webkitFullscreenElement));
+  const violationCooldownRef = useRef(false);
+
   const wsRef = useRef(null);
   const timerRef = useRef(null);
+
+  // Helper to enter fullscreen
+  const enterFullscreen = () => {
+    try {
+      const el = document.documentElement;
+      if (el.requestFullscreen) {
+        el.requestFullscreen().catch(() => {});
+      } else if (el.webkitRequestFullscreen) {
+        el.webkitRequestFullscreen();
+      }
+    } catch (e) {}
+  };
+
+  // Report tab switch or fullscreen exit violation
+  const triggerLiveViolation = (violationType) => {
+    if (violationCooldownRef.current || status === 'COMPLETED' || status === 'JOIN' || !joined) return;
+    violationCooldownRef.current = true;
+    setTimeout(() => {
+      violationCooldownRef.current = false;
+    }, 2000);
+
+    if (wsRef.current && wsRef.current.readyState === 1 && sessionMeta?.sessionId) {
+      wsRef.current.send(JSON.stringify({
+        event: 'tab_violation',
+        sessionId: sessionMeta.sessionId,
+        payload: {
+          type: violationType,
+          details: violationType === 'FULLSCREEN_EXIT' ? 'Exited fullscreen mode' : 'Switched tabs or window focus lost'
+        }
+      }));
+    }
+  };
+
+  // Fullscreen & Visibility Event Listeners
+  useEffect(() => {
+    if (['STARTING', 'QUESTION_ACTIVE', 'QUESTION_ENDED', 'LEADERBOARD'].includes(status)) {
+      enterFullscreen();
+    }
+
+    const handleFullscreenChange = () => {
+      const inFullscreen = Boolean(document.fullscreenElement || document.webkitFullscreenElement);
+      setIsFullscreen(inFullscreen);
+      if (!inFullscreen && ['STARTING', 'QUESTION_ACTIVE', 'QUESTION_ENDED', 'LEADERBOARD'].includes(status)) {
+        triggerLiveViolation('FULLSCREEN_EXIT');
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden' && ['STARTING', 'QUESTION_ACTIVE', 'QUESTION_ENDED', 'LEADERBOARD'].includes(status)) {
+        triggerLiveViolation('TAB_SWITCH');
+      }
+    };
+
+    const handleWindowBlur = () => {
+      if (['STARTING', 'QUESTION_ACTIVE', 'QUESTION_ENDED', 'LEADERBOARD'].includes(status)) {
+        triggerLiveViolation('WINDOW_BLUR');
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('blur', handleWindowBlur);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('blur', handleWindowBlur);
+    };
+  }, [status, sessionMeta, joined]);
 
   // Initialize or handle joining
   const handleConnectAndJoin = (pinToUse) => {
@@ -132,6 +210,17 @@ export default function LiveSessionView({ initialPin = '', onBack }) {
           case 'podium_celebration':
             setStatus('COMPLETED');
             setPodiumData(payload);
+            break;
+
+          case 'violation_recorded':
+            setWarningCount(payload.warningCount);
+            setIsFlagged(payload.isFlagged);
+            setViolationModal({
+              action: payload.action,
+              count: payload.warningCount,
+              isFlagged: payload.isFlagged,
+              message: payload.message
+            });
             break;
 
           default:
@@ -237,12 +326,46 @@ export default function LiveSessionView({ initialPin = '', onBack }) {
 
         {joined && (
           <div className="flex items-center gap-2">
+            {/* Fullscreen & Anti-Cheat Indicator */}
+            {isFlagged ? (
+              <span className="px-2.5 py-1 rounded-xl text-xs font-black bg-[#F43F5E]/20 text-[#FB7185] border border-[#F43F5E]/40 flex items-center gap-1.5 animate-pulse" title="Flagged: Multiple window exits or tab changes detected">
+                <span>🚩</span> FLAGGED
+              </span>
+            ) : warningCount > 0 ? (
+              <span className="px-2.5 py-1 rounded-xl text-xs font-bold bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/40 flex items-center gap-1.5" title="1 Tab switch or fullscreen exit recorded">
+                <span>⚠️</span> 1 Warning
+              </span>
+            ) : (
+              <button
+                onClick={enterFullscreen}
+                className="px-2.5 py-1 rounded-xl text-xs font-medium bg-[#10B981]/15 text-[#34D399] border border-[#10B981]/30 flex items-center gap-1.5 hover:bg-[#10B981]/25 transition-all"
+                title="Fullscreen Active"
+              >
+                <span>🖥️</span> Fullscreen
+              </button>
+            )}
+
             <span className="text-xs font-bold text-[#34D399] font-mono bg-[#10B981]/15 px-3 py-1 rounded-xl border border-[#10B981]/30">
               {currentScore} pts
             </span>
           </div>
         )}
       </div>
+
+      {/* Non-fullscreen banner alert */}
+      {joined && !isFullscreen && ['STARTING', 'QUESTION_ACTIVE', 'QUESTION_ENDED', 'LEADERBOARD'].includes(status) && (
+        <div className="bg-[#F59E0B]/15 border border-[#F59E0B]/40 rounded-xl p-3 flex items-center justify-between gap-3 text-xs text-[#FBBF24] animate-fadeIn">
+          <span className="flex items-center gap-2 font-medium">
+            <span>⚠️</span> You are not in Fullscreen Mode! Fullscreen is required for this live quiz.
+          </span>
+          <button
+            onClick={enterFullscreen}
+            className="px-3 py-1 bg-[#F59E0B] text-black font-bold rounded-lg text-xs hover:bg-[#D97706] transition-all shadow-md shrink-0"
+          >
+            Re-enter Fullscreen
+          </button>
+        </div>
+      )}
 
       {/* Error Message Toast */}
       {errorMessage && (
@@ -628,6 +751,70 @@ export default function LiveSessionView({ initialPin = '', onBack }) {
           >
             Back to Learner Dashboard
           </button>
+        </div>
+      )}
+
+      {/* Violation Alert Modal (Warning or Flag) */}
+      {violationModal && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-fadeIn">
+          <div className={`dashboard-card max-w-md w-full p-6 space-y-4 border-2 shadow-2xl ${
+            violationModal.action === 'FLAG'
+              ? 'border-[#F43F5E] bg-[#170E14]'
+              : 'border-[#F59E0B] bg-[#15120E]'
+          }`}>
+            <div className="flex items-center gap-3">
+              <span className="text-3xl">{violationModal.action === 'FLAG' ? '🚩' : '⚠️'}</span>
+              <div>
+                <h3 className={`text-base font-black ${violationModal.action === 'FLAG' ? 'text-[#FB7185]' : 'text-[#F59E0B]'}`}>
+                  {violationModal.action === 'FLAG' ? 'LIVE TEST FLAGGED!' : 'Warning: Live Quiz Window Exited!'}
+                </h3>
+                <p className="text-xs text-[#94A3B8]">
+                  {violationModal.action === 'FLAG'
+                    ? 'Multiple tab switches or fullscreen exits detected'
+                    : 'Fullscreen exit / Tab change detected (Warning 1 of 1)'}
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-[#0B111D] border border-[#1F304E] text-xs text-[#CBD5E1] leading-relaxed space-y-2">
+              {violationModal.action === 'FLAG' ? (
+                <>
+                  <p className="font-bold text-[#FB7185]">
+                    Your live quiz participation has been permanently FLAGGED on the teacher's screen!
+                  </p>
+                  <p className="text-[11px] text-[#94A3B8]">
+                    Your host has received a real-time cheating violation alert. You can continue answering, but your score and standing are under instructor review.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="font-semibold text-white">
+                    Leaving full screen or switching browser tabs is strictly prohibited during live assessments.
+                  </p>
+                  <p className="text-[11px] text-[#F59E0B]">
+                    This is your ONLY warning. If you exit full screen or switch tabs again, your test will be permanently FLAGGED on the teacher's live console.
+                  </p>
+                </>
+              )}
+            </div>
+
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setViolationModal(null);
+                  enterFullscreen();
+                }}
+                className={`w-full py-2.5 rounded-xl text-xs font-bold text-center transition-all ${
+                  violationModal.action === 'FLAG'
+                    ? 'bg-[#F43F5E] hover:bg-[#E11D48] text-white shadow-lg shadow-[#F43F5E]/25'
+                    : 'bg-[#F59E0B] hover:bg-[#D97706] text-black shadow-lg shadow-[#F59E0B]/25'
+                }`}
+              >
+                Return to Fullscreen &amp; Continue &rarr;
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

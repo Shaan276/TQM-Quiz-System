@@ -829,6 +829,21 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
                     </div>
 
                     <div className="text-right flex items-center gap-3">
+                      {/* Integrity / Anti-Cheat Status */}
+                      {att.is_flagged ? (
+                        <span className="text-[10px] font-extrabold text-[#FB7185] bg-[#F43F5E]/20 px-2.5 py-0.5 rounded-full border border-[#F43F5E]/40 flex items-center gap-1 animate-pulse" title={att.flag_reason || 'Flagged: Multiple window exits or tab changes'}>
+                          <span>🚩</span> FLAGGED
+                        </span>
+                      ) : att.warning_count > 0 ? (
+                        <span className="text-[10px] font-bold text-[#F59E0B] bg-[#F59E0B]/20 px-2.5 py-0.5 rounded-full border border-[#F59E0B]/40 flex items-center gap-1" title="1 tab switch / fullscreen exit warning">
+                          <span>⚠️</span> 1 Warning
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-medium text-[#10B981] bg-[#10B981]/15 px-2 py-0.5 rounded-full border border-[#10B981]/30">
+                          ✓ Fullscreen Clean
+                        </span>
+                      )}
+
                       <div>
                         <span className="font-mono font-bold text-white text-sm">
                           {att.score_percentage}%
@@ -918,7 +933,7 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
             </div>
 
             {/* Launch Modes Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               
               {/* Option 1: Live Multiplayer (Host Live) */}
               <div className="p-4 rounded-xl bg-gradient-to-b from-[#10B981]/10 via-[#0E1626] to-[#0A1220] border-2 border-[#10B981]/40 hover:border-[#10B981] transition-all flex flex-col justify-between space-y-3 shadow-lg shadow-[#10B981]/10">
@@ -1006,34 +1021,14 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
                 </button>
               </div>
 
-              {/* Option 4: Proctored / Cohort Assessment */}
-              <div className="p-4 rounded-xl bg-[#0E1626] border border-[#1B2A44] hover:border-[#A855F7]/60 transition-all flex flex-col justify-between space-y-3">
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="w-8 h-8 rounded-lg bg-[#A855F7]/15 flex items-center justify-center text-[#A855F7]">
-                      <ShieldCheck size={18} />
-                    </span>
-                    <span className="text-[10px] font-extrabold uppercase bg-[#A855F7]/20 text-[#A855F7] px-2 py-0.5 rounded-full">
-                      High-Stakes Exam
-                    </span>
-                  </div>
-                  <h4 className="text-sm font-black text-white">Proctored Assessment</h4>
-                  <p className="text-xs text-[#94A3B8] leading-relaxed">
-                    Full-screen lock, randomized question delivery, tab focus audit, and strict single-attempt submission.
-                  </p>
-                </div>
-                <button
-                  onClick={() => {
-                    alert(`Proctored assessment activated for "${launchModalQuiz.title}"!`);
-                    setLaunchModalQuiz(null);
-                  }}
-                  className="btn-secondary text-xs py-2 px-3 font-bold w-full justify-center gap-1.5 text-[#A855F7] border-[#A855F7]/30 hover:bg-[#A855F7]/15"
-                >
-                  <ShieldCheck size={14} />
-                  <span>Launch Proctored Exam</span>
-                </button>
-              </div>
+            </div>
 
+            {/* Anti-cheat banner notice */}
+            <div className="p-3 rounded-xl bg-[#0E1626] border border-[#1F304E] flex items-center gap-2.5 text-xs text-[#94A3B8]">
+              <span className="text-base">🛡️</span>
+              <p>
+                <strong className="text-white">Built-in Fullscreen &amp; Tab-Switch Protection:</strong> All assessments automatically enforce full screen. The 1st tab switch or exit prompts a warning; subsequent exits permanently flag the test for teacher review.
+              </p>
             </div>
 
             {/* Modal Footer */}

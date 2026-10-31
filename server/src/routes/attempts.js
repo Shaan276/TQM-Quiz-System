@@ -332,6 +332,9 @@ router.get('/history/my', authenticateToken, async (req, res, next) => {
         a.time_taken_sec,
         a.started_at,
         a.submitted_at,
+        a.warning_count,
+        a.is_flagged,
+        a.flag_reason,
         q.title as quiz_title,
         q.category as quiz_category,
         q.difficulty as quiz_difficulty,
@@ -407,7 +410,10 @@ router.get('/quiz/:quizId', authenticateToken, requireRole('TEACHER', 'CREATOR',
         a.incorrect_answers,
         a.time_taken_sec,
         a.started_at,
-        a.submitted_at
+        a.submitted_at,
+        a.warning_count,
+        a.is_flagged,
+        a.flag_reason
        FROM quiz_attempts a
        JOIN users u ON a.user_id = u.id
        WHERE a.quiz_id = ? AND a.status = 'COMPLETED'
@@ -499,7 +505,10 @@ router.get('/:id', authenticateToken, async (req, res, next) => {
           totalQuestions: attempt.total_questions,
           correctAnswers: attempt.correct_answers,
           incorrectAnswers: attempt.incorrect_answers,
-          remainingSeconds
+          remainingSeconds,
+          warningCount: attempt.warning_count || 0,
+          isFlagged: attempt.is_flagged === 1,
+          flagReason: attempt.flag_reason || ''
         },
         quiz: {
           id: quiz?.id,
@@ -512,6 +521,95 @@ router.get('/:id', authenticateToken, async (req, res, next) => {
         },
         questions: maskQuestionsForAttempt(questions),
         savedAnswers: answersMap
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// -------------------------------------------------------------
+// POST /api/v1/attempts/:id/violation - Record fullscreen exit or tab switch violation
+// -------------------------------------------------------------
+router.post('/:id/violation', authenticateToken, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    const { type = 'TAB_SWITCH', details = '' } = req.body;
+
+    const attempt = await dbGet(`SELECT * FROM quiz_attempts WHERE id = ?`, [id]);
+    if (!attempt) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'ERR_NOT_FOUND', message: 'Attempt not found' }
+      });
+    }
+
+    if (attempt.user_id !== userId) {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'ERR_FORBIDDEN', message: 'Unauthorized' }
+      });
+    }
+
+    // Only process violations while in progress
+    if (attempt.status !== 'IN_PROGRESS') {
+      return res.json({
+        success: true,
+        data: {
+          warningCount: attempt.warning_count || 0,
+          isFlagged: attempt.is_flagged === 1,
+          status: 'IGNORED_NOT_ACTIVE'
+        }
+      });
+    }
+
+    const currentWarnings = attempt.warning_count || 0;
+    const newWarnings = currentWarnings + 1;
+    let isFlagged = attempt.is_flagged === 1;
+    let flagReason = attempt.flag_reason || '';
+
+    // First violation = WARNING (warningCount = 1, isFlagged = false)
+    // Second or subsequent violation = FLAGGED (warningCount >= 2, isFlagged = true)
+    if (newWarnings >= 2) {
+      isFlagged = true;
+      flagReason = `Multiple test window violations (${type}: tab switch / fullscreen exit)`;
+    }
+
+    let violations = [];
+    try {
+      violations = JSON.parse(attempt.violations_log || '[]');
+    } catch (e) {
+      violations = [];
+    }
+    violations.push({
+      type,
+      details,
+      timestamp: new Date().toISOString(),
+      action: newWarnings >= 2 ? 'FLAG' : 'WARNING'
+    });
+
+    await dbRun(
+      `UPDATE quiz_attempts 
+       SET warning_count = ?, is_flagged = ?, flag_reason = ?, violations_log = ?
+       WHERE id = ?`,
+      [newWarnings, isFlagged ? 1 : 0, flagReason, JSON.stringify(violations), id]
+    );
+
+    res.json({
+      success: true,
+      action: newWarnings >= 2 ? 'FLAG' : 'WARNING',
+      warningCount: newWarnings,
+      isFlagged,
+      flagReason,
+      data: {
+        warningCount: newWarnings,
+        isFlagged,
+        flagReason,
+        action: newWarnings >= 2 ? 'FLAG' : 'WARNING',
+        message: newWarnings === 1
+          ? 'Warning: Fullscreen exit or tab switch detected. Next infraction will be flagged.'
+          : 'Flagged: Multiple violations recorded. Your teacher has been notified.'
       }
     });
   } catch (err) {
@@ -858,7 +956,10 @@ router.post('/:id/submit', authenticateToken, async (req, res, next) => {
         unansweredCount,
         timeTakenSec,
         submittedAt: submittedAt.toISOString(),
-        showExplanations: quiz?.show_explanations || 'AFTER_SUBMIT'
+        showExplanations: quiz?.show_explanations || 'AFTER_SUBMIT',
+        warningCount: attempt.warning_count || 0,
+        isFlagged: attempt.is_flagged === 1,
+        flagReason: attempt.flag_reason || ''
       }
     });
   } catch (err) {
@@ -952,7 +1053,10 @@ router.get('/:id/summary', authenticateToken, async (req, res, next) => {
           unansweredCount: attempt.unanswered_count,
           timeTakenSec: attempt.time_taken_sec,
           startedAt: attempt.started_at,
-          submittedAt: attempt.submitted_at
+          submittedAt: attempt.submitted_at,
+          warningCount: attempt.warning_count || 0,
+          isFlagged: attempt.is_flagged === 1,
+          flagReason: attempt.flag_reason || ''
         },
         quiz: {
           id: quiz?.id,

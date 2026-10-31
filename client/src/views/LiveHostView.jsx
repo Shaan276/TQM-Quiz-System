@@ -40,6 +40,7 @@ export default function LiveHostView({ sessionId, onBack }) {
   const [copiedCode, setCopiedCode] = useState(false);
   const [countdownNum, setCountdownNum] = useState(3);
   const [isLeaderboardVisible, setIsLeaderboardVisible] = useState(true);
+  const [violationToast, setViolationToast] = useState(null);
 
   const wsRef = useRef(null);
   const timerRef = useRef(null);
@@ -148,6 +149,33 @@ export default function LiveHostView({ sessionId, onBack }) {
           case 'podium_celebration':
             setStatus('COMPLETED');
             setPodiumData(payload);
+            break;
+
+          case 'participant_violation':
+            setViolationToast(payload);
+            setTimeout(() => setViolationToast(null), 6000);
+            setParticipants(prev => prev.map(p => {
+              if (p.userId === payload.userId) {
+                return {
+                  ...p,
+                  warningCount: payload.warningCount,
+                  isFlagged: payload.isFlagged,
+                  flagReason: payload.flagReason
+                };
+              }
+              return p;
+            }));
+            setLeaderboard(prev => prev.map(p => {
+              if (p.userId === payload.userId) {
+                return {
+                  ...p,
+                  warningCount: payload.warningCount,
+                  isFlagged: payload.isFlagged,
+                  flagReason: payload.flagReason
+                };
+              }
+              return p;
+            }));
             break;
 
           default:
@@ -318,6 +346,15 @@ export default function LiveHostView({ sessionId, onBack }) {
                     #{item.rank}
                   </span>
                   <span className="truncate font-semibold">{item.displayName}</span>
+                  {item.isFlagged ? (
+                    <span className="text-[10px] font-extrabold text-[#FB7185] bg-[#F43F5E]/20 px-1.5 py-0.5 rounded border border-[#F43F5E]/40 animate-pulse shrink-0">
+                      🚩 Flagged
+                    </span>
+                  ) : item.warningCount > 0 ? (
+                    <span className="text-[10px] font-bold text-[#F59E0B] bg-[#F59E0B]/20 px-1.5 py-0.5 rounded border border-[#F59E0B]/40 shrink-0">
+                      ⚠️ 1 Warning
+                    </span>
+                  ) : null}
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
                   <span className="text-[11px] text-[#94A3B8]">{item.correctCount || 0} ✓</span>
@@ -403,6 +440,33 @@ export default function LiveHostView({ sessionId, onBack }) {
         </div>
       </div>
 
+      {/* Real-time Anti-Cheat Violation Toast for Teacher */}
+      {violationToast && (
+        <div className={`p-4 rounded-2xl border flex items-center justify-between gap-3 text-xs shadow-xl animate-fadeIn ${
+          violationToast.isFlagged
+            ? 'bg-[#F43F5E]/20 text-[#FB7185] border-[#F43F5E]/50'
+            : 'bg-[#F59E0B]/20 text-[#FBBF24] border-[#F59E0B]/50'
+        }`}>
+          <div className="flex items-center gap-3">
+            <span className="text-xl">{violationToast.isFlagged ? '🚩' : '⚠️'}</span>
+            <div>
+              <p className="font-bold text-sm">
+                {violationToast.isFlagged ? 'ANTI-CHEAT ALERT: Participant Flagged!' : 'Anti-Cheat Warning Logged'}
+              </p>
+              <p className="text-[11px] opacity-90">
+                <strong className="text-white">{violationToast.displayName}</strong> {violationToast.isFlagged ? 'has been FLAGGED for multiple window exits / tab switches!' : 'exited fullscreen / switched tabs (Warning 1 of 1).'}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setViolationToast(null)}
+            className="p-1 rounded-lg hover:bg-white/10 text-white/60 hover:text-white"
+          >
+            &times;
+          </button>
+        </div>
+      )}
+
       {/* ------------------------------------------------------------- */}
       {/* 1. LOBBY PHASE */}
       {/* ------------------------------------------------------------- */}
@@ -477,14 +541,26 @@ export default function LiveHostView({ sessionId, onBack }) {
                 {participants.map((p, idx) => (
                   <div
                     key={p.id || idx}
-                    className="p-3 rounded-xl bg-[#121D32] border border-[#1F304E] flex items-center gap-2.5 animate-fadeIn"
+                    className="p-3 rounded-xl bg-[#121D32] border border-[#1F304E] flex items-center justify-between gap-2.5 animate-fadeIn"
                   >
-                    <div className="w-8 h-8 rounded-lg bg-[#38BDF8]/20 text-[#38BDF8] flex items-center justify-center font-bold text-xs uppercase">
-                      {p.displayName.slice(0, 2)}
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-8 h-8 rounded-lg bg-[#38BDF8]/20 text-[#38BDF8] flex items-center justify-center font-bold text-xs uppercase shrink-0">
+                        {p.displayName.slice(0, 2)}
+                      </div>
+                      <span className="text-xs font-semibold text-white truncate">
+                        {p.displayName}
+                      </span>
                     </div>
-                    <span className="text-xs font-semibold text-white truncate">
-                      {p.displayName}
-                    </span>
+
+                    {p.isFlagged ? (
+                      <span className="text-[10px] font-extrabold text-[#FB7185] bg-[#F43F5E]/20 px-1.5 py-0.5 rounded-full border border-[#F43F5E]/40 animate-pulse shrink-0" title="Flagged: Multiple window exits or tab changes">
+                        🚩 Flagged
+                      </span>
+                    ) : p.warningCount > 0 ? (
+                      <span className="text-[10px] font-bold text-[#F59E0B] bg-[#F59E0B]/20 px-1.5 py-0.5 rounded-full border border-[#F59E0B]/40 shrink-0" title="1 window exit or tab switch warning">
+                        ⚠️ 1 Warning
+                      </span>
+                    ) : null}
                   </div>
                 ))}
               </div>

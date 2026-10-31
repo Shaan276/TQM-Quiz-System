@@ -163,6 +163,16 @@ export default function AttemptHistoryView({ onViewResult, onResumeAttempt, setA
                   {isCompleted ? (
                     <div className="text-right">
                       <div className="flex items-center justify-end gap-2">
+                        {a.is_flagged ? (
+                          <span className="text-[10px] font-extrabold text-[#FB7185] bg-[#F43F5E]/20 px-2 py-0.5 rounded-full border border-[#F43F5E]/40 animate-pulse" title={a.flag_reason || 'Flagged for multiple window exits or tab changes'}>
+                            🚩 Flagged
+                          </span>
+                        ) : a.warning_count > 0 ? (
+                          <span className="text-[10px] font-bold text-[#F59E0B] bg-[#F59E0B]/20 px-2 py-0.5 rounded-full border border-[#F59E0B]/40" title="1 tab switch warning logged">
+                            ⚠️ 1 Warning
+                          </span>
+                        ) : null}
+
                         <span className="text-xl font-black font-mono text-white">
                           {a.score_percentage}%
                         </span>

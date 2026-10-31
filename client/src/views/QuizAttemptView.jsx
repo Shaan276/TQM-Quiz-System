@@ -32,6 +32,98 @@ export default function QuizAttemptView({ attemptId: initialAttemptId, quizId, o
   const [submitting, setSubmitting] = useState(false);
   const saveTimeoutRef = useRef(null);
 
+  // Fullscreen & Anti-Cheat State
+  const [warningCount, setWarningCount] = useState(0);
+  const [isFlagged, setIsFlagged] = useState(false);
+  const [violationModal, setViolationModal] = useState(null); // { action, count, isFlagged, message }
+  const [isFullscreen, setIsFullscreen] = useState(Boolean(document.fullscreenElement || document.webkitFullscreenElement));
+  const violationCooldownRef = useRef(false);
+
+  // Helper to enter fullscreen
+  const enterFullscreen = () => {
+    try {
+      const el = document.documentElement;
+      if (el.requestFullscreen) {
+        el.requestFullscreen().catch(() => {});
+      } else if (el.webkitRequestFullscreen) {
+        el.webkitRequestFullscreen();
+      }
+    } catch (e) {}
+  };
+
+  // Fullscreen & Tab Switch Violation Logger
+  const triggerViolation = async (violationType) => {
+    if (!attemptId || violationCooldownRef.current || submitting) return;
+    violationCooldownRef.current = true;
+    setTimeout(() => {
+      violationCooldownRef.current = false;
+    }, 2000);
+
+    try {
+      const res = await fetch(`/api/v1/attempts/${attemptId}/violation`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          type: violationType,
+          details: violationType === 'FULLSCREEN_EXIT' ? 'Exited fullscreen mode' : 'Switched tabs or window focus lost'
+        })
+      });
+      const data = await res.json();
+      if (data.success && data.data) {
+        setWarningCount(data.data.warningCount);
+        setIsFlagged(data.data.isFlagged);
+        setViolationModal({
+          action: data.data.action,
+          count: data.data.warningCount,
+          isFlagged: data.data.isFlagged,
+          message: data.data.message
+        });
+      }
+    } catch (err) {
+      console.error('Failed to report violation', err);
+    }
+  };
+
+  // Fullscreen & Visibility Event Listeners
+  useEffect(() => {
+    enterFullscreen();
+
+    const handleFullscreenChange = () => {
+      const inFullscreen = Boolean(document.fullscreenElement || document.webkitFullscreenElement);
+      setIsFullscreen(inFullscreen);
+      if (!inFullscreen && !submitting && !showSubmitModal) {
+        triggerViolation('FULLSCREEN_EXIT');
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden' && !submitting && !showSubmitModal) {
+        triggerViolation('TAB_SWITCH');
+      }
+    };
+
+    const handleWindowBlur = () => {
+      if (!submitting && !showSubmitModal) {
+        triggerViolation('WINDOW_BLUR');
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('blur', handleWindowBlur);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('blur', handleWindowBlur);
+    };
+  }, [attemptId, submitting, showSubmitModal]);
+
   // Initialize or resume attempt
   useEffect(() => {
     async function initAttempt() {
@@ -55,6 +147,12 @@ export default function QuizAttemptView({ attemptId: initialAttemptId, quizId, o
           setAnswers(data.data.savedAnswers || {});
           if (data.data.attempt.remainingSeconds !== null) {
             setRemainingSec(data.data.attempt.remainingSeconds);
+          }
+          if (data.data.attempt?.warningCount !== undefined) {
+            setWarningCount(data.data.attempt.warningCount);
+          }
+          if (data.data.attempt?.isFlagged !== undefined) {
+            setIsFlagged(data.data.attempt.isFlagged);
           }
         } else if (quizId) {
           endpoint = `/api/v1/attempts/start`;
@@ -280,6 +378,25 @@ export default function QuizAttemptView({ attemptId: initialAttemptId, quizId, o
 
         {/* Right: Timer & Submit Action */}
         <div className="flex items-center gap-3">
+          {/* Fullscreen & Anti-Cheat Indicator */}
+          {isFlagged ? (
+            <span className="px-2.5 py-1 rounded-xl text-xs font-black bg-[#F43F5E]/20 text-[#FB7185] border border-[#F43F5E]/40 flex items-center gap-1.5 animate-pulse" title="Flagged: Multiple window exits or tab changes detected">
+              <span>🚩</span> FLAGGED
+            </span>
+          ) : warningCount > 0 ? (
+            <span className="px-2.5 py-1 rounded-xl text-xs font-bold bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/40 flex items-center gap-1.5" title="1 Tab switch or fullscreen exit recorded">
+              <span>⚠️</span> 1 Warning
+            </span>
+          ) : (
+            <button
+              onClick={enterFullscreen}
+              className="px-2.5 py-1 rounded-xl text-xs font-medium bg-[#10B981]/15 text-[#34D399] border border-[#10B981]/30 flex items-center gap-1.5 hover:bg-[#10B981]/25 transition-all"
+              title="Fullscreen Mode Active"
+            >
+              <span>🖥️</span> Fullscreen
+            </button>
+          )}
+
           {remainingSec !== null && (
             <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl font-mono text-sm font-bold border transition-colors ${
               isLowTime
@@ -301,6 +418,21 @@ export default function QuizAttemptView({ attemptId: initialAttemptId, quizId, o
         </div>
 
       </div>
+
+      {/* Non-fullscreen banner alert */}
+      {!isFullscreen && (
+        <div className="bg-[#F59E0B]/15 border border-[#F59E0B]/40 rounded-xl p-3 flex items-center justify-between gap-3 text-xs text-[#FBBF24] animate-fadeIn">
+          <span className="flex items-center gap-2 font-medium">
+            <span>⚠️</span> You are not in Fullscreen Mode! Fullscreen is required for this assessment.
+          </span>
+          <button
+            onClick={enterFullscreen}
+            className="px-3 py-1 bg-[#F59E0B] text-black font-bold rounded-lg text-xs hover:bg-[#D97706] transition-all shadow-md shrink-0"
+          >
+            Re-enter Fullscreen
+          </button>
+        </div>
+      )}
 
       {/* Progress Bar */}
       <div className="w-full bg-[#121D32] h-1.5 rounded-full overflow-hidden">
@@ -694,6 +826,70 @@ export default function QuizAttemptView({ attemptId: initialAttemptId, quizId, o
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* Violation Alert Modal (Warning or Flag) */}
+      {violationModal && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-fadeIn">
+          <div className={`dashboard-card max-w-md w-full p-6 space-y-4 border-2 shadow-2xl ${
+            violationModal.action === 'FLAG'
+              ? 'border-[#F43F5E] bg-[#170E14]'
+              : 'border-[#F59E0B] bg-[#15120E]'
+          }`}>
+            <div className="flex items-center gap-3">
+              <span className="text-3xl">{violationModal.action === 'FLAG' ? '🚩' : '⚠️'}</span>
+              <div>
+                <h3 className={`text-base font-black ${violationModal.action === 'FLAG' ? 'text-[#FB7185]' : 'text-[#F59E0B]'}`}>
+                  {violationModal.action === 'FLAG' ? 'TEST FLAGGED!' : 'Warning: Test Window Exited!'}
+                </h3>
+                <p className="text-xs text-[#94A3B8]">
+                  {violationModal.action === 'FLAG'
+                    ? 'Multiple tab switches or fullscreen exits detected'
+                    : 'Fullscreen exit / Tab change detected (Warning 1 of 1)'}
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-[#0B111D] border border-[#1F304E] text-xs text-[#CBD5E1] leading-relaxed space-y-2">
+              {violationModal.action === 'FLAG' ? (
+                <>
+                  <p className="font-bold text-[#FB7185]">
+                    Your test attempt has now been permanently FLAGGED for your teacher.
+                  </p>
+                  <p className="text-[11px] text-[#94A3B8]">
+                    This violation has been logged on the server. Your teacher can view all flagged attempts in their assessment gradebook.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="font-semibold text-white">
+                    Leaving full screen or changing browser tabs is strictly monitored.
+                  </p>
+                  <p className="text-[11px] text-[#F59E0B]">
+                    This is your ONLY warning. If you exit full screen or switch tabs again, your test will be permanently FLAGGED for your teacher.
+                  </p>
+                </>
+              )}
+            </div>
+
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setViolationModal(null);
+                  enterFullscreen();
+                }}
+                className={`w-full py-2.5 rounded-xl text-xs font-bold text-center transition-all ${
+                  violationModal.action === 'FLAG'
+                    ? 'bg-[#F43F5E] hover:bg-[#E11D48] text-white shadow-lg shadow-[#F43F5E]/25'
+                    : 'bg-[#F59E0B] hover:bg-[#D97706] text-black shadow-lg shadow-[#F59E0B]/25'
+                }`}
+              >
+                Return to Fullscreen &amp; Continue Test &rarr;
+              </button>
+            </div>
           </div>
         </div>
       )}

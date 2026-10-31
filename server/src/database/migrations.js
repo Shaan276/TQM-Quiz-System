@@ -400,6 +400,41 @@ const MIGRATIONS = [
       await dbRun(`CREATE INDEX IF NOT EXISTS idx_participants_user ON session_participants(user_id);`, [], db);
       await dbRun(`CREATE INDEX IF NOT EXISTS idx_session_answers_lookup ON session_answers(session_id, question_id);`, [], db);
     }
+  },
+  {
+    version: 6,
+    name: '006_fullscreen_anti_cheat_monitoring',
+    up: async (db) => {
+      // 1. Add columns to quiz_attempts
+      const attCols = await dbAll(`PRAGMA table_info(quiz_attempts);`, [], db);
+      if (!attCols.some(c => c.name === 'warning_count')) {
+        await dbRun(`ALTER TABLE quiz_attempts ADD COLUMN warning_count INTEGER NOT NULL DEFAULT 0;`, [], db);
+      }
+      if (!attCols.some(c => c.name === 'is_flagged')) {
+        await dbRun(`ALTER TABLE quiz_attempts ADD COLUMN is_flagged INTEGER NOT NULL DEFAULT 0;`, [], db);
+      }
+      if (!attCols.some(c => c.name === 'flag_reason')) {
+        await dbRun(`ALTER TABLE quiz_attempts ADD COLUMN flag_reason TEXT NULL;`, [], db);
+      }
+      if (!attCols.some(c => c.name === 'violations_log')) {
+        await dbRun(`ALTER TABLE quiz_attempts ADD COLUMN violations_log TEXT NOT NULL DEFAULT '[]';`, [], db);
+      }
+
+      // 2. Add columns to session_participants
+      const partCols = await dbAll(`PRAGMA table_info(session_participants);`, [], db);
+      if (!partCols.some(c => c.name === 'warning_count')) {
+        await dbRun(`ALTER TABLE session_participants ADD COLUMN warning_count INTEGER NOT NULL DEFAULT 0;`, [], db);
+      }
+      if (!partCols.some(c => c.name === 'is_flagged')) {
+        await dbRun(`ALTER TABLE session_participants ADD COLUMN is_flagged INTEGER NOT NULL DEFAULT 0;`, [], db);
+      }
+      if (!partCols.some(c => c.name === 'flag_reason')) {
+        await dbRun(`ALTER TABLE session_participants ADD COLUMN flag_reason TEXT NULL;`, [], db);
+      }
+      if (!partCols.some(c => c.name === 'violations_log')) {
+        await dbRun(`ALTER TABLE session_participants ADD COLUMN violations_log TEXT NOT NULL DEFAULT '[]';`, [], db);
+      }
+    }
   }
 ];
 

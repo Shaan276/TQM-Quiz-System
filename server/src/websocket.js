@@ -166,6 +166,24 @@ function initWebSocketServer(httpServer) {
           return;
         }
 
+        // 10. Participant Violation (Tab Switch / Fullscreen Exit)
+        if (event === 'tab_violation') {
+          if (!authenticatedUser) return;
+          const { type = 'TAB_SWITCH', details = '' } = payload;
+          try {
+            await liveSessionManager.recordParticipantViolation(
+              sessionId || payload.sessionId,
+              authenticatedUser.id,
+              type,
+              details,
+              ws
+            );
+          } catch (err) {
+            console.error('[WebSocket] Violation recording error:', err.message);
+          }
+          return;
+        }
+
       } catch (err) {
         console.error('[WebSocket] Message handling error:', err);
       }

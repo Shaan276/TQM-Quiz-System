@@ -177,6 +177,31 @@ export default function QuizResultView({ attemptId, onRetake, onReviewMistakes, 
 
         </div>
 
+        {/* Anti-cheat Integrity Result Banner */}
+        {attempt.isFlagged ? (
+          <div className="p-3.5 rounded-xl bg-[#F43F5E]/15 border border-[#F43F5E]/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-[#FB7185] max-w-2xl mx-auto animate-pulse">
+            <span className="flex items-center gap-2 font-bold text-left">
+              <span>🚩</span> TEST FLAGGED: Multiple fullscreen exits or tab changes detected ({attempt.warningCount || 2} infractions recorded).
+            </span>
+            <span className="text-[10px] uppercase font-extrabold bg-[#F43F5E]/30 text-white px-2.5 py-0.5 rounded-full border border-[#F43F5E]/40 shrink-0">
+              Teacher Notified
+            </span>
+          </div>
+        ) : attempt.warningCount > 0 ? (
+          <div className="p-3 rounded-xl bg-[#F59E0B]/15 border border-[#F59E0B]/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-[#FBBF24] max-w-2xl mx-auto">
+            <span className="flex items-center gap-2 text-left">
+              <span>⚠️</span> 1 Fullscreen exit / tab switch warning was logged during this attempt.
+            </span>
+            <span className="text-[10px] font-bold bg-[#F59E0B]/20 text-[#F59E0B] px-2 py-0.5 rounded-full border border-[#F59E0B]/30 shrink-0">
+              1 Warning
+            </span>
+          </div>
+        ) : (
+          <div className="p-2.5 rounded-xl bg-[#10B981]/10 border border-[#10B981]/25 flex items-center justify-center gap-2 text-xs text-[#34D399] max-w-md mx-auto">
+            <span>🛡️</span> Verified Clean Attempt: Fullscreen maintained with zero tab switches.
+          </div>
+        )}
+
       </div>
 
       {/* Review Questions Section */}
