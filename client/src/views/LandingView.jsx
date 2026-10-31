@@ -43,10 +43,25 @@ export default function LandingView({ setActiveRoute }) {
           <div className="pt-2 flex flex-wrap items-center gap-3">
             {user ? (
               <button
-                onClick={() => setActiveRoute(user.role === 'CREATOR' || user.role === 'ADMIN' ? 'creator-dashboard' : 'learner-dashboard')}
+                onClick={() => {
+                  const role = (user.role || '').toUpperCase();
+                  if (role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'ORG_ADMIN') {
+                    setActiveRoute('admin-dashboard');
+                  } else if (role === 'TEACHER' || role === 'CREATOR') {
+                    setActiveRoute('creator-dashboard');
+                  } else {
+                    setActiveRoute('learner-dashboard');
+                  }
+                }}
                 className="btn-emerald-primary text-xs py-2.5 px-5 gap-2"
               >
-                Go to {user.role === 'CREATOR' || user.role === 'ADMIN' ? 'Creator Studio' : 'Learner Dashboard'}
+                Go to {
+                  ['SUPER_ADMIN', 'ADMIN', 'ORG_ADMIN'].includes((user.role || '').toUpperCase())
+                    ? 'Admin Console'
+                    : ['TEACHER', 'CREATOR'].includes((user.role || '').toUpperCase())
+                    ? 'Creator Studio'
+                    : 'Learner Dashboard'
+                }
                 <ArrowRight size={14} />
               </button>
             ) : (

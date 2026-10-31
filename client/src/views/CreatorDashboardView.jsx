@@ -20,7 +20,8 @@ import {
   Database,
   ShieldCheck,
   TrendingUp,
-  Sparkles
+  Sparkles,
+  Award
 } from 'lucide-react';
 
 export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onOpenPreview }) {

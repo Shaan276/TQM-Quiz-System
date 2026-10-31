@@ -19,6 +19,10 @@ export default function ProfileView() {
   const [passwordMsg, setPasswordMsg] = useState(null);
   const [passwordLoading, setPasswordLoading] = useState(false);
 
+  React.useEffect(() => {
+    if (user?.name) setName(user.name);
+  }, [user?.name]);
+
   const handleUpdateName = async (e) => {
     e.preventDefault();
     setNameError('');

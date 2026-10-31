@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from './context/AuthContext';
 import Sidebar from './components/Sidebar';
+import ErrorBoundary from './components/ErrorBoundary';
 import LandingView from './views/LandingView';
 import RegisterView from './views/RegisterView';
 import LoginView from './views/LoginView';
@@ -21,28 +22,66 @@ import SuperAdminView from './views/SuperAdminView';
 
 export default function App() {
   const { user, loading } = useAuth();
-  const [activeStudioQuizId, setActiveStudioQuizId] = useState(null);
+  const [activeStudioQuizId, setActiveStudioQuizId] = useState(() => sessionStorage.getItem('quiz_active_studio_id') || null);
   const [previewQuizId, setPreviewQuizId] = useState(null);
   
   // Phase P3 Taking & Result State
-  const [activeAttemptId, setActiveAttemptId] = useState(null);
-  const [activeAttemptQuizId, setActiveAttemptQuizId] = useState(null);
-  const [resultAttemptId, setResultAttemptId] = useState(null);
+  const [activeAttemptId, setActiveAttemptId] = useState(() => sessionStorage.getItem('quiz_active_attempt_id') || null);
+  const [activeAttemptQuizId, setActiveAttemptQuizId] = useState(() => sessionStorage.getItem('quiz_active_attempt_quiz_id') || null);
+  const [resultAttemptId, setResultAttemptId] = useState(() => sessionStorage.getItem('quiz_result_attempt_id') || null);
   
-  // URL check for initial query parameters (e.g. ?token=... on verify or reset password links)
-  const [activeRoute, setActiveRoute] = useState(() => {
+  // URL check for initial query parameters or persisted route
+  const [activeRoute, setActiveRouteState] = useState(() => {
     const path = window.location.pathname;
     if (path.includes('verify-email') || window.location.search.includes('verify-email')) return 'verify-email';
     if (path.includes('reset-password') || window.location.search.includes('reset-password')) return 'reset-password';
+    
+    // Check URL hash first (e.g. #creator-dashboard)
+    const hash = (window.location.hash || '').replace('#', '').trim();
+    const VALID_ROUTES = [
+      'landing', 'register', 'login', 'forgot-password', 'reset-password',
+      'verify-email', 'profile', 'creator-dashboard', 'quiz-studio',
+      'question-bank', 'learner-dashboard', 'quiz-attempt', 'quiz-result',
+      'mistake-notebook', 'attempt-history', 'admin-dashboard'
+    ];
+    if (hash && VALID_ROUTES.includes(hash)) return hash;
+
+    // Check sessionStorage
+    const saved = sessionStorage.getItem('quiz_active_route');
+    if (saved && VALID_ROUTES.includes(saved)) return saved;
+
     return 'landing';
   });
+
+  const setActiveRoute = useCallback((route) => {
+    setActiveRouteState(route);
+    try {
+      sessionStorage.setItem('quiz_active_route', route);
+      if (window.location.hash.replace('#', '') !== route) {
+        window.location.hash = route;
+      }
+    } catch (e) {}
+  }, []);
+
+  // Listen for browser Back / Forward hash navigation
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = (window.location.hash || '').replace('#', '').trim();
+      if (hash && hash !== activeRoute) {
+        setActiveRouteState(hash);
+        sessionStorage.setItem('quiz_active_route', hash);
+      }
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, [activeRoute]);
 
   // Requirement: If on any protected/authenticated page and user logs out, immediately return to landing page
   useEffect(() => {
     if (!user && !['landing', 'login', 'register', 'forgot-password', 'reset-password', 'verify-email'].includes(activeRoute)) {
       setActiveRoute('landing');
     }
-  }, [user, activeRoute]);
+  }, [user, activeRoute, setActiveRoute]);
 
   // Strict Role-Based View Guard
   useEffect(() => {
@@ -62,10 +101,11 @@ export default function App() {
     if (isTeacher && !isSuperAdmin && !isOrgAdmin && activeRoute === 'admin-dashboard') {
       setActiveRoute('creator-dashboard');
     }
-  }, [user, activeRoute]);
+  }, [user, activeRoute, setActiveRoute]);
 
   const handleOpenStudio = (quizId) => {
     setActiveStudioQuizId(quizId);
+    sessionStorage.setItem('quiz_active_studio_id', quizId);
     setActiveRoute('quiz-studio');
   };
 
@@ -76,29 +116,37 @@ export default function App() {
   // Taking flows
   const handleStartAttempt = (quizId) => {
     setActiveAttemptQuizId(quizId);
+    sessionStorage.setItem('quiz_active_attempt_quiz_id', quizId);
     setActiveAttemptId(null);
+    sessionStorage.removeItem('quiz_active_attempt_id');
     setActiveRoute('quiz-attempt');
   };
 
   const handleResumeAttempt = (attemptId) => {
     setActiveAttemptId(attemptId);
+    sessionStorage.setItem('quiz_active_attempt_id', attemptId);
     setActiveAttemptQuizId(null);
+    sessionStorage.removeItem('quiz_active_attempt_quiz_id');
     setActiveRoute('quiz-attempt');
   };
 
   const handleCompleteAttempt = (attemptId) => {
     setResultAttemptId(attemptId);
+    sessionStorage.setItem('quiz_result_attempt_id', attemptId);
     setActiveRoute('quiz-result');
   };
 
   const handleViewResult = (attemptId) => {
     setResultAttemptId(attemptId);
+    sessionStorage.setItem('quiz_result_attempt_id', attemptId);
     setActiveRoute('quiz-result');
   };
 
   const handleRetake = (quizId) => {
     setActiveAttemptQuizId(quizId);
+    sessionStorage.setItem('quiz_active_attempt_quiz_id', quizId);
     setActiveAttemptId(null);
+    sessionStorage.removeItem('quiz_active_attempt_id');
     setActiveRoute('quiz-attempt');
   };
 
@@ -122,91 +170,108 @@ export default function App() {
         setActiveRoute={setActiveRoute}
       />
 
-      {/* Main Content Viewport */}
+      {/* Main Content Viewport protected by ErrorBoundary */}
       <main className="flex-1 p-6 lg:p-8 overflow-y-auto">
-        {activeRoute === 'landing' && <LandingView setActiveRoute={setActiveRoute} />}
-        {activeRoute === 'register' && <RegisterView setActiveRoute={setActiveRoute} />}
-        {activeRoute === 'login' && <LoginView setActiveRoute={setActiveRoute} />}
-        {activeRoute === 'forgot-password' && <ForgotPasswordView setActiveRoute={setActiveRoute} />}
-        {activeRoute === 'reset-password' && <ResetPasswordView setActiveRoute={setActiveRoute} />}
-        {activeRoute === 'verify-email' && <VerifyEmailView setActiveRoute={setActiveRoute} />}
-        {activeRoute === 'profile' && <ProfileView />}
-        
-        {/* Creator Studio */}
-        {activeRoute === 'creator-dashboard' && (
-          <CreatorDashboardView
-            setActiveRoute={setActiveRoute}
-            onOpenStudio={handleOpenStudio}
-            onOpenPreview={handleOpenPreview}
-          />
-        )}
+        <ErrorBoundary onReset={() => setActiveRoute('landing')}>
+          {activeRoute === 'landing' && <LandingView setActiveRoute={setActiveRoute} />}
+          {activeRoute === 'register' && <RegisterView setActiveRoute={setActiveRoute} />}
+          {activeRoute === 'login' && <LoginView setActiveRoute={setActiveRoute} />}
+          {activeRoute === 'forgot-password' && <ForgotPasswordView setActiveRoute={setActiveRoute} />}
+          {activeRoute === 'reset-password' && <ResetPasswordView setActiveRoute={setActiveRoute} />}
+          {activeRoute === 'verify-email' && <VerifyEmailView setActiveRoute={setActiveRoute} />}
+          {activeRoute === 'profile' && <ProfileView />}
+          
+          {/* Creator Studio */}
+          {activeRoute === 'creator-dashboard' && (
+            <CreatorDashboardView
+              setActiveRoute={setActiveRoute}
+              onOpenStudio={handleOpenStudio}
+              onOpenPreview={handleOpenPreview}
+            />
+          )}
 
-        {activeRoute === 'quiz-studio' && activeStudioQuizId && (
-          <QuizStudioView
-            quizId={activeStudioQuizId}
-            onBack={() => setActiveRoute('creator-dashboard')}
-            onOpenPreview={handleOpenPreview}
-          />
-        )}
+          {activeRoute === 'quiz-studio' && (
+            activeStudioQuizId ? (
+              <QuizStudioView
+                quizId={activeStudioQuizId}
+                onBack={() => setActiveRoute('creator-dashboard')}
+                onOpenPreview={handleOpenPreview}
+              />
+            ) : (
+              <CreatorDashboardView
+                setActiveRoute={setActiveRoute}
+                onOpenStudio={handleOpenStudio}
+                onOpenPreview={handleOpenPreview}
+              />
+            )
+          )}
 
-        {activeRoute === 'question-bank' && (
-          <QuestionBankView
-            setActiveRoute={setActiveRoute}
-          />
-        )}
+          {activeRoute === 'question-bank' && (
+            <QuestionBankView
+              setActiveRoute={setActiveRoute}
+            />
+          )}
 
-        {/* Learner Arena & Discovery */}
-        {activeRoute === 'learner-dashboard' && (
-          <LearnerDashboardView
-            onOpenPreview={handleOpenPreview}
-            onStartAttempt={handleStartAttempt}
-            setActiveRoute={setActiveRoute}
-          />
-        )}
+          {/* Learner Arena & Discovery */}
+          {activeRoute === 'learner-dashboard' && (
+            <LearnerDashboardView
+              onOpenPreview={handleOpenPreview}
+              onStartAttempt={handleStartAttempt}
+              setActiveRoute={setActiveRoute}
+            />
+          )}
 
-        {/* Interactive Taking Runner (P3) */}
-        {activeRoute === 'quiz-attempt' && (
-          <QuizAttemptView
-            attemptId={activeAttemptId}
-            quizId={activeAttemptQuizId}
-            onComplete={handleCompleteAttempt}
-            onExit={() => setActiveRoute('learner-dashboard')}
-          />
-        )}
+          {/* Interactive Taking Runner (P3) */}
+          {activeRoute === 'quiz-attempt' && (
+            <QuizAttemptView
+              attemptId={activeAttemptId}
+              quizId={activeAttemptQuizId}
+              onComplete={handleCompleteAttempt}
+              onExit={() => setActiveRoute('learner-dashboard')}
+            />
+          )}
 
-        {/* Result & Evaluation Review (P3) */}
-        {activeRoute === 'quiz-result' && resultAttemptId && (
-          <QuizResultView
-            attemptId={resultAttemptId}
-            onRetake={handleRetake}
-            onReviewMistakes={() => setActiveRoute('mistake-notebook')}
-            onBackToQuizzes={() => setActiveRoute('learner-dashboard')}
-          />
-        )}
+          {/* Result & Evaluation Review (P3) */}
+          {activeRoute === 'quiz-result' && (
+            resultAttemptId ? (
+              <QuizResultView
+                attemptId={resultAttemptId}
+                onRetake={handleRetake}
+                onReviewMistakes={() => setActiveRoute('mistake-notebook')}
+                onBackToQuizzes={() => setActiveRoute('learner-dashboard')}
+              />
+            ) : (
+              <LearnerDashboardView
+                onOpenPreview={handleOpenPreview}
+                onStartAttempt={handleStartAttempt}
+                setActiveRoute={setActiveRoute}
+              />
+            )
+          )}
 
-        {/* Mistake Notebook (P3) */}
-        {activeRoute === 'mistake-notebook' && (
-          <MistakeNotebookView
-            setActiveRoute={setActiveRoute}
-          />
-        )}
+          {/* Mistake Notebook (P3) */}
+          {activeRoute === 'mistake-notebook' && (
+            <MistakeNotebookView
+              setActiveRoute={setActiveRoute}
+            />
+          )}
 
-        {/* Attempt History (P3) */}
-        {activeRoute === 'attempt-history' && (
-          <AttemptHistoryView
-            onViewResult={handleViewResult}
-            onResumeAttempt={handleResumeAttempt}
-            setActiveRoute={setActiveRoute}
-          />
-        )}
+          {/* Attempt History (P3) */}
+          {activeRoute === 'attempt-history' && (
+            <AttemptHistoryView
+              onViewResult={handleViewResult}
+              onResumeAttempt={handleResumeAttempt}
+              setActiveRoute={setActiveRoute}
+            />
+          )}
 
-        {/* Superadmin Console (P3) */}
-        {activeRoute === 'admin-dashboard' && (
-          <SuperAdminView
-            setActiveRoute={setActiveRoute}
-          />
-        )}
-
+          {/* Superadmin Console (P3) */}
+          {activeRoute === 'admin-dashboard' && (
+            <SuperAdminView
+              setActiveRoute={setActiveRoute}
+            />
+          )}
+        </ErrorBoundary>
       </main>
 
       {/* Global Interactive Quiz Preview Modal */}
