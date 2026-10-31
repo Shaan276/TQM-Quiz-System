@@ -638,11 +638,13 @@ router.post('/:id/submit', authenticateToken, async (req, res, next) => {
             const isCaseSensitive = answerSpec.is_case_sensitive === 1;
             const acceptedVariants = expected.split('|').map(s => s.trim());
 
-            const userText = rawUserAns.trim();
+            const normalizeText = (t) => (t || '').trim().replace(/\s+/g, ' ').replace(/[.,;]$/, '');
+            const userNorm = normalizeText(rawUserAns);
             const matched = acceptedVariants.some(variant => {
+              const varNorm = normalizeText(variant);
               return isCaseSensitive
-                ? userText === variant
-                : userText.toLowerCase() === variant.toLowerCase();
+                ? userNorm === varNorm
+                : userNorm.toLowerCase() === varNorm.toLowerCase();
             });
 
             if (matched) {
@@ -662,12 +664,14 @@ router.post('/:id/submit', authenticateToken, async (req, res, next) => {
 
             const isCaseSensitive = answerSpec.is_case_sensitive === 1;
             const acceptedVariants = expected.split('|').map(s => s.trim());
-            const userText = rawUserAns.trim();
+            const normalizeText = (t) => (t || '').trim().replace(/\s+/g, ' ').replace(/[.,;]$/, '');
+            const userNorm = normalizeText(rawUserAns);
 
             const matched = acceptedVariants.some(variant => {
+              const varNorm = normalizeText(variant);
               return isCaseSensitive
-                ? userText === variant
-                : userText.toLowerCase() === variant.toLowerCase();
+                ? userNorm === varNorm
+                : userNorm.toLowerCase() === varNorm.toLowerCase();
             });
 
             if (matched) {

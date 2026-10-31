@@ -61,10 +61,20 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
   const [selectedBankQIds, setSelectedBankQIds] = useState([]);
   const [bankLoading, setBankLoading] = useState(false);
 
-  // Bank Auto-save and sync states for new/written questions
-  const [autoSaveNewToBank, setAutoSaveNewToBank] = useState(true);
+  // Bank Auto-save and sync states for new/written questions (Compulsory)
+  const autoSaveNewToBank = true;
   const [bankSavedMap, setBankSavedMap] = useState({});
   const [savingBankQIdx, setSavingBankQIdx] = useState(null);
+
+  // Timing states
+  const [defaultQuestionTimer, setDefaultQuestionTimer] = useState(30);
+
+  const handleApplyDefaultTimerToAll = () => {
+    const updated = questions.map(q => ({ ...q, time_limit_sec: defaultQuestionTimer }));
+    setQuestions(updated);
+    triggerAutosave(quiz, updated);
+    showToast(`Applied ${defaultQuestionTimer}s timer to all ${questions.length} question(s)!`);
+  };
 
   // Autosave timer ref
   const autosaveTimerRef = useRef(null);
@@ -79,7 +89,20 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
         const data = await res.json();
         if (data.success) {
           setQuiz(data.data.quiz);
-          setQuestions(data.data.quiz.questions || []);
+          const loadedQuestions = (data.data.quiz.questions || []).map(q => {
+            if (Array.isArray(q.options)) {
+              return {
+                ...q,
+                options: q.options.map(opt => ({
+                  ...opt,
+                  // If it was the placeholder default 'Option X', clear it to empty string so placeholder takes effect
+                  option_text: /^Option\s+\d+$/i.test((opt.option_text || '').trim()) ? '' : opt.option_text
+                }))
+              };
+            }
+            return q;
+          });
+          setQuestions(loadedQuestions);
           setSaveStatus('SAVED');
           setLastSavedAt(new Date());
         }
@@ -168,10 +191,10 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
 
     if (type === 'MCQ_SINGLE' || type === 'MCQ_MULTI') {
       initialOptions = [
-        { option_key: 'A', option_text: 'Option 1', is_correct: true },
-        { option_key: 'B', option_text: 'Option 2', is_correct: false },
-        { option_key: 'C', option_text: 'Option 3', is_correct: false },
-        { option_key: 'D', option_text: 'Option 4', is_correct: false }
+        { option_key: 'A', option_text: '', is_correct: true },
+        { option_key: 'B', option_text: '', is_correct: false },
+        { option_key: 'C', option_text: '', is_correct: false },
+        { option_key: 'D', option_text: '', is_correct: false }
       ];
     } else if (type === 'TRUE_FALSE') {
       initialOptions = [
@@ -195,18 +218,20 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
       questions.length + 1
     );
 
+    const newId = 'q_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+
     const newQuestion = {
-      id: 'q_' + Date.now(),
+      id: newId,
       question_code: qCode,
       question_text: '',
       question_type: type,
       marks: 1.0,
-      time_limit_sec: 30,
+      time_limit_sec: defaultQuestionTimer,
       explanation: '',
       options: initialOptions,
       answers: initialAnswers,
       settings: {},
-      saveToBank: autoSaveNewToBank,
+      saveToBank: true,
       bankSaved: false
     };
 
@@ -218,6 +243,16 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
     }
     setQuestions(updated);
     triggerAutosave(quiz, updated);
+
+    // Auto-scroll into view directly to the new question card (Google Forms style)
+    setTimeout(() => {
+      const el = document.getElementById(`question-card-${newId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const targetInput = el.querySelector('textarea, input[type="text"]');
+        if (targetInput) targetInput.focus();
+      }
+    }, 120);
   };
 
   // Update specific question
@@ -282,7 +317,7 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
     const nextKey = String.fromCharCode(65 + (q.options?.length || 0));
     const newOptions = [
       ...(q.options || []),
-      { option_key: nextKey, option_text: `Option ${(q.options?.length || 0) + 1}`, is_correct: false }
+      { option_key: nextKey, option_text: '', is_correct: false }
     ];
     handleUpdateQuestion(qIdx, { options: newOptions });
   };
@@ -533,8 +568,8 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
       )}
 
       {/* Top Floating Command Bar */}
-      <div className="dashboard-card p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 sticky top-4 z-30 shadow-2xl backdrop-blur-md bg-[#0B111D]/95">
-        <div className="flex items-center gap-3">
+      <div className="dashboard-card p-3 sm:p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 sticky top-4 z-30 shadow-2xl backdrop-blur-md bg-[#0B111D]/95">
+        <div className="flex items-center gap-3 min-w-0">
           <button
             onClick={() => {
               if (saveStatus === 'DIRTY' || saveStatus === 'SAVING') {
@@ -542,89 +577,91 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
               }
               onBack();
             }}
-            className="p-2 rounded-xl bg-[#132238] hover:bg-[#1B2A44] text-[#94A3B8] hover:text-white transition-colors"
+            className="w-9 h-9 shrink-0 flex items-center justify-center rounded-xl bg-[#132238] hover:bg-[#1B2A44] text-[#94A3B8] hover:text-white border border-[#1F304E] transition-colors"
             title="Back to Dashboard"
           >
             <ArrowLeft size={16} />
           </button>
 
-          <div>
-            <h2 className="text-sm font-extrabold text-white truncate max-w-xs sm:max-w-md">
+          <div className="min-w-0">
+            <h2 className="text-sm font-extrabold text-white truncate max-w-[200px] sm:max-w-xs md:max-w-md">
               {quiz.title || 'Untitled Quiz'}
             </h2>
             <div className="flex items-center gap-2 text-[11px] text-[#64748B]">
-              <span className="text-[#34D399] font-semibold">Subject: {quiz.category || 'General'}</span>
+              <span className="text-[#34D399] font-semibold truncate max-w-[120px]">
+                Subject: {quiz.category || 'General'}
+              </span>
               <span>&bull;</span>
-              <span>{questions.length} Questions</span>
+              <span>{questions.length} Qs</span>
               <span>&bull;</span>
               <span>{totalPoints} Pts</span>
             </div>
           </div>
+
+          {/* Autosave Status Badge */}
+          <div className="ml-2 hidden sm:flex items-center">
+            {saveStatus === 'SAVED' && (
+              <span className="h-7 px-2.5 rounded-lg bg-[#10B981]/15 text-[#34D399] text-[10px] font-semibold flex items-center gap-1.5 border border-[#10B981]/25">
+                <CheckCircle2 size={12} /> Saved
+              </span>
+            )}
+            {saveStatus === 'SAVING' && (
+              <span className="h-7 px-2.5 rounded-lg bg-[#06B6D4]/15 text-[#06B6D4] text-[10px] font-semibold flex items-center gap-1.5 animate-pulse border border-[#06B6D4]/25">
+                <span className="w-2 h-2 border-2 border-[#06B6D4] border-t-transparent rounded-full animate-spin" />
+                Saving...
+              </span>
+            )}
+            {saveStatus === 'DIRTY' && (
+              <span className="h-7 px-2.5 rounded-lg bg-[#F59E0B]/15 text-[#F59E0B] text-[10px] font-semibold flex items-center gap-1.5 border border-[#F59E0B]/25">
+                <Clock size={12} /> Unsaved
+              </span>
+            )}
+          </div>
         </div>
 
-        {/* Center: Autosave Status */}
-        <div className="flex items-center gap-2">
-          {saveStatus === 'SAVED' && (
-            <span className="px-2.5 py-1 rounded-full bg-[#10B981]/15 text-[#34D399] text-[11px] font-semibold flex items-center gap-1.5">
-              <CheckCircle2 size={13} /> Saved
-            </span>
-          )}
-          {saveStatus === 'SAVING' && (
-            <span className="px-2.5 py-1 rounded-full bg-[#06B6D4]/15 text-[#06B6D4] text-[11px] font-semibold flex items-center gap-1.5 animate-pulse">
-              <span className="w-2.5 h-2.5 border-2 border-[#06B6D4] border-t-transparent rounded-full animate-spin" />
-              Autosaving...
-            </span>
-          )}
-          {saveStatus === 'DIRTY' && (
-            <span className="px-2.5 py-1 rounded-full bg-[#F59E0B]/15 text-[#F59E0B] text-[11px] font-semibold flex items-center gap-1.5">
-              <Clock size={13} /> Unsaved changes
-            </span>
-          )}
-        </div>
-
-        {/* Actions */}
-        <div className="flex items-center gap-2">
+        {/* Action Buttons Group - Fully organized, uniform h-9 buttons */}
+        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap shrink-0">
           <button
             onClick={() => handleAddQuestionBelow(questions.length - 1, 'MCQ_SINGLE')}
-            className="btn-emerald-primary text-xs py-2 px-3 gap-1.5 font-bold shadow-md shadow-[#10B981]/15"
+            className="h-9 px-3.5 inline-flex items-center justify-center gap-1.5 rounded-xl text-xs font-bold bg-[#10B981] hover:bg-[#059669] text-white shadow-sm transition-all"
             title="Add a new question (Google Forms style)"
           >
             <Plus size={15} />
-            Add Question
+            <span>Add Question</span>
           </button>
 
           <button
             onClick={handleOpenBankModal}
-            className="btn-secondary text-xs py-2 px-3 gap-1.5 text-[#06B6D4]"
+            className="h-9 px-3 inline-flex items-center justify-center gap-1.5 rounded-xl text-xs font-semibold bg-[#132238] hover:bg-[#1E293B] text-[#38BDF8] border border-[#2D436B] transition-all"
             title="Import whole quiz or questions from Bank"
           >
             <FolderInput size={14} />
-            Import from Bank
+            <span>Import from Bank</span>
           </button>
 
           <button
             onClick={() => onOpenPreview(quizId)}
-            className="btn-secondary text-xs py-2 px-3 gap-1.5"
+            className="h-9 px-3 inline-flex items-center justify-center gap-1.5 rounded-xl text-xs font-semibold bg-[#132238] hover:bg-[#1E293B] text-[#94A3B8] hover:text-white border border-[#1F304E] transition-all"
             title="Preview as Student"
           >
             <Eye size={14} />
-            Preview
+            <span>Preview</span>
           </button>
 
           <button
             onClick={() => setShowSettings(true)}
-            className="btn-secondary text-xs py-2 px-3 gap-1.5"
+            className="h-9 w-9 inline-flex items-center justify-center rounded-xl bg-[#132238] hover:bg-[#1E293B] text-[#94A3B8] hover:text-white border border-[#1F304E] transition-all"
             title="Quiz Settings"
           >
-            <Settings size={14} />
+            <Settings size={15} />
           </button>
 
           <button
             onClick={handleTogglePublish}
-            className={`text-xs py-2 px-3.5 rounded-xl font-bold transition-all ${
+            className={`h-9 px-3.5 inline-flex items-center justify-center rounded-xl text-xs font-bold transition-all ${
               quiz.status === 'PUBLISHED'
-                ? 'bg-[#1F293D] text-[#F43F5E] hover:bg-[#F43F5E]/15'
-                : 'btn-emerald-primary'
+                ? 'bg-[#1F293D] text-[#F43F5E] hover:bg-[#F43F5E]/15 border border-[#F43F5E]/30'
+                : 'bg-[#047857] hover:bg-[#065F46] text-white border border-[#10B981]/40 shadow-sm'
             }`}
           >
             {quiz.status === 'PUBLISHED' ? 'Unpublish' : 'Publish Quiz'}
@@ -685,58 +722,68 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
           </div>
         </div>
 
-        {/* Header Action: Auto-sync to Bank & Save Later options */}
-        <div className="pt-2 border-t border-[#1B2A44] flex flex-wrap items-center justify-between gap-3 text-xs text-[#94A3B8]">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="hidden sm:inline font-medium">Question Bank Integration:</span>
-            
-            {/* Auto Sync Toggle Button */}
-            <div className="flex items-center bg-[#132238] p-0.5 rounded-xl border border-[#1F304E]">
-              <button
-                type="button"
-                onClick={() => {
-                  setAutoSaveNewToBank(true);
-                  showToast('⚡ Auto-Sync enabled: Questions created or edited will automatically sync to Question Bank!');
-                }}
-                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
-                  autoSaveNewToBank
-                    ? 'bg-[#10B981]/20 text-[#34D399] border border-[#10B981]/30 shadow-sm'
-                    : 'text-[#94A3B8] hover:text-white'
-                }`}
-                title="Automatically mirror new/edited questions into the Question Bank"
-              >
-                <Sparkles size={12} className={autoSaveNewToBank ? 'text-[#34D399]' : ''} />
-                <span>⚡ Auto-Sync to Bank</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setAutoSaveNewToBank(false);
-                  showToast('⏳ Save Later mode: Questions remain in quiz. You can push them to Question Bank anytime.');
-                }}
-                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
-                  !autoSaveNewToBank
-                    ? 'bg-[#38BDF8]/20 text-[#38BDF8] border border-[#38BDF8]/30 shadow-sm'
-                    : 'text-[#94A3B8] hover:text-white'
-                }`}
-                title="Save in Quiz only and sync to Question Bank later when ready"
-              >
-                <Clock size={12} className={!autoSaveNewToBank ? 'text-[#38BDF8]' : ''} />
-                <span>⏳ Save Later / Manual</span>
-              </button>
+        {/* Whole Quiz Timing & Default Question Timing Configuration */}
+        <div className="pt-3 border-t border-[#1B2A44] grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+          <div className="flex items-center gap-3 bg-[#132238]/70 p-2.5 rounded-xl border border-[#1F304E]">
+            <div className="w-8 h-8 rounded-lg bg-[#38BDF8]/15 border border-[#38BDF8]/30 flex items-center justify-center text-[#38BDF8] shrink-0">
+              <Clock size={15} />
+            </div>
+            <div className="flex-1">
+              <label className="block text-[10px] font-bold text-[#94A3B8] uppercase tracking-wider mb-0.5">
+                Whole Quiz Timer (Seconds, 0 = Untimed)
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  step="30"
+                  value={quiz.time_limit_sec ?? 600}
+                  onChange={(e) => {
+                    const sec = Math.max(0, parseInt(e.target.value) || 0);
+                    const updated = { ...quiz, time_limit_sec: sec };
+                    setQuiz(updated);
+                    triggerAutosave(updated, questions);
+                  }}
+                  className="bg-[#0B111D] border border-[#2D436B] focus:border-[#38BDF8] rounded-lg px-2.5 py-1 text-xs font-mono font-bold text-white w-24 outline-none"
+                />
+                <span className="text-[11px] text-[#64748B] font-medium">
+                  {quiz.time_limit_sec === 0 ? '(Untimed)' : `≈ ${Math.floor((quiz.time_limit_sec || 0)/60)}m ${(quiz.time_limit_sec || 0)%60}s`}
+                </span>
+              </div>
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={handleSaveWholeQuizToBank}
-            className="text-xs bg-[#10B981]/15 hover:bg-[#10B981]/25 text-[#34D399] border border-[#10B981]/30 px-3 py-1.5 rounded-xl flex items-center gap-2 font-bold transition-all shadow-sm"
-            title="Export and sync all current questions to Question Bank under this subject"
-          >
-            <Database size={14} />
-            Save All Questions to Question Bank
-          </button>
+          <div className="flex items-center gap-3 bg-[#132238]/70 p-2.5 rounded-xl border border-[#1F304E]">
+            <div className="w-8 h-8 rounded-lg bg-[#10B981]/15 border border-[#10B981]/30 flex items-center justify-center text-[#34D399] shrink-0">
+              <Sparkles size={15} />
+            </div>
+            <div className="flex-1">
+              <label className="block text-[10px] font-bold text-[#94A3B8] uppercase tracking-wider mb-0.5">
+                Default Time Per Question (Seconds)
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="5"
+                  step="5"
+                  value={defaultQuestionTimer}
+                  onChange={(e) => {
+                    const sec = Math.max(5, parseInt(e.target.value) || 30);
+                    setDefaultQuestionTimer(sec);
+                  }}
+                  className="bg-[#0B111D] border border-[#2D436B] focus:border-[#34D399] rounded-lg px-2.5 py-1 text-xs font-mono font-bold text-[#34D399] w-24 outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={handleApplyDefaultTimerToAll}
+                  className="px-2.5 py-1 rounded-lg bg-[#10B981]/15 hover:bg-[#10B981]/25 text-[#34D399] text-[11px] font-bold border border-[#10B981]/30 transition-colors whitespace-nowrap"
+                  title="Apply this timer to all questions in this quiz"
+                >
+                  ⚡ Apply to All Questions
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -797,7 +844,7 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
       ) : (
         <div className="space-y-6">
           {questions.map((q, qIdx) => (
-          <div key={q.id || qIdx} className="space-y-3">
+          <div key={q.id || qIdx} id={`question-card-${q.id || qIdx}`} className="space-y-3">
             
             {/* Question Card */}
             <div className="dashboard-card p-6 space-y-4 hover:border-[#2D436B] transition-all relative group">
@@ -809,17 +856,12 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
                     {qIdx + 1}
                   </span>
                   
-                  {/* Structured Question ID Badge */}
-                  <div className="flex items-center gap-1.5 bg-[#0D1526] border border-[#2D436B] hover:border-[#38BDF8] rounded-lg px-2.5 py-1 text-xs transition-colors group/qid">
+                  {/* Structured Question ID Badge (Uneditable) */}
+                  <div className="flex items-center gap-1.5 bg-[#0D1526] border border-[#2D436B] rounded-lg px-2.5 py-1 text-xs select-all">
                     <span className="text-[10px] font-bold text-[#64748B] uppercase tracking-wider">QID:</span>
-                    <input
-                      type="text"
-                      value={q.question_code || formatQuestionCode(quiz.category, q.question_type, quiz.difficulty, qIdx + 1)}
-                      onChange={(e) => handleUpdateQuestion(qIdx, { question_code: e.target.value.toUpperCase() })}
-                      placeholder={formatQuestionCode(quiz.category, q.question_type, quiz.difficulty, qIdx + 1)}
-                      className="bg-transparent font-mono font-bold text-[#38BDF8] text-xs outline-none w-36 uppercase tracking-wider"
-                      title="Structured Question ID: [SUBJECT]-[TYPE]-[DIFFICULTY]-[NUM]. Click to customize."
-                    />
+                    <span className="font-mono font-bold text-[#38BDF8] text-xs tracking-wider" title="Structured Question ID">
+                      {q.question_code || formatQuestionCode(quiz.category, q.question_type, quiz.difficulty, qIdx + 1)}
+                    </span>
                   </div>
 
                   <span className="text-[11px] font-semibold text-[#64748B] hidden md:inline">
@@ -827,37 +869,91 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
                   </span>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2.5 flex-wrap">
                   
                   {/* Type Selector Dropdown */}
                   <select
                     value={q.question_type}
                     onChange={(e) => {
                       const newType = e.target.value;
-                      let opts = q.options;
-                      let ans = q.answers;
-                      if (['MCQ_SINGLE', 'MCQ_MULTI', 'TRUE_FALSE'].includes(newType) && (!opts || opts.length === 0)) {
+                      let opts = q.options ? [...q.options] : [];
+                      let ans = q.answers ? [...q.answers] : [];
+
+                      if (newType === 'TRUE_FALSE') {
+                        // Strictly 2 options: True and False!
                         opts = [
-                          { option_key: 'A', option_text: 'Option 1', is_correct: true },
-                          { option_key: 'B', option_text: 'Option 2', is_correct: false },
-                          { option_key: 'C', option_text: 'Option 3', is_correct: false },
-                          { option_key: 'D', option_text: 'Option 4', is_correct: false }
+                          { option_key: 'TRUE', option_text: 'True', is_correct: true },
+                          { option_key: 'FALSE', option_text: 'False', is_correct: false }
                         ];
+                      } else if (newType === 'MCQ_SINGLE') {
+                        if (!opts || opts.length === 0 || opts.some(o => o.option_key === 'TRUE' || o.option_key === 'FALSE')) {
+                          opts = [
+                            { option_key: 'A', option_text: '', is_correct: true },
+                            { option_key: 'B', option_text: '', is_correct: false },
+                            { option_key: 'C', option_text: '', is_correct: false },
+                            { option_key: 'D', option_text: '', is_correct: false }
+                          ];
+                        } else {
+                          // Keep existing text, but ensure strictly one is correct
+                          let foundCorrect = false;
+                          opts = opts.map(opt => {
+                            if (opt.is_correct && !foundCorrect) {
+                              foundCorrect = true;
+                              return { ...opt, is_correct: true };
+                            }
+                            return { ...opt, is_correct: false };
+                          });
+                          if (!foundCorrect && opts.length > 0) {
+                            opts[0] = { ...opts[0], is_correct: true };
+                          }
+                        }
+                      } else if (newType === 'MCQ_MULTI') {
+                        if (!opts || opts.length === 0 || opts.some(o => o.option_key === 'TRUE' || o.option_key === 'FALSE')) {
+                          opts = [
+                            { option_key: 'A', option_text: '', is_correct: true },
+                            { option_key: 'B', option_text: '', is_correct: false },
+                            { option_key: 'C', option_text: '', is_correct: false },
+                            { option_key: 'D', option_text: '', is_correct: false }
+                          ];
+                        }
+                      } else if (['FILL_BLANK', 'SHORT_ANSWER', 'NUMERICAL'].includes(newType)) {
+                        if (!ans || ans.length === 0) {
+                          ans = [{ expected_answer: '', is_case_sensitive: false, numeric_tolerance: 0.0 }];
+                        }
                       }
-                      if (['FILL_BLANK', 'SHORT_ANSWER', 'NUMERICAL'].includes(newType) && (!ans || ans.length === 0)) {
-                        ans = [{ expected_answer: '', is_case_sensitive: false }];
-                      }
-                      handleUpdateQuestion(qIdx, { question_type: newType, options: opts, answers: ans });
+
+                      const updatedCode = formatQuestionCode(quiz.category, newType, quiz.difficulty, qIdx + 1);
+                      handleUpdateQuestion(qIdx, {
+                        question_type: newType,
+                        options: opts,
+                        answers: ans,
+                        question_code: updatedCode
+                      });
                     }}
-                    className="input-field text-xs py-1.5 font-bold text-[#34D399] w-40"
+                    className="input-field text-xs py-1.5 font-bold text-[#34D399] w-36"
                   >
                     {QUESTION_TYPES.map(t => (
                       <option key={t.type} value={t.type}>{t.label}</option>
                     ))}
                   </select>
 
+                  {/* Question Time Limit Input */}
+                  <div className="flex items-center gap-1 bg-[#132238] border border-[#1F304E] rounded-xl px-2 py-1" title="Time limit for this question in seconds">
+                    <Clock size={11} className="text-[#38BDF8]" />
+                    <span className="text-[10px] font-bold text-[#64748B]">Time:</span>
+                    <input
+                      type="number"
+                      min="5"
+                      step="5"
+                      value={q.time_limit_sec || defaultQuestionTimer}
+                      onChange={(e) => handleUpdateQuestion(qIdx, { time_limit_sec: Math.max(5, parseInt(e.target.value) || 30) })}
+                      className="w-8 bg-transparent text-xs font-bold text-[#38BDF8] text-center outline-none"
+                    />
+                    <span className="text-[10px] text-[#64748B] font-semibold pr-0.5">s</span>
+                  </div>
+
                   {/* Points Input */}
-                  <div className="flex items-center gap-1 bg-[#132238] border border-[#1F304E] rounded-xl px-2.5 py-1">
+                  <div className="flex items-center gap-1 bg-[#132238] border border-[#1F304E] rounded-xl px-2 py-1">
                     <span className="text-[10px] font-bold text-[#64748B]">Pts:</span>
                     <input
                       type="number"
@@ -865,7 +961,7 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
                       min="0.25"
                       value={q.marks}
                       onChange={(e) => handleUpdateQuestion(qIdx, { marks: parseFloat(e.target.value) || 1.0 })}
-                      className="w-10 bg-transparent text-xs font-bold text-white text-center outline-none"
+                      className="w-8 bg-transparent text-xs font-bold text-white text-center outline-none"
                     />
                   </div>
 
@@ -917,8 +1013,20 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
                           value={opt.option_text}
                           onChange={(e) => handleUpdateOption(qIdx, optIdx, { option_text: e.target.value })}
                           placeholder={`Option ${optIdx + 1}`}
-                          className="bg-transparent text-xs text-white outline-none flex-1 font-medium"
+                          className="bg-transparent text-xs text-white outline-none flex-1 font-medium placeholder:text-[#64748B]"
                         />
+
+                        {/* Erase option text button */}
+                        {opt.option_text ? (
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateOption(qIdx, optIdx, { option_text: '' })}
+                            className="text-[#64748B] hover:text-white p-1 transition-colors"
+                            title="Erase / clear option text"
+                          >
+                            <X size={13} />
+                          </button>
+                        ) : null}
 
                         <button
                           type="button"
@@ -1067,58 +1175,13 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
                   </button>
                 </div>
 
-                {/* Save this Question to Bank Actions */}
-                <div className="flex items-center gap-3 flex-wrap">
-                  {autoSaveNewToBank ? (
-                    <div className="flex items-center gap-1.5 text-xs text-[#34D399] font-bold bg-[#10B981]/15 px-2.5 py-1 rounded-lg border border-[#10B981]/30">
-                      <Sparkles size={13} />
-                      <span>Auto-Sync to Bank</span>
-                      <span className="font-mono text-[10px] text-[#A7F3D0]">
-                        ({q.question_code || formatQuestionCode(quiz.category, q.question_type, quiz.difficulty, qIdx + 1)})
-                      </span>
-                    </div>
-                  ) : bankSavedMap[q.id || qIdx] || q.bankSaved ? (
-                    <div className="flex items-center gap-1.5 text-xs text-[#34D399] font-bold bg-[#10B981]/15 px-2.5 py-1 rounded-lg border border-[#10B981]/30">
-                      <CheckCircle2 size={13} />
-                      <span>In Question Bank</span>
-                      <span className="font-mono text-[10px] text-[#A7F3D0]">
-                        ({q.question_code || formatQuestionCode(quiz.category, q.question_type, quiz.difficulty, qIdx + 1)})
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleSaveQuestionToBank(q, qIdx)}
-                        className="text-[10px] text-[#38BDF8] hover:underline ml-1 font-semibold"
-                        title="Update Question Bank with latest edits"
-                      >
-                        (Update)
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-[#94A3B8] italic hidden sm:inline">
-                        ⏳ Saved in Quiz &bull; Save Later
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleSaveQuestionToBank(q, qIdx)}
-                        disabled={savingBankQIdx === qIdx}
-                        className="text-xs text-[#38BDF8] hover:bg-[#38BDF8]/15 px-2.5 py-1 rounded-lg border border-[#38BDF8]/30 hover:underline flex items-center gap-1.5 font-semibold transition-all disabled:opacity-50"
-                        title="Save this question directly into Question Bank"
-                      >
-                        {savingBankQIdx === qIdx ? (
-                          <>
-                            <span className="w-3 h-3 border-2 border-[#38BDF8] border-t-transparent rounded-full animate-spin" />
-                            Saving to Bank...
-                          </>
-                        ) : (
-                          <>
-                            <Database size={13} />
-                            Save to Bank Now
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  )}
+                {/* Question Bank Status (Compulsory Auto-Synced) */}
+                <div className="flex items-center gap-1.5 text-xs text-[#34D399] font-semibold bg-[#10B981]/10 px-2.5 py-1 rounded-lg border border-[#10B981]/25">
+                  <CheckCircle2 size={13} />
+                  <span>Question Bank Synced</span>
+                  <span className="font-mono text-[10px] text-[#A7F3D0]">
+                    ({q.question_code || formatQuestionCode(quiz.category, q.question_type, quiz.difficulty, qIdx + 1)})
+                  </span>
                 </div>
               </div>
 
