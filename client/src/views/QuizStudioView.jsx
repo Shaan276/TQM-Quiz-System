@@ -1428,6 +1428,23 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
                     className="rounded bg-[#0B111D]"
                   />
                 </label>
+
+                <label className="flex items-center justify-between cursor-pointer pt-2 border-t border-[#1F304E]">
+                  <div>
+                    <span className="font-bold text-white block">Allow Self-Paced Attempts</span>
+                    <span className="text-[10px] text-[#94A3B8]">Students can discover and take this quiz independently at their own pace</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={quiz.visibility !== 'PRIVATE'}
+                    onChange={(e) => {
+                      const updated = { ...quiz, visibility: e.target.checked ? 'PUBLIC' : 'PRIVATE' };
+                      setQuiz(updated);
+                      triggerAutosave(updated, questions);
+                    }}
+                    className="rounded bg-[#0B111D] text-[#10B981] w-4 h-4 cursor-pointer"
+                  />
+                </label>
               </div>
             </div>
 

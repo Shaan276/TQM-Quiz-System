@@ -15,7 +15,11 @@ import {
   History,
   TrendingUp,
   Filter,
-  Radio
+  Radio,
+  Trophy,
+  Sparkles,
+  Star,
+  Users
 } from 'lucide-react';
 
 export default function LearnerDashboardView({ onOpenPreview, onStartAttempt, onJoinLive, setActiveRoute }) {
@@ -28,6 +32,8 @@ export default function LearnerDashboardView({ onOpenPreview, onStartAttempt, on
   const [selectedSubject, setSelectedSubject] = useState('');
   const [selectedDifficulty, setSelectedDifficulty] = useState('');
   const [subjects, setSubjects] = useState([]);
+  const [learnerTab, setLearnerTab] = useState('self-paced'); // 'self-paced' | 'live-history'
+  const [liveHistory, setLiveHistory] = useState([]);
 
   // Fetch subjects for filter
   useEffect(() => {
@@ -71,6 +77,19 @@ export default function LearnerDashboardView({ onOpenPreview, onStartAttempt, on
       const qData = await qRes.json();
       if (qData.success) {
         setQuizzes(qData.data.quizzes || []);
+      }
+
+      // 3. Fetch Live Multiplayer Battles History
+      try {
+        const lRes = await fetch('/api/v1/live-sessions/history/my', {
+          headers: { 'Authorization': `Bearer ${accessToken}` }
+        });
+        const lData = await lRes.json();
+        if (lData.success && lData.data?.participations) {
+          setLiveHistory(lData.data.participations);
+        }
+      } catch (e) {
+        console.error('Failed to load live sessions history', e);
       }
     } catch (err) {
       console.error(err);
@@ -197,6 +216,46 @@ export default function LearnerDashboardView({ onOpenPreview, onStartAttempt, on
         </form>
       </div>
 
+      {/* Student Total Reward Points Hero Banner */}
+      <div className="dashboard-card p-5 border-2 border-[#10B981]/40 bg-gradient-to-r from-[#10B981]/15 via-[#0E1626] to-[#0A1220] flex flex-col md:flex-row md:items-center justify-between gap-5 shadow-xl shadow-[#10B981]/5">
+        <div className="flex items-center gap-4">
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#F59E0B] to-[#D97706] flex items-center justify-center text-black font-black text-2xl shadow-lg shadow-[#F59E0B]/25 shrink-0">
+            <Trophy size={28} className="fill-current text-white" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-extrabold text-[#F59E0B] uppercase tracking-wider">
+                Total Reward Points
+              </span>
+              <span className="px-2 py-0.5 rounded-full bg-[#34D399]/20 text-[#34D399] text-[10px] font-bold border border-[#34D399]/30">
+                Active Student Score
+              </span>
+            </div>
+            <h2 className="text-3xl font-black text-white font-mono mt-0.5">
+              {(analytics?.totalPoints || 0).toLocaleString()} <span className="text-lg font-bold text-[#34D399]">PTS</span>
+            </h2>
+            <p className="text-xs text-[#94A3B8]">
+              Points accumulated from self-paced quizzes &amp; live multiplayer battles.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3 border-t md:border-t-0 md:border-l border-[#1B2A44] pt-3 md:pt-0 md:pl-5">
+          <div className="p-3 rounded-xl bg-[#0B111D] border border-[#1F304E] text-center min-w-[110px]">
+            <p className="text-[10px] text-[#94A3B8] font-semibold">Self-Paced Pts</p>
+            <p className="text-base font-black text-[#38BDF8] font-mono">{(analytics?.selfPacedPoints || 0).toLocaleString()}</p>
+          </div>
+          <div className="p-3 rounded-xl bg-[#0B111D] border border-[#1F304E] text-center min-w-[110px]">
+            <p className="text-[10px] text-[#94A3B8] font-semibold">Live Battle Pts</p>
+            <p className="text-base font-black text-[#F59E0B] font-mono">{(analytics?.liveBattlePoints || 0).toLocaleString()}</p>
+          </div>
+          <div className="p-3 rounded-xl bg-[#0B111D] border border-[#1F304E] text-center min-w-[110px]">
+            <p className="text-[10px] text-[#94A3B8] font-semibold">Live Battles</p>
+            <p className="text-base font-black text-[#10B981] font-mono">{(analytics?.liveSessionsPlayed || 0)}</p>
+          </div>
+        </div>
+      </div>
+
       {/* Real Performance Analytics Metric Bar */}
       {analytics && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -242,8 +301,38 @@ export default function LearnerDashboardView({ onOpenPreview, onStartAttempt, on
         </div>
       )}
 
-      {/* Discovery Filters Toolbar */}
-      <div className="dashboard-card p-4 space-y-3">
+      {/* Primary Learner Navigation Tabs */}
+      <div className="flex items-center gap-4 border-b border-[#1B2A44] pb-2">
+        <button
+          onClick={() => setLearnerTab('self-paced')}
+          className={`pb-2 px-1 text-sm font-bold flex items-center gap-2 border-b-2 transition-all ${
+            learnerTab === 'self-paced'
+              ? 'border-[#10B981] text-[#34D399]'
+              : 'border-transparent text-[#94A3B8] hover:text-white'
+          }`}
+        >
+          <BookOpen size={16} />
+          Self-Paced Quizzes ({quizzes.length})
+        </button>
+
+        <button
+          onClick={() => setLearnerTab('live-history')}
+          className={`pb-2 px-1 text-sm font-bold flex items-center gap-2 border-b-2 transition-all ${
+            learnerTab === 'live-history'
+              ? 'border-[#10B981] text-[#34D399]'
+              : 'border-transparent text-[#94A3B8] hover:text-white'
+          }`}
+        >
+          <Radio size={16} className={liveHistory.length > 0 ? 'text-[#34D399]' : ''} />
+          My Live Quiz History ({liveHistory.length})
+        </button>
+      </div>
+
+      {/* TAB 1: SELF-PACED QUIZZES */}
+      {learnerTab === 'self-paced' && (
+        <div className="space-y-6 animate-fadeIn">
+          {/* Discovery Filters Toolbar */}
+          <div className="dashboard-card p-4 space-y-3">
         <div className="flex flex-col md:flex-row items-center gap-3">
           
           <div className="relative flex-1 w-full">
@@ -382,7 +471,7 @@ export default function LearnerDashboardView({ onOpenPreview, onStartAttempt, on
                       className="btn-emerald-primary text-xs py-2 font-bold gap-1.5 justify-center shadow-lg shadow-[#10B981]/20"
                     >
                       <Play size={13} className="fill-current" />
-                      Take Quiz
+                      Take Self-Paced Quiz
                     </button>
                   </div>
 
@@ -392,6 +481,86 @@ export default function LearnerDashboardView({ onOpenPreview, onStartAttempt, on
           </div>
         )}
       </div>
+      </div>
+      )}
+
+      {/* TAB 2: MY LIVE MULTIPLAYER GAME HISTORY */}
+      {learnerTab === 'live-history' && (
+        <div className="space-y-4 animate-fadeIn">
+          <div className="dashboard-card p-6 border border-[#1F304E]">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#1B2A44]">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <Radio size={18} className="text-[#34D399]" />
+                  My Live Multiplayer Battles History
+                </h3>
+                <p className="text-xs text-[#94A3B8]">
+                  All synchronized live quiz sessions you have joined and competed in.
+                </p>
+              </div>
+            </div>
+
+            {liveHistory.length === 0 ? (
+              <div className="text-center py-12 text-xs text-[#94A3B8] space-y-3">
+                <Radio size={32} className="mx-auto text-[#64748B] opacity-50" />
+                <p className="font-semibold text-white">No live multiplayer battles joined yet.</p>
+                <p className="text-[11px] text-[#64748B]">
+                  Enter a 8-character PIN from your teacher in the box above to jump into your first battle!
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3 pt-3">
+                {liveHistory.map(item => (
+                  <div
+                    key={item.participation_id}
+                    className="p-4 rounded-xl bg-[#0E1626] border border-[#1B2A44] hover:border-[#2D436B] transition-all flex flex-col md:flex-row md:items-center justify-between gap-4"
+                  >
+                    <div className="space-y-1.5 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-mono font-bold text-white bg-[#0B111D] px-2.5 py-0.5 rounded-lg border border-[#2D436B]">
+                          PIN: {item.join_code}
+                        </span>
+                        <span className="text-[11px] text-[#38BDF8] font-semibold">
+                          {item.quiz_category}
+                        </span>
+                        <span className="text-[11px] text-[#94A3B8]">
+                          Host: <strong className="text-white">{item.host_name}</strong>
+                        </span>
+                      </div>
+
+                      <h4 className="text-sm font-bold text-white truncate max-w-md">
+                        {item.quiz_title}
+                      </h4>
+
+                      <p className="text-[11px] text-[#64748B]">
+                        Played on {new Date(item.joined_at).toLocaleDateString()} at {new Date(item.joined_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-4 shrink-0">
+                      <div className="text-right">
+                        <div className="flex items-center gap-1.5 justify-end">
+                          <span className={`w-7 h-7 rounded-lg flex items-center justify-center font-mono font-bold text-xs ${
+                            item.rank === 1 ? 'bg-[#F59E0B] text-black shadow-md shadow-[#F59E0B]/30' : item.rank === 2 ? 'bg-[#94A3B8] text-black' : item.rank === 3 ? 'bg-[#D97706] text-white' : 'bg-[#1F304E] text-[#94A3B8]'
+                          }`}>
+                            #{item.rank || '-'}
+                          </span>
+                          <span className="font-mono font-black text-white text-base">
+                            {item.score} <span className="text-xs font-bold text-[#34D399]">pts</span>
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-[#94A3B8] mt-0.5">
+                          {item.correct_count} of {item.total_questions || 0} Correct
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
     </div>
   );

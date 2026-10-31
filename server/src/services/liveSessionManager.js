@@ -991,6 +991,12 @@ class LiveSessionManager {
     if (!session) throw new Error('Session not found');
     if (session.hostId !== hostUserId) throw new Error('Unauthorized');
 
+    // Force progression: safely cancel any active timer
+    if (session.timer) {
+      clearTimeout(session.timer);
+      session.timer = null;
+    }
+
     const nextIndex = session.currentQuestionIndex + 1;
     if (nextIndex >= session.totalQuestions) {
       return this.endSession(sessionId, hostUserId);

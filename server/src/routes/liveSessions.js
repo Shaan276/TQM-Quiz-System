@@ -50,13 +50,15 @@ router.post('/', authenticateToken, requireRole('TEACHER', 'SUPER_ADMIN'), async
 });
 
 // -------------------------------------------------------------
-// 2. GET /api/v1/live-sessions/my - Teacher's hosted sessions
+// 2. GET /api/v1/live-sessions/my - Teacher's hosted sessions history
 // -------------------------------------------------------------
 router.get('/my', authenticateToken, requireRole('TEACHER', 'SUPER_ADMIN'), async (req, res, next) => {
   try {
     const sessions = await dbAll(
       `SELECT s.*, q.title as quiz_title, q.category as quiz_category,
-        (SELECT COUNT(*) FROM session_participants WHERE session_id = s.id) as participant_count
+        (SELECT COUNT(*) FROM session_participants WHERE session_id = s.id) as participant_count,
+        (SELECT display_name FROM session_participants WHERE session_id = s.id ORDER BY score DESC, rank ASC LIMIT 1) as winner_name,
+        (SELECT MAX(score) FROM session_participants WHERE session_id = s.id) as highest_score
        FROM quiz_sessions s
        JOIN quizzes q ON s.quiz_id = q.id
        WHERE s.host_id = ?
@@ -67,6 +69,35 @@ router.get('/my', authenticateToken, requireRole('TEACHER', 'SUPER_ADMIN'), asyn
     res.json({
       success: true,
       data: { sessions }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// -------------------------------------------------------------
+// 2b. GET /api/v1/live-sessions/history/my - Student's participated sessions history
+// -------------------------------------------------------------
+router.get('/history/my', authenticateToken, async (req, res, next) => {
+  try {
+    const participations = await dbAll(
+      `SELECT sp.id as participation_id, sp.score, sp.correct_count, sp.rank, sp.joined_at,
+              qs.id as session_id, qs.join_code, qs.status as session_status, qs.created_at as session_date,
+              qs.total_questions,
+              q.id as quiz_id, q.title as quiz_title, q.category as quiz_category,
+              u.name as host_name
+       FROM session_participants sp
+       JOIN quiz_sessions qs ON sp.session_id = qs.id
+       JOIN quizzes q ON qs.quiz_id = q.id
+       JOIN users u ON qs.host_id = u.id
+       WHERE sp.user_id = ?
+       ORDER BY sp.joined_at DESC LIMIT 50`,
+      [req.user.id]
+    );
+
+    res.json({
+      success: true,
+      data: { participations }
     });
   } catch (err) {
     next(err);

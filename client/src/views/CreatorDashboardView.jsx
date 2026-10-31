@@ -56,6 +56,11 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
   const [loadingAttempts, setLoadingAttempts] = useState(false);
   const [teacherAnalytics, setTeacherAnalytics] = useState(null);
 
+  // Live sessions history state (Phase P4)
+  const [dashboardTab, setDashboardTab] = useState('quizzes'); // 'quizzes' | 'live-history'
+  const [liveSessionsHistory, setLiveSessionsHistory] = useState([]);
+  const [copiedCodeId, setCopiedCodeId] = useState(null);
+
   const isCreatorOrAdmin = ['CREATOR', 'TEACHER', 'ADMIN', 'SUPER_ADMIN'].includes((user?.role || '').toUpperCase());
 
   // Role upgrade handler for testing/learners
@@ -130,6 +135,19 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
       const qData = await qRes.json();
       if (qData.success) {
         setQuizzes(qData.data.quizzes || []);
+      }
+
+      // 4. Fetch Hosted Live Sessions History
+      try {
+        const sRes = await fetch('/api/v1/live-sessions/my', {
+          headers: { 'Authorization': `Bearer ${accessToken}` }
+        });
+        const sData = await sRes.json();
+        if (sData.success && sData.data?.sessions) {
+          setLiveSessionsHistory(sData.data.sessions);
+        }
+      } catch (e) {
+        console.error('Failed to load live sessions history', e);
       }
     } catch (err) {
       setErrorMsg('Failed to load quizzes. Please check server connection.');
@@ -343,8 +361,38 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
         </div>
       </div>
 
-      {/* Filter and Search Bar */}
-      <div className="dashboard-card p-4 space-y-3">
+      {/* Primary Dashboard Navigation Tabs */}
+      <div className="flex items-center gap-4 border-b border-[#1B2A44] pb-2">
+        <button
+          onClick={() => setDashboardTab('quizzes')}
+          className={`pb-2 px-1 text-sm font-bold flex items-center gap-2 border-b-2 transition-all ${
+            dashboardTab === 'quizzes'
+              ? 'border-[#10B981] text-[#34D399]'
+              : 'border-transparent text-[#94A3B8] hover:text-white'
+          }`}
+        >
+          <FolderKanban size={16} />
+          My Authored Quizzes ({quizzes.length})
+        </button>
+
+        <button
+          onClick={() => setDashboardTab('live-history')}
+          className={`pb-2 px-1 text-sm font-bold flex items-center gap-2 border-b-2 transition-all ${
+            dashboardTab === 'live-history'
+              ? 'border-[#10B981] text-[#34D399]'
+              : 'border-transparent text-[#94A3B8] hover:text-white'
+          }`}
+        >
+          <Radio size={16} className={liveSessionsHistory.some(s => s.status !== 'COMPLETED') ? 'animate-pulse text-[#34D399]' : ''} />
+          Hosted Live Quiz History ({liveSessionsHistory.length})
+        </button>
+      </div>
+
+      {/* TAB 1: AUTHORED QUIZZES */}
+      {dashboardTab === 'quizzes' && (
+        <div className="space-y-6 animate-fadeIn">
+          {/* Filter and Search Bar */}
+          <div className="dashboard-card p-4 space-y-3">
         <div className="flex flex-col md:flex-row gap-3">
           
           {/* Search Input */}
@@ -456,9 +504,16 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
                     {quiz.status} &bull; v{quiz.version}
                   </span>
 
-                  <span className="text-[10px] font-mono text-[#34D399]">
-                    Subject: {quiz.category || 'General'}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {quiz.status === 'PUBLISHED' && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#38BDF8]/15 text-[#38BDF8] border border-[#38BDF8]/30">
+                        Self-Paced Ready
+                      </span>
+                    )}
+                    <span className="text-[10px] font-mono text-[#34D399]">
+                      Subject: {quiz.category || 'General'}
+                    </span>
+                  </div>
                 </div>
 
                 <div>
@@ -569,6 +624,130 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
 
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Empty State */}
+      {dashboardTab === 'quizzes' && !loading && quizzes.length === 0 && (
+        <div className="dashboard-card p-12 text-center space-y-4 border-2 border-dashed border-[#1F304E]">
+          <div className="w-12 h-12 rounded-2xl bg-[#132238] flex items-center justify-center text-[#64748B] mx-auto">
+            <FolderKanban size={24} />
+          </div>
+          <div>
+            <h3 className="text-base font-bold text-white">No Quizzes Found</h3>
+            <p className="text-xs text-[#94A3B8] max-w-sm mx-auto mt-1">
+              {search || category || status || difficulty
+                ? 'Try adjusting your search criteria or filters.'
+                : 'Get started by creating your first quiz in the studio.'}
+            </p>
+          </div>
+          <button
+            onClick={handleCreateNewQuiz}
+            className="btn-emerald-primary text-xs py-2 px-4 font-bold mx-auto"
+          >
+            Create New Quiz
+          </button>
+        </div>
+      )}
+      </div>
+      )}
+
+      {/* TAB 2: HOSTED LIVE SESSIONS HISTORY */}
+      {dashboardTab === 'live-history' && (
+        <div className="space-y-4 animate-fadeIn">
+          <div className="dashboard-card p-6 border border-[#1F304E]">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#1B2A44]">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <Radio size={18} className="text-[#34D399] animate-pulse" />
+                  Hosted Live Multiplayer Quiz Sessions
+                </h3>
+                <p className="text-xs text-[#94A3B8]">
+                  Complete audit history of synchronized multiplayer live quiz battles hosted by you.
+                </p>
+              </div>
+            </div>
+
+            {liveSessionsHistory.length === 0 ? (
+              <div className="text-center py-12 text-xs text-[#94A3B8] space-y-3">
+                <Radio size={32} className="mx-auto text-[#64748B] opacity-50" />
+                <p className="font-semibold text-white">No live multiplayer sessions hosted yet.</p>
+                <p className="text-[11px] text-[#64748B]">
+                  Publish any quiz and click "Host Live" on its card to launch a real-time multiplayer assessment!
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3 pt-3">
+                {liveSessionsHistory.map(sess => (
+                  <div
+                    key={sess.id}
+                    className="p-4 rounded-xl bg-[#0E1626] border border-[#1B2A44] hover:border-[#2D436B] transition-all flex flex-col md:flex-row md:items-center justify-between gap-4"
+                  >
+                    <div className="space-y-1.5 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
+                          sess.status === 'COMPLETED'
+                            ? 'bg-[#10B981]/20 text-[#34D399] border border-[#10B981]/30'
+                            : sess.status === 'LOBBY'
+                            ? 'bg-[#38BDF8]/20 text-[#38BDF8] border border-[#38BDF8]/30 animate-pulse'
+                            : 'bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/30'
+                        }`}>
+                          {sess.status}
+                        </span>
+                        <span className="text-xs font-mono font-bold text-white bg-[#0B111D] px-2.5 py-0.5 rounded-lg border border-[#2D436B]">
+                          PIN: {sess.join_code}
+                        </span>
+                        <span className="text-[11px] text-[#38BDF8] font-semibold">
+                          {sess.quiz_category}
+                        </span>
+                      </div>
+
+                      <h4 className="text-sm font-bold text-white truncate max-w-md">
+                        {sess.quiz_title}
+                      </h4>
+
+                      <p className="text-[11px] text-[#64748B]">
+                        Hosted on {new Date(sess.created_at).toLocaleDateString()} at {new Date(sess.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} &bull; {sess.total_questions || 0} Questions
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-5 shrink-0">
+                      <div className="text-right">
+                        <div className="flex items-center gap-1.5 justify-end text-xs font-bold text-white">
+                          <Users size={14} className="text-[#38BDF8]" />
+                          <span>{sess.participant_count || 0} Learners</span>
+                        </div>
+                        {sess.winner_name ? (
+                          <p className="text-[10px] text-[#F59E0B] font-semibold mt-0.5">
+                            🏆 Top: {sess.winner_name} ({sess.highest_score || 0} pts)
+                          </p>
+                        ) : (
+                          <p className="text-[10px] text-[#64748B] mt-0.5">No responses recorded</p>
+                        )}
+                      </div>
+
+                      {/* Re-host or Resume */}
+                      {sess.status === 'LOBBY' || sess.status === 'QUESTION_ACTIVE' ? (
+                        <button
+                          onClick={() => onHostLive && onHostLive(sess.id)}
+                          className="btn-emerald-primary text-xs py-2 px-3 font-bold"
+                        >
+                          Resume Lobby
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleHostLiveSession(sess.quiz_id)}
+                          className="btn-secondary text-xs py-2 px-3 font-bold text-[#34D399] border-[#34D399]/30 hover:bg-[#10B981]/15"
+                        >
+                          Host Again
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

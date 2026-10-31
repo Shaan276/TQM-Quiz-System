@@ -482,6 +482,49 @@ async function runP4Tests() {
       assert.strictEqual(sessionRow.status, 'COMPLETED');
     });
 
+    // Test 14: Teacher and Student retrieve Live Sessions History
+    await test('Session History: Teacher and Student retrieve their hosted and played session histories', async () => {
+      // Teacher history
+      const tRes = await fetch(`${BASE_URL}/live-sessions/my`, {
+        headers: { Authorization: `Bearer ${teacherToken}` }
+      });
+      assert.strictEqual(tRes.status, 200);
+      const tData = await tRes.json();
+      assert.strictEqual(tData.success, true);
+      assert.ok(tData.data.sessions.length >= 1);
+      const mySession = tData.data.sessions.find(s => s.id === sessionId);
+      assert.ok(mySession);
+      assert.strictEqual(mySession.winner_name, 'Alice TopStudent');
+      assert.strictEqual(mySession.highest_score, 20);
+
+      // Student history
+      const sRes = await fetch(`${BASE_URL}/live-sessions/history/my`, {
+        headers: { Authorization: `Bearer ${studentAliceToken}` }
+      });
+      assert.strictEqual(sRes.status, 200);
+      const sData = await sRes.json();
+      assert.strictEqual(sData.success, true);
+      assert.ok(sData.data.participations.length >= 1);
+      const alicePart = sData.data.participations.find(p => p.session_id === sessionId);
+      assert.ok(alicePart);
+      assert.strictEqual(alicePart.score, 20);
+      assert.strictEqual(alicePart.rank, 1);
+      assert.strictEqual(alicePart.host_name, 'Professor Multi');
+    });
+
+    // Test 15: Student points calculation in analytics
+    await test('Student Points: Authoritative reward points calculation combining self-paced and live battles', async () => {
+      const aRes = await fetch(`${BASE_URL}/analytics/student`, {
+        headers: { Authorization: `Bearer ${studentAliceToken}` }
+      });
+      assert.strictEqual(aRes.status, 200);
+      const aData = await aRes.json();
+      assert.strictEqual(aData.success, true);
+      assert.strictEqual(aData.data.liveBattlePoints, 20);
+      assert.strictEqual(aData.data.totalPoints, 20);
+      assert.strictEqual(aData.data.liveSessionsPlayed, 1);
+    });
+
   } finally {
     if (hostWs && hostWs.readyState === 1) hostWs.close();
     if (aliceWs && aliceWs.readyState === 1) aliceWs.close();

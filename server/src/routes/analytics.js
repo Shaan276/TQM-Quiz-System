@@ -51,6 +51,26 @@ router.get('/student', authenticateToken, async (req, res, next) => {
       [userId]
     );
 
+    // Live multiplayer sessions points & count
+    const liveStats = await dbGet(
+      `SELECT 
+        COUNT(*) as live_sessions_played,
+        COALESCE(SUM(score), 0) as live_points,
+        COALESCE(SUM(correct_count), 0) as live_correct
+       FROM session_participants 
+       WHERE user_id = ?`,
+      [userId]
+    );
+
+    // Self-paced attempts points
+    const selfPacedRow = await dbGet(
+      `SELECT COALESCE(SUM(score), 0) as total FROM quiz_attempts WHERE user_id = ? AND status = 'COMPLETED'`,
+      [userId]
+    );
+    const selfPacedPoints = Math.round(Number(selfPacedRow?.total) || 0);
+    const liveBattlePoints = Math.round(Number(liveStats?.live_points) || 0);
+    const totalPoints = selfPacedPoints + liveBattlePoints;
+
     const totalCompleted = attemptsSummary?.completed_attempts || 0;
     const passedCount = attemptsSummary?.passed_attempts || 0;
     const passRate = totalCompleted > 0 ? Math.round((passedCount / totalCompleted) * 100) : 0;
@@ -59,6 +79,10 @@ router.get('/student', authenticateToken, async (req, res, next) => {
     res.json({
       success: true,
       data: {
+        totalPoints,
+        selfPacedPoints,
+        liveBattlePoints,
+        liveSessionsPlayed: liveStats?.live_sessions_played || 0,
         totalAttempts: attemptsSummary?.total_attempts || 0,
         completedAttempts: totalCompleted,
         passedAttempts: passedCount,

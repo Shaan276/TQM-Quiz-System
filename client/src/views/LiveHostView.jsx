@@ -18,7 +18,9 @@ import {
   ArrowLeft,
   Flame,
   BarChart3,
-  Crown
+  Crown,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 
 export default function LiveHostView({ sessionId, onBack }) {
@@ -37,6 +39,7 @@ export default function LiveHostView({ sessionId, onBack }) {
   const [podiumData, setPodiumData] = useState(null);
   const [copiedCode, setCopiedCode] = useState(false);
   const [countdownNum, setCountdownNum] = useState(3);
+  const [isLeaderboardVisible, setIsLeaderboardVisible] = useState(true);
 
   const wsRef = useRef(null);
   const timerRef = useRef(null);
@@ -240,6 +243,78 @@ export default function LiveHostView({ sessionId, onBack }) {
     }
   };
 
+  // Dedicated Permanent Leaderboard Renderer
+  const renderLeaderboardTable = () => {
+    if (!isLeaderboardVisible) {
+      return (
+        <div className="p-3.5 rounded-2xl bg-[#0E1626] border border-[#1B2A44] flex items-center justify-between text-xs text-[#94A3B8]">
+          <span className="flex items-center gap-2">
+            <EyeOff size={15} className="text-[#64748B]" />
+            Leaderboard is currently hidden from host console.
+          </span>
+          <button
+            onClick={() => setIsLeaderboardVisible(true)}
+            className="text-[#34D399] hover:underline font-bold"
+          >
+            Show Leaderboard
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="dashboard-card p-5 space-y-4 border border-[#1F304E] animate-fadeIn">
+        <div className="flex items-center justify-between border-b border-[#1B2A44] pb-3">
+          <h4 className="text-xs font-extrabold text-white uppercase tracking-wider flex items-center gap-2">
+            <Trophy size={14} className="text-[#F59E0B]" />
+            Live Round Standings ({leaderboard.length} Participants)
+          </h4>
+          <button
+            onClick={() => setIsLeaderboardVisible(false)}
+            className="text-xs text-[#94A3B8] hover:text-white flex items-center gap-1 font-semibold"
+          >
+            <EyeOff size={13} />
+            Hide Leaderboard
+          </button>
+        </div>
+
+        {leaderboard.length === 0 ? (
+          <p className="text-xs text-[#64748B] italic py-2">No scores recorded yet for this question round.</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+            {leaderboard.map((item, idx) => (
+              <div
+                key={item.id || idx}
+                className={`p-3 rounded-xl border flex items-center justify-between text-xs transition-all ${
+                  item.rank === 1
+                    ? 'bg-gradient-to-r from-[#F59E0B]/15 to-[#121D32] border-[#F59E0B]/40 text-white font-bold'
+                    : item.rank === 2
+                    ? 'bg-[#121D32] border-[#94A3B8]/30 text-white'
+                    : item.rank === 3
+                    ? 'bg-[#121D32] border-[#D97706]/30 text-white'
+                    : 'bg-[#0E1626] border-[#1B2A44] text-[#CBD5E1]'
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <span className={`w-6 h-6 rounded-lg flex items-center justify-center font-mono font-bold text-[11px] shrink-0 ${
+                    item.rank === 1 ? 'bg-[#F59E0B] text-black' : item.rank === 2 ? 'bg-[#94A3B8] text-black' : item.rank === 3 ? 'bg-[#D97706] text-white' : 'bg-[#1F304E] text-[#94A3B8]'
+                  }`}>
+                    #{item.rank}
+                  </span>
+                  <span className="truncate font-semibold">{item.displayName}</span>
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  <span className="text-[11px] text-[#94A3B8]">{item.correctCount || 0} ✓</span>
+                  <span className="font-mono font-black text-[#34D399]">{item.score} pts</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="max-w-5xl mx-auto space-y-6 pb-20">
       
@@ -266,7 +341,7 @@ export default function LiveHostView({ sessionId, onBack }) {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
           {/* Connection status */}
           <span className={`text-[11px] px-2.5 py-1 rounded-full font-bold border flex items-center gap-1.5 ${
             connectionStatus === 'CONNECTED'
@@ -274,8 +349,32 @@ export default function LiveHostView({ sessionId, onBack }) {
               : 'bg-[#F43F5E]/15 text-[#FB7185] border-[#F43F5E]/30'
           }`}>
             <Radio size={12} className={connectionStatus === 'CONNECTED' ? 'animate-pulse' : ''} />
-            {connectionStatus === 'CONNECTED' ? 'Live Connected' : 'Connecting...'}
+            {connectionStatus === 'CONNECTED' ? 'Live' : 'Connecting...'}
           </span>
+
+          {/* Permanent Leaderboard Toggle Button */}
+          {['QUESTION_ACTIVE', 'PAUSED', 'QUESTION_ENDED', 'LEADERBOARD'].includes(status) && (
+            <button
+              onClick={() => setIsLeaderboardVisible(prev => !prev)}
+              className="px-3 py-1.5 rounded-xl bg-[#132238] hover:bg-[#1E293B] border border-[#2D436B] text-xs font-bold text-[#94A3B8] hover:text-white flex items-center gap-1.5 transition-all shadow-sm"
+              title={isLeaderboardVisible ? 'Hide Leaderboard from screen' : 'Show Leaderboard'}
+            >
+              {isLeaderboardVisible ? <EyeOff size={13} className="text-[#FB7185]" /> : <Eye size={13} className="text-[#34D399]" />}
+              <span>{isLeaderboardVisible ? 'Hide Leaderboard' : 'Show Leaderboard'}</span>
+            </button>
+          )}
+
+          {/* Permanent Next Question (Force Progression) Button */}
+          {['QUESTION_ACTIVE', 'PAUSED', 'QUESTION_ENDED', 'LEADERBOARD'].includes(status) && (
+            <button
+              onClick={handleNextQuestion}
+              className="btn-emerald-primary text-xs py-1.5 px-3.5 font-bold flex items-center gap-1.5 shadow-md shadow-[#10B981]/25 hover:scale-105 transition-all"
+              title="Force to advance to next question or end session"
+            >
+              <SkipForward size={13} />
+              <span>{(questionIndex + 1) >= totalQuestions ? 'Finish Quiz 🏆' : 'Next Question →'}</span>
+            </button>
+          )}
 
           {status !== 'COMPLETED' && (
             <button
@@ -506,6 +605,9 @@ export default function LiveHostView({ sessionId, onBack }) {
 
           </div>
 
+          {/* Real-time Permanent Leaderboard */}
+          {renderLeaderboardTable()}
+
         </div>
       )}
 
@@ -575,6 +677,9 @@ export default function LiveHostView({ sessionId, onBack }) {
               </div>
             </div>
           )}
+
+          {/* Real-time Permanent Leaderboard */}
+          {renderLeaderboardTable()}
 
         </div>
       )}
