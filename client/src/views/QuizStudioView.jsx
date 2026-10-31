@@ -28,6 +28,7 @@ import {
   Check
 } from 'lucide-react';
 import SubjectSelector from '../components/SubjectSelector';
+import { formatQuestionCode } from '../utils/questionCode';
 
 const QUESTION_TYPES = [
   { type: 'MCQ_SINGLE', label: 'Single MCQ', icon: HelpCircle, desc: 'Multiple options, 1 correct' },
@@ -187,8 +188,16 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
       ];
     }
 
+    const qCode = formatQuestionCode(
+      quiz?.category || 'General',
+      type,
+      quiz?.difficulty || 'MEDIUM',
+      questions.length + 1
+    );
+
     const newQuestion = {
       id: 'q_' + Date.now(),
+      question_code: qCode,
       question_text: '',
       question_type: type,
       marks: 1.0,
@@ -229,9 +238,16 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
   // Duplicate question
   const handleDuplicateQuestion = (index) => {
     const target = questions[index];
+    const qCode = formatQuestionCode(
+      quiz?.category || 'General',
+      target.question_type,
+      quiz?.difficulty || 'MEDIUM',
+      questions.length + 1
+    );
     const clone = {
       ...target,
       id: 'clone_' + Date.now(),
+      question_code: qCode,
       question_text: `${target.question_text} (Copy)`,
       options: target.options ? target.options.map(o => ({ ...o, id: undefined })) : [],
       answers: target.answers ? target.answers.map(a => ({ ...a, id: undefined })) : [],
@@ -330,6 +346,7 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
 
     setSavingBankQIdx(qIdx);
     const payloadOptions = ['MCQ_SINGLE', 'MCQ_MULTI', 'TRUE_FALSE'].includes(q.question_type) ? (q.options || []) : (q.answers || []);
+    const qCode = q.question_code || formatQuestionCode(quiz.category, q.question_type, quiz.difficulty, qIdx + 1);
 
     try {
       const res = await fetch('/api/v1/question-bank', {
@@ -346,14 +363,15 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
           difficulty: quiz.difficulty || 'MEDIUM',
           marks: q.marks || 1.0,
           explanation: q.explanation || '',
-          options_data: payloadOptions
+          options_data: payloadOptions,
+          question_code: qCode
         })
       });
       const data = await res.json();
       if (data.success) {
         setBankSavedMap(prev => ({ ...prev, [q.id || qIdx]: true }));
-        handleUpdateQuestion(qIdx, { saveToBank: true, bankSaved: true });
-        showToast(`Question #${qIdx + 1} saved to Question Bank under Subject: "${quiz.category || 'General'}"!`);
+        handleUpdateQuestion(qIdx, { saveToBank: true, bankSaved: true, question_code: qCode });
+        showToast(`Question [${qCode}] saved to Question Bank under Subject: "${quiz.category || 'General'}"!`);
       } else {
         alert(data.error?.message || 'Failed to save question to bank');
       }
@@ -380,7 +398,13 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
       });
       const data = await res.json();
       if (data.success) {
-        showToast(data.data.message);
+        const updated = questions.map((q, idx) => ({
+          ...q,
+          bankSaved: true,
+          question_code: q.question_code || formatQuestionCode(quiz.category, q.question_type, quiz.difficulty, idx + 1)
+        }));
+        setQuestions(updated);
+        showToast(data.data.message || 'All questions saved to Question Bank successfully!');
       } else {
         alert(data.error?.message || 'Failed to save whole quiz to bank');
       }
@@ -648,38 +672,57 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
           </div>
         </div>
 
-        {/* Header Action: Auto-sync to Bank & Save Whole Quiz to Bank */}
+        {/* Header Action: Auto-sync to Bank & Save Later options */}
         <div className="pt-2 border-t border-[#1B2A44] flex flex-wrap items-center justify-between gap-3 text-xs text-[#94A3B8]">
           <div className="flex flex-wrap items-center gap-3">
-            <span className="hidden sm:inline">All edits autosaved to cloud</span>
-            <span className="hidden sm:inline">&bull;</span>
-            <label className="flex items-center gap-2 cursor-pointer select-none bg-[#132238] hover:bg-[#1B2A44] px-2.5 py-1 rounded-lg border border-[#1F304E] text-xs transition-colors">
-              <input
-                type="checkbox"
-                checked={autoSaveNewToBank}
-                onChange={(e) => {
-                  setAutoSaveNewToBank(e.target.checked);
-                  showToast(e.target.checked 
-                    ? '⚡ Auto-sync enabled: Questions written in this quiz will automatically be added to Question Bank!' 
-                    : 'Auto-sync disabled: You can still save individual questions using "Save to Bank".'
-                  );
+            <span className="hidden sm:inline font-medium">Question Bank Integration:</span>
+            
+            {/* Auto Sync Toggle Button */}
+            <div className="flex items-center bg-[#132238] p-0.5 rounded-xl border border-[#1F304E]">
+              <button
+                type="button"
+                onClick={() => {
+                  setAutoSaveNewToBank(true);
+                  showToast('⚡ Auto-Sync enabled: Questions created or edited will automatically sync to Question Bank!');
                 }}
-                className="rounded bg-[#1B2A44] border-[#2D436B] text-[#34D399] focus:ring-0 w-3.5 h-3.5 cursor-pointer"
-              />
-              <span className="font-semibold flex items-center gap-1.5 text-white">
-                <Database size={13} className="text-[#34D399]" />
-                Auto-add new questions to Question Bank
-              </span>
-            </label>
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
+                  autoSaveNewToBank
+                    ? 'bg-[#10B981]/20 text-[#34D399] border border-[#10B981]/30 shadow-sm'
+                    : 'text-[#94A3B8] hover:text-white'
+                }`}
+                title="Automatically mirror new/edited questions into the Question Bank"
+              >
+                <Sparkles size={12} className={autoSaveNewToBank ? 'text-[#34D399]' : ''} />
+                <span>⚡ Auto-Sync to Bank</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setAutoSaveNewToBank(false);
+                  showToast('⏳ Save Later mode: Questions remain in quiz. You can push them to Question Bank anytime.');
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
+                  !autoSaveNewToBank
+                    ? 'bg-[#38BDF8]/20 text-[#38BDF8] border border-[#38BDF8]/30 shadow-sm'
+                    : 'text-[#94A3B8] hover:text-white'
+                }`}
+                title="Save in Quiz only and sync to Question Bank later when ready"
+              >
+                <Clock size={12} className={!autoSaveNewToBank ? 'text-[#38BDF8]' : ''} />
+                <span>⏳ Save Later / Manual</span>
+              </button>
+            </div>
           </div>
 
           <button
             type="button"
             onClick={handleSaveWholeQuizToBank}
-            className="text-xs text-[#34D399] hover:underline flex items-center gap-1.5 font-bold"
+            className="text-xs bg-[#10B981]/15 hover:bg-[#10B981]/25 text-[#34D399] border border-[#10B981]/30 px-3 py-1.5 rounded-xl flex items-center gap-2 font-bold transition-all shadow-sm"
+            title="Export and sync all current questions to Question Bank under this subject"
           >
-            <Database size={13} />
-            Save Whole Quiz to Question Bank
+            <Database size={14} />
+            Save All Questions to Question Bank
           </button>
         </div>
       </div>
@@ -694,12 +737,26 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
               
               {/* Question Card Header */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#1B2A44]">
-                <div className="flex items-center gap-3">
-                  <span className="w-7 h-7 rounded-xl bg-[#10B981]/20 border border-[#10B981]/30 text-[#34D399] font-black text-xs flex items-center justify-center">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span className="w-7 h-7 rounded-xl bg-[#10B981]/20 border border-[#10B981]/30 text-[#34D399] font-black text-xs flex items-center justify-center shrink-0">
                     {qIdx + 1}
                   </span>
-                  <span className="text-xs font-bold text-white uppercase tracking-wider">
-                    Question #{qIdx + 1}
+                  
+                  {/* Structured Question ID Badge */}
+                  <div className="flex items-center gap-1.5 bg-[#0D1526] border border-[#2D436B] hover:border-[#38BDF8] rounded-lg px-2.5 py-1 text-xs transition-colors group/qid">
+                    <span className="text-[10px] font-bold text-[#64748B] uppercase tracking-wider">QID:</span>
+                    <input
+                      type="text"
+                      value={q.question_code || formatQuestionCode(quiz.category, q.question_type, quiz.difficulty, qIdx + 1)}
+                      onChange={(e) => handleUpdateQuestion(qIdx, { question_code: e.target.value.toUpperCase() })}
+                      placeholder={formatQuestionCode(quiz.category, q.question_type, quiz.difficulty, qIdx + 1)}
+                      className="bg-transparent font-mono font-bold text-[#38BDF8] text-xs outline-none w-36 uppercase tracking-wider"
+                      title="Structured Question ID: [SUBJECT]-[TYPE]-[DIFFICULTY]-[NUM]. Click to customize."
+                    />
+                  </div>
+
+                  <span className="text-[11px] font-semibold text-[#64748B] hidden md:inline">
+                    ({q.question_type.replace('_', ' ')})
                   </span>
                 </div>
 
@@ -944,52 +1001,56 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
                 </div>
 
                 {/* Save this Question to Bank Actions */}
-                <div className="flex items-center gap-3">
-                  <label className="flex items-center gap-1.5 text-xs text-[#94A3B8] hover:text-[#34D399] cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={q.saveToBank !== false}
-                      onChange={(e) => {
-                        handleUpdateQuestion(qIdx, { saveToBank: e.target.checked });
-                      }}
-                      className="rounded bg-[#132238] border-[#1F304E] text-[#34D399] focus:ring-0 w-3.5 h-3.5 cursor-pointer"
-                    />
-                    <span>Save to Bank</span>
-                  </label>
-
-                  {bankSavedMap[q.id || qIdx] || q.bankSaved ? (
-                    <div className="flex items-center gap-1 text-xs text-[#34D399] font-bold bg-[#10B981]/15 px-2.5 py-1 rounded-lg border border-[#10B981]/30">
+                <div className="flex items-center gap-3 flex-wrap">
+                  {autoSaveNewToBank ? (
+                    <div className="flex items-center gap-1.5 text-xs text-[#34D399] font-bold bg-[#10B981]/15 px-2.5 py-1 rounded-lg border border-[#10B981]/30">
+                      <Sparkles size={13} />
+                      <span>Auto-Sync to Bank</span>
+                      <span className="font-mono text-[10px] text-[#A7F3D0]">
+                        ({q.question_code || formatQuestionCode(quiz.category, q.question_type, quiz.difficulty, qIdx + 1)})
+                      </span>
+                    </div>
+                  ) : bankSavedMap[q.id || qIdx] || q.bankSaved ? (
+                    <div className="flex items-center gap-1.5 text-xs text-[#34D399] font-bold bg-[#10B981]/15 px-2.5 py-1 rounded-lg border border-[#10B981]/30">
                       <CheckCircle2 size={13} />
-                      Saved in Bank
+                      <span>In Question Bank</span>
+                      <span className="font-mono text-[10px] text-[#A7F3D0]">
+                        ({q.question_code || formatQuestionCode(quiz.category, q.question_type, quiz.difficulty, qIdx + 1)})
+                      </span>
                       <button
                         type="button"
                         onClick={() => handleSaveQuestionToBank(q, qIdx)}
-                        className="text-[10px] text-[#06B6D4] hover:underline ml-1 font-semibold"
+                        className="text-[10px] text-[#38BDF8] hover:underline ml-1 font-semibold"
                         title="Update Question Bank with latest edits"
                       >
                         (Update)
                       </button>
                     </div>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => handleSaveQuestionToBank(q, qIdx)}
-                      disabled={savingBankQIdx === qIdx}
-                      className="text-xs text-[#06B6D4] hover:bg-[#06B6D4]/15 px-2.5 py-1 rounded-lg border border-[#06B6D4]/30 hover:underline flex items-center gap-1.5 font-semibold transition-all disabled:opacity-50"
-                      title="Save this question directly into Question Bank"
-                    >
-                      {savingBankQIdx === qIdx ? (
-                        <>
-                          <span className="w-3 h-3 border-2 border-[#06B6D4] border-t-transparent rounded-full animate-spin" />
-                          Saving to Bank...
-                        </>
-                      ) : (
-                        <>
-                          <Database size={13} />
-                          Add to Bank
-                        </>
-                      )}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-[#94A3B8] italic hidden sm:inline">
+                        ⏳ Saved in Quiz &bull; Save Later
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleSaveQuestionToBank(q, qIdx)}
+                        disabled={savingBankQIdx === qIdx}
+                        className="text-xs text-[#38BDF8] hover:bg-[#38BDF8]/15 px-2.5 py-1 rounded-lg border border-[#38BDF8]/30 hover:underline flex items-center gap-1.5 font-semibold transition-all disabled:opacity-50"
+                        title="Save this question directly into Question Bank"
+                      >
+                        {savingBankQIdx === qIdx ? (
+                          <>
+                            <span className="w-3 h-3 border-2 border-[#38BDF8] border-t-transparent rounded-full animate-spin" />
+                            Saving to Bank...
+                          </>
+                        ) : (
+                          <>
+                            <Database size={13} />
+                            Save to Bank Now
+                          </>
+                        )}
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>

@@ -311,6 +311,29 @@ const MIGRATIONS = [
       await dbRun(`CREATE INDEX IF NOT EXISTS idx_mistakes_user ON mistake_notebook(user_id, is_resolved);`, [], db);
       await dbRun(`CREATE INDEX IF NOT EXISTS idx_mistakes_subject ON mistake_notebook(user_id, subject);`, [], db);
     }
+  },
+  {
+    version: 4,
+    name: '004_question_code_and_structured_ids',
+    up: async (db) => {
+      // 1. Add question_code to questions table if not exists
+      const qCols = await dbAll(`PRAGMA table_info(questions);`, [], db);
+      const hasQCode = qCols.some(c => c.name === 'question_code');
+      if (!hasQCode) {
+        await dbRun(`ALTER TABLE questions ADD COLUMN question_code TEXT NULL;`, [], db);
+      }
+
+      // 2. Add question_code to question_bank table if not exists
+      const qbCols = await dbAll(`PRAGMA table_info(question_bank);`, [], db);
+      const hasQbCode = qbCols.some(c => c.name === 'question_code');
+      if (!hasQbCode) {
+        await dbRun(`ALTER TABLE question_bank ADD COLUMN question_code TEXT NULL;`, [], db);
+      }
+
+      // 3. Index for question_code fast search
+      await dbRun(`CREATE INDEX IF NOT EXISTS idx_questions_code ON questions(question_code);`, [], db);
+      await dbRun(`CREATE INDEX IF NOT EXISTS idx_question_bank_code ON question_bank(question_code);`, [], db);
+    }
   }
 ];
 

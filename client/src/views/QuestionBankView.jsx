@@ -23,6 +23,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import SubjectSelector from '../components/SubjectSelector';
+import { formatQuestionCode } from '../utils/questionCode';
 
 export default function QuestionBankView({ setActiveRoute }) {
   const { accessToken } = useAuth();
@@ -48,6 +49,7 @@ export default function QuestionBankView({ setActiveRoute }) {
   // Add Question Modal State
   const [showAddModal, setShowAddModal] = useState(false);
   const [newQText, setNewQText] = useState('');
+  const [newQCode, setNewQCode] = useState('');
   const [newQType, setNewQType] = useState('MCQ_SINGLE');
   const [newQSubject, setNewQSubject] = useState('TQM (Total Quality Management)');
   const [newQDifficulty, setNewQDifficulty] = useState('MEDIUM');
@@ -253,7 +255,8 @@ export default function QuestionBankView({ setActiveRoute }) {
           difficulty: newQDifficulty,
           marks: parseFloat(newQMarks) || 1.0,
           explanation: newQExplanation.trim(),
-          options_data: payloadOptions
+          options_data: payloadOptions,
+          question_code: newQCode.trim() || formatQuestionCode(newQSubject, newQType, newQDifficulty, questions.length + 1)
         })
       });
       const data = await res.json();
@@ -376,7 +379,7 @@ export default function QuestionBankView({ setActiveRoute }) {
           <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#64748B]" />
           <input
             type="text"
-            placeholder={activeTab === 'quizzes' ? "Search by Quiz Title or Subject..." : "Search questions by text or keywords..."}
+            placeholder={activeTab === 'quizzes' ? "Search by Quiz Title, Subject, or Question ID..." : "Search by Question text, Subject, or Question ID (e.g. TQM-MCQ-M-001)..."}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="input-field pl-10 text-xs"
@@ -493,13 +496,18 @@ export default function QuestionBankView({ setActiveRoute }) {
                                 {idx + 1}
                               </span>
 
-                              <div className="space-y-1">
+                              <div className="space-y-1.5">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-mono text-[10px] font-bold text-[#38BDF8] bg-[#0284C7]/15 border border-[#0284C7]/30 px-2 py-0.5 rounded tracking-wider">
+                                    QID: {q.question_code || formatQuestionCode(quiz.category, q.question_type, quiz.difficulty || 'MEDIUM', idx + 1)}
+                                  </span>
+                                  <span className="text-[10px] text-[#64748B] font-mono uppercase">
+                                    {q.question_type.replace('_', ' ')} &bull; {q.marks} pt
+                                  </span>
+                                </div>
                                 <p className="text-xs font-semibold text-white leading-relaxed">
                                   {q.question_text}
                                 </p>
-                                <span className="text-[10px] text-[#64748B] font-mono uppercase">
-                                  {q.question_type.replace('_', ' ')} &bull; {q.marks} pt
-                                </span>
                               </div>
                             </div>
                           </div>
@@ -544,7 +552,10 @@ export default function QuestionBankView({ setActiveRoute }) {
                 className="dashboard-card p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:border-[#2D436B] transition-all"
               >
                 <div className="space-y-2 flex-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono text-[10px] font-bold text-[#38BDF8] bg-[#0284C7]/15 border border-[#0284C7]/30 px-2 py-0.5 rounded tracking-wider">
+                      QID: {q.question_code || formatQuestionCode(q.category, q.question_type, q.difficulty || 'MEDIUM', 1)}
+                    </span>
                     <span className="px-2 py-0.5 rounded bg-[#10B981]/15 text-[#34D399] font-mono text-[10px] font-bold">
                       {q.question_type.replace('_', ' ')}
                     </span>
@@ -632,8 +643,8 @@ export default function QuestionBankView({ setActiveRoute }) {
                 />
               </div>
 
-              {/* Type, Subject Selector, Points */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Type, Subject Selector, Points, Question ID */}
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                 <div>
                   <label className="block font-semibold text-[#94A3B8] mb-1">Question Type</label>
                   <select
@@ -655,6 +666,18 @@ export default function QuestionBankView({ setActiveRoute }) {
                     value={newQSubject}
                     onChange={setNewQSubject}
                     label="Subject Name"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-[#94A3B8] mb-1">Question ID</label>
+                  <input
+                    type="text"
+                    value={newQCode}
+                    onChange={(e) => setNewQCode(e.target.value.toUpperCase())}
+                    placeholder={formatQuestionCode(newQSubject, newQType, newQDifficulty, questions.length + 1)}
+                    className="input-field text-xs py-2 font-mono text-[#38BDF8] font-bold uppercase"
+                    title="Structured Question ID: [SUBJECT]-[TYPE]-[DIFFICULTY]-[NUM]"
                   />
                 </div>
 

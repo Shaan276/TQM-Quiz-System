@@ -2,6 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const { dbRun, dbGet, dbAll } = require('../database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
+const { formatQuestionCode } = require('../utils/questionCode');
 
 const router = express.Router();
 
@@ -30,8 +31,8 @@ router.get('/', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (req, 
     let whereClauses = [`creator_id = ?`];
 
     if (search.trim()) {
-      whereClauses.push(`(title LIKE ? OR question_text LIKE ?)`);
-      params.push(`%${search.trim()}%`, `%${search.trim()}%`);
+      whereClauses.push(`(title LIKE ? OR question_text LIKE ? OR question_code LIKE ?)`);
+      params.push(`%${search.trim()}%`, `%${search.trim()}%`, `%${search.trim()}%`);
     }
 
     if (category) {
@@ -112,7 +113,8 @@ router.post('/', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (req,
       marks = 1.0,
       explanation = '',
       options_data = [],
-      settings = {}
+      settings = {},
+      question_code = null
     } = req.body;
 
     if (!question_text || !question_text.trim()) {
@@ -121,6 +123,10 @@ router.post('/', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (req,
         error: { code: 'ERR_VALIDATION', message: 'Question text is required.' }
       });
     }
+
+    const finalCode = (question_code && question_code.trim())
+      ? question_code.trim()
+      : formatQuestionCode(category, question_type, difficulty, 1);
 
     // Check if duplicate question already exists in this category for this creator
     const existing = await dbGet(
@@ -132,7 +138,9 @@ router.post('/', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (req,
       await dbRun(
         `UPDATE question_bank SET
           title = ?, question_type = ?, difficulty = ?, marks = ?,
-          explanation = ?, options_data = ?, settings = ?, updated_at = CURRENT_TIMESTAMP
+          explanation = ?, options_data = ?, settings = ?,
+          question_code = COALESCE(?, question_code),
+          updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`,
         [
           title.trim() || existing.title,
@@ -142,6 +150,7 @@ router.post('/', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (req,
           explanation || '',
           JSON.stringify(options_data || []),
           JSON.stringify(settings || {}),
+          finalCode,
           existing.id
         ]
       );
@@ -156,8 +165,8 @@ router.post('/', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (req,
     await dbRun(
       `INSERT INTO question_bank (
         id, creator_id, title, question_text, question_type, category,
-        difficulty, tags, marks, explanation, options_data, settings
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        difficulty, tags, marks, explanation, options_data, settings, question_code
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         userId,
@@ -170,7 +179,8 @@ router.post('/', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (req,
         parseFloat(marks) || 1.0,
         explanation || '',
         JSON.stringify(options_data || []),
-        JSON.stringify(settings || {})
+        JSON.stringify(settings || {}),
+        finalCode
       ]
     );
 
@@ -230,11 +240,13 @@ router.post('/from-quiz-question', authenticateToken, requireRole('CREATOR', 'AD
     }
 
     const bankId = generateUUID();
+    const finalCode = question.question_code || formatQuestionCode(category, question.question_type, 'MEDIUM', 1);
+
     await dbRun(
       `INSERT INTO question_bank (
         id, creator_id, title, question_text, question_type, category,
-        difficulty, tags, marks, explanation, options_data, settings
-      ) VALUES (?, ?, ?, ?, ?, ?, 'MEDIUM', ?, ?, ?, ?, ?)`,
+        difficulty, tags, marks, explanation, options_data, settings, question_code
+      ) VALUES (?, ?, ?, ?, ?, ?, 'MEDIUM', ?, ?, ?, ?, ?, ?)`,
       [
         bankId,
         userId,
@@ -246,7 +258,8 @@ router.post('/from-quiz-question', authenticateToken, requireRole('CREATOR', 'AD
         question.marks,
         question.explanation,
         JSON.stringify(optionsData),
-        question.settings || '{}'
+        question.settings || '{}',
+        finalCode
       ]
     );
 
@@ -254,7 +267,8 @@ router.post('/from-quiz-question', authenticateToken, requireRole('CREATOR', 'AD
       success: true,
       data: {
         message: 'Question saved to Question Bank successfully.',
-        bankId
+        bankId,
+        question_code: finalCode
       }
     });
   } catch (err) {
@@ -305,11 +319,13 @@ router.post('/:id/import-to-quiz', authenticateToken, requireRole('CREATOR', 'AD
     const newSortOrder = (sortRow?.max_sort || 0) + 1;
 
     const newQuestionId = generateUUID();
+    const finalCode = bankQ.question_code || formatQuestionCode(quiz.category, bankQ.question_type, quiz.difficulty || 'MEDIUM', newSortOrder);
+
     await dbRun(
       `INSERT INTO questions (
         id, quiz_id, question_text, question_type, marks,
-        time_limit_sec, explanation, sort_order, settings
-      ) VALUES (?, ?, ?, ?, ?, 30, ?, ?, ?)`,
+        time_limit_sec, explanation, sort_order, settings, question_code
+      ) VALUES (?, ?, ?, ?, ?, 30, ?, ?, ?, ?)`,
       [
         newQuestionId,
         targetQuizId,
@@ -318,7 +334,8 @@ router.post('/:id/import-to-quiz', authenticateToken, requireRole('CREATOR', 'AD
         bankQ.marks,
         bankQ.explanation,
         newSortOrder,
-        bankQ.settings || '{}'
+        bankQ.settings || '{}',
+        finalCode
       ]
     );
 
@@ -401,14 +418,15 @@ router.put('/:id', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (re
       marks,
       explanation,
       options_data,
-      settings
+      settings,
+      question_code
     } = req.body;
 
     await dbRun(
       `UPDATE question_bank SET
         title = ?, question_text = ?, question_type = ?, category = ?,
         difficulty = ?, tags = ?, marks = ?, explanation = ?,
-        options_data = ?, settings = ?, updated_at = CURRENT_TIMESTAMP
+        options_data = ?, settings = ?, question_code = ?, updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
       [
         title !== undefined ? title : existing.title,
@@ -421,6 +439,7 @@ router.put('/:id', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (re
         explanation !== undefined ? explanation : existing.explanation,
         options_data !== undefined ? JSON.stringify(options_data) : existing.options_data,
         settings !== undefined ? JSON.stringify(settings) : existing.settings,
+        question_code !== undefined ? question_code : existing.question_code,
         id
       ]
     );
@@ -507,11 +526,12 @@ router.post('/save-entire-quiz', authenticateToken, requireRole('CREATOR', 'ADMI
       }
 
       const bankId = generateUUID();
+      const finalCode = q.question_code || formatQuestionCode(targetCategory, q.question_type, quiz.difficulty || 'MEDIUM', savedCount + 1);
       await dbRun(
         `INSERT INTO question_bank (
           id, creator_id, title, question_text, question_type, category,
-          difficulty, tags, marks, explanation, options_data, settings
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          difficulty, tags, marks, explanation, options_data, settings, question_code
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           bankId,
           userId,
@@ -524,7 +544,8 @@ router.post('/save-entire-quiz', authenticateToken, requireRole('CREATOR', 'ADMI
           q.marks,
           q.explanation || '',
           JSON.stringify(optionsData || []),
-          q.settings || '{}'
+          q.settings || '{}',
+          finalCode
         ]
       );
       savedCount++;
@@ -575,12 +596,13 @@ router.post('/bulk-import-to-quiz', authenticateToken, requireRole('CREATOR', 'A
       if (!bankQ) continue;
 
       const newQId = generateUUID();
+      const finalCode = bankQ.question_code || formatQuestionCode(quiz.category, bankQ.question_type, quiz.difficulty || 'MEDIUM', nextSort);
       await dbRun(
         `INSERT INTO questions (
           id, quiz_id, question_text, question_type, marks,
-          time_limit_sec, explanation, sort_order, settings
-        ) VALUES (?, ?, ?, ?, ?, 30, ?, ?, ?)`,
-        [newQId, targetQuizId, bankQ.question_text, bankQ.question_type, bankQ.marks, bankQ.explanation, nextSort++, bankQ.settings || '{}']
+          time_limit_sec, explanation, sort_order, settings, question_code
+        ) VALUES (?, ?, ?, ?, ?, 30, ?, ?, ?, ?)`,
+        [newQId, targetQuizId, bankQ.question_text, bankQ.question_type, bankQ.marks, bankQ.explanation, nextSort++, bankQ.settings || '{}', finalCode]
       );
 
       let optionsData = [];

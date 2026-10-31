@@ -2,6 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const { dbRun, dbGet, dbAll } = require('../database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
+const { formatQuestionCode } = require('../utils/questionCode');
 
 const router = express.Router();
 
@@ -340,15 +341,16 @@ router.post('/', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (req,
         const qTime = Math.max(5, parseInt(q.time_limit_sec) || 30);
         const qExplanation = q.explanation || '';
         const qSettings = JSON.stringify(q.settings || {});
+        const qCode = q.question_code || formatQuestionCode(category, qType, difficulty, i + 1);
 
         await dbRun(
           `INSERT INTO questions (
             id, quiz_id, question_text, question_type, marks,
-            time_limit_sec, explanation, sort_order, settings
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            time_limit_sec, explanation, sort_order, settings, question_code
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             qId, quizId, q.question_text || 'Untitled Question',
-            qType, qMarks, qTime, qExplanation, i, qSettings
+            qType, qMarks, qTime, qExplanation, i, qSettings, qCode
           ]
         );
 
@@ -397,12 +399,12 @@ router.post('/', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (req,
             await dbRun(
               `INSERT INTO question_bank (
                 id, creator_id, title, question_text, question_type, category,
-                difficulty, tags, marks, explanation, options_data, settings
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                difficulty, tags, marks, explanation, options_data, settings, question_code
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               [
                 bankId,
                 userId,
-                bankQText.slice(0, 45) + (bankQText.length > 45 ? '...' : ''),
+                (qCode ? `[${qCode}] ` : '') + (q.title || bankQText.slice(0, 45) + (bankQText.length > 45 ? '...' : '')),
                 bankQText,
                 qType,
                 bankCat,
@@ -411,13 +413,14 @@ router.post('/', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (req,
                 qMarks,
                 qExplanation,
                 JSON.stringify(payloadOptions),
-                qSettings
+                qSettings,
+                qCode
               ]
             );
           } else {
             await dbRun(
               `UPDATE question_bank SET
-                question_type = ?, marks = ?, explanation = ?, options_data = ?, settings = ?, updated_at = CURRENT_TIMESTAMP
+                question_type = ?, marks = ?, explanation = ?, options_data = ?, settings = ?, question_code = ?, updated_at = CURRENT_TIMESTAMP
                WHERE id = ?`,
               [
                 qType,
@@ -425,6 +428,7 @@ router.post('/', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (req,
                 qExplanation,
                 JSON.stringify(payloadOptions),
                 qSettings,
+                qCode,
                 existingBankQ.id
               ]
             );
@@ -498,8 +502,11 @@ router.get('/:id', authenticateToken, async (req, res, next) => {
           parsedSettings = JSON.parse(q.settings || '{}');
         } catch (e) {}
 
+        const qCode = q.question_code || formatQuestionCode(quiz.category, q.question_type, quiz.difficulty, (q.sort_order || 0) + 1);
+
         return {
           ...q,
+          question_code: qCode,
           settings: parsedSettings,
           options: options || [],
           answers: answers || []
@@ -615,14 +622,16 @@ router.put('/:id', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (re
         const qExplanation = q.explanation || '';
         const qSettings = JSON.stringify(q.settings || {});
 
+        const qCode = q.question_code || formatQuestionCode(updatedCat, qType, updatedDiff, i + 1);
+
         await dbRun(
           `INSERT INTO questions (
             id, quiz_id, question_text, question_type, marks,
-            time_limit_sec, explanation, sort_order, settings
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            time_limit_sec, explanation, sort_order, settings, question_code
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             qId, id, q.question_text || 'Untitled Question',
-            qType, qMarks, qTime, qExplanation, i, qSettings
+            qType, qMarks, qTime, qExplanation, i, qSettings, qCode
           ]
         );
 
@@ -679,12 +688,12 @@ router.put('/:id', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (re
             await dbRun(
               `INSERT INTO question_bank (
                 id, creator_id, title, question_text, question_type, category,
-                difficulty, tags, marks, explanation, options_data, settings
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                difficulty, tags, marks, explanation, options_data, settings, question_code
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               [
                 bankId,
                 userId,
-                bankQText.slice(0, 45) + (bankQText.length > 45 ? '...' : ''),
+                (qCode ? `[${qCode}] ` : '') + (q.title || bankQText.slice(0, 45) + (bankQText.length > 45 ? '...' : '')),
                 bankQText,
                 qType,
                 bankCat,
@@ -693,13 +702,14 @@ router.put('/:id', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (re
                 qMarks,
                 qExplanation,
                 JSON.stringify(payloadOptions),
-                qSettings
+                qSettings,
+                qCode
               ]
             );
           } else {
             await dbRun(
               `UPDATE question_bank SET
-                question_type = ?, marks = ?, explanation = ?, options_data = ?, settings = ?, updated_at = CURRENT_TIMESTAMP
+                question_type = ?, marks = ?, explanation = ?, options_data = ?, settings = ?, question_code = ?, updated_at = CURRENT_TIMESTAMP
                WHERE id = ?`,
               [
                 qType,
@@ -707,6 +717,7 @@ router.put('/:id', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (re
                 qExplanation,
                 JSON.stringify(payloadOptions),
                 qSettings,
+                qCode,
                 existingBankQ.id
               ]
             );
@@ -1088,8 +1099,11 @@ router.get('/:id/preview', authenticateToken, async (req, res, next) => {
           parsedSettings = JSON.parse(q.settings || '{}');
         } catch (e) {}
 
+        const qCode = q.question_code || formatQuestionCode(quiz.category, q.question_type, quiz.difficulty, (q.sort_order || 0) + 1);
+
         return {
           ...q,
+          question_code: qCode,
           settings: parsedSettings,
           options: options || [],
           answers: answers || []
