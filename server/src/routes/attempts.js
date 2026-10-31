@@ -102,7 +102,8 @@ async function getQuizVersionQuestions(quizId, version) {
 // -------------------------------------------------------------
 router.post('/start', authenticateToken, async (req, res, next) => {
   try {
-    const { quizId } = req.body;
+    const quizId = req.body.quizId || req.body.quiz_id;
+    const assignmentId = req.body.assignmentId || req.body.assignment_id || null;
     const userId = req.user.id;
 
     if (!quizId) {
@@ -167,6 +168,7 @@ router.post('/start', authenticateToken, async (req, res, next) => {
           data: {
             isResumed: true,
             attemptId: existingAttempt.id,
+            attempt: { id: existingAttempt.id },
             quiz: {
               id: quiz.id,
               title: quiz.title,
@@ -206,6 +208,60 @@ router.post('/start', authenticateToken, async (req, res, next) => {
     }
 
     // 4. Load quiz questions snapshot
+    // Phase P6: Institutional Scoped Access Enforcement
+    let assignmentRecip = null;
+    const isStudent = req.user.role === 'STUDENT' || req.user.role === 'LEARNER';
+    let userOrgId = req.user.organization_id;
+    if (!userOrgId) {
+      const u = await dbGet(`SELECT organization_id FROM users WHERE id = ?`, [userId]);
+      userOrgId = u?.organization_id;
+    }
+    const hasEnrollment = await dbGet(`SELECT id FROM student_enrollments WHERE user_id = ? AND status = 'ACTIVE'`, [userId]);
+    if (isStudent && (userOrgId || hasEnrollment)) {
+      assignmentRecip = await dbGet(`
+        SELECT ar.*, a.id as assignment_id, a.due_date, a.allow_late, a.time_limit_sec as assign_time_limit, a.max_attempts as assign_max_attempts
+        FROM assignment_recipients ar
+        JOIN assignments a ON ar.assignment_id = a.id
+        WHERE ar.student_id = ? AND a.quiz_id = ? AND a.status = 'PUBLISHED'
+        ORDER BY a.created_at DESC LIMIT 1
+      `, [userId, quizId]);
+
+      if (!assignmentRecip) {
+        return res.status(403).json({
+          success: false,
+          error: {
+            code: 'ERR_QUIZ_NOT_ASSIGNED',
+            message: 'Access Denied: You cannot attempt this quiz until an instructor assigns it to you or your section.'
+          }
+        });
+      }
+
+      if (assignmentRecip.due_date && new Date(assignmentRecip.due_date) < new Date() && !assignmentRecip.allow_late) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            code: 'ERR_ASSIGNMENT_OVERDUE',
+            message: 'This assignment deadline has passed and late submissions are not allowed.'
+          }
+        });
+      }
+
+      if (assignmentRecip.assign_max_attempts > 0) {
+        const attemptsCountRow = await dbGet(
+          `SELECT COUNT(*) as count FROM quiz_attempts WHERE assignment_id = ? AND user_id = ? AND status = 'COMPLETED'`,
+          [assignmentRecip.assignment_id, userId]
+        );
+        if (attemptsCountRow && attemptsCountRow.count >= assignmentRecip.assign_max_attempts) {
+          return res.status(403).json({
+            success: false,
+            error: {
+              code: 'ERR_MAX_ATTEMPTS_EXCEEDED',
+              message: `You have reached the maximum allowed attempts (${assignmentRecip.assign_max_attempts}) for this assignment.`
+            }
+          });
+        }
+      }
+    }
     const currentVersion = quiz.published_version || quiz.version || 1;
     const { questions } = await getQuizVersionQuestions(quizId, currentVersion);
 
@@ -235,8 +291,9 @@ router.post('/start', authenticateToken, async (req, res, next) => {
     await dbRun(
       `INSERT INTO quiz_attempts (
         id, quiz_id, quiz_version, user_id, status, score, max_score, 
-        total_questions, time_limit_sec, started_at, expires_at
-      ) VALUES (?, ?, ?, ?, 'IN_PROGRESS', 0.0, ?, ?, ?, ?, ?)`,
+        total_questions, time_limit_sec, started_at, expires_at,
+        assignment_id, recipient_id
+      ) VALUES (?, ?, ?, ?, 'IN_PROGRESS', 0.0, ?, ?, ?, ?, ?, ?, ?)`,
       [
         attemptId,
         quizId,
@@ -246,9 +303,18 @@ router.post('/start', authenticateToken, async (req, res, next) => {
         totalQuestions,
         quizTimeLimit,
         startedAt.toISOString(),
-        expiresAt ? expiresAt.toISOString() : null
+        expiresAt ? expiresAt.toISOString() : null,
+        assignmentRecip?.assignment_id || null,
+        assignmentRecip?.id || null
       ]
     );
+
+    if (assignmentRecip) {
+      await dbRun(
+        `UPDATE assignment_recipients SET status = 'STARTED', attempt_id = ? WHERE id = ? AND status = 'ASSIGNED'`,
+        [attemptId, assignmentRecip.id]
+      );
+    }
 
     // Shuffle questions if quiz settings dictate
     let orderedQuestions = [...questions];
@@ -271,6 +337,7 @@ router.post('/start', authenticateToken, async (req, res, next) => {
       data: {
         isResumed: false,
         attemptId,
+        attempt: { id: attemptId },
         quiz: {
           id: quiz.id,
           title: quiz.title,
@@ -937,6 +1004,30 @@ router.post('/:id/submit', authenticateToken, async (req, res, next) => {
             m.explanation
           ]
         );
+      }
+    }
+
+    // Update Assignment Recipient status if this attempt was part of an assignment
+    if (attempt.recipient_id || attempt.assignment_id) {
+      const recipId = attempt.recipient_id;
+      let assignment = null;
+      if (attempt.assignment_id) {
+        assignment = await dbGet(`SELECT due_date, allow_late FROM assignments WHERE id = ?`, [attempt.assignment_id]);
+      }
+      const isLate = assignment?.due_date && new Date(assignment.due_date) < submittedAt;
+
+      if (recipId) {
+        await dbRun(`
+          UPDATE assignment_recipients
+          SET status = ?, score = ?, is_passed = ?, submitted_at = ?, attempt_id = ?
+          WHERE id = ?
+        `, [isLate ? 'LATE' : 'SUBMITTED', totalEarnedScore, isPassed, submittedAt.toISOString(), id, recipId]);
+      } else if (attempt.assignment_id) {
+        await dbRun(`
+          UPDATE assignment_recipients
+          SET status = ?, score = ?, is_passed = ?, submitted_at = ?, attempt_id = ?
+          WHERE assignment_id = ? AND student_id = ?
+        `, [isLate ? 'LATE' : 'SUBMITTED', totalEarnedScore, isPassed, submittedAt.toISOString(), id, attempt.assignment_id, userId]);
       }
     }
 

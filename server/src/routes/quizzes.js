@@ -113,6 +113,23 @@ router.get('/discover', authenticateToken, async (req, res, next) => {
     const params = [];
     let whereClauses = [`q.status = 'PUBLISHED'`, `q.visibility != 'PRIVATE'`];
 
+    // Institutional access restriction: students in an organization only see quizzes assigned to them
+    const isStudent = req.user.role === 'STUDENT' || req.user.role === 'LEARNER';
+    let userOrgId = req.user.organization_id;
+    if (!userOrgId) {
+      const u = await dbGet(`SELECT organization_id FROM users WHERE id = ?`, [req.user.id]);
+      userOrgId = u?.organization_id;
+    }
+    const hasEnrollment = await dbGet(`SELECT id FROM student_enrollments WHERE user_id = ? AND status = 'ACTIVE'`, [req.user.id]);
+    if (isStudent && (userOrgId || hasEnrollment)) {
+      whereClauses.push(`q.id IN (
+        SELECT a.quiz_id FROM assignments a 
+        JOIN assignment_recipients ar ON a.id = ar.assignment_id 
+        WHERE ar.student_id = ? AND a.status = 'PUBLISHED'
+      )`);
+      params.push(req.user.id);
+    }
+
     if (search.trim()) {
       whereClauses.push(`(q.title LIKE ? OR q.description LIKE ? OR u.name LIKE ?)`);
       params.push(`%${search.trim()}%`, `%${search.trim()}%`, `%${search.trim()}%`);

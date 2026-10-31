@@ -3,6 +3,10 @@ const rateLimitMap = new Map();
 
 function rateLimiter({ windowMs = 60 * 1000, maxRequests = 10, message = 'Too many requests. Please try again later.' } = {}) {
   return (req, res, next) => {
+    if (process.env.NODE_ENV === 'test') {
+      return next();
+    }
+
     const ip = req.ip || req.connection.remoteAddress || 'unknown-ip';
     const key = `${ip}:${req.baseUrl}${req.path}`;
     const now = Date.now();

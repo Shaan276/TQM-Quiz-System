@@ -188,6 +188,132 @@ router.get('/teacher', authenticateToken, requireRole('TEACHER', 'CREATOR', 'SUP
 });
 
 // -------------------------------------------------------------
+// 2b. GET /api/v1/analytics/teacher/all-tests - Unified Live, Self-Paced & Assignment Assessment Data
+// -------------------------------------------------------------
+router.get('/teacher/all-tests', authenticateToken, requireRole('TEACHER', 'CREATOR', 'ORG_ADMIN', 'SUPER_ADMIN', 'ADMIN'), async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const isOrgAdmin = ['ORG_ADMIN', 'SUPER_ADMIN', 'ADMIN'].includes(req.user.role);
+
+    // 1. Live Battles hosted by teacher
+    const liveSessionsRaw = await dbAll(`
+      SELECT 
+        qs.id, qs.join_code, qs.status, qs.total_questions, qs.created_at, qs.ended_at,
+        q.title AS quiz_title, q.category AS quiz_category,
+        COUNT(sp.id) AS participant_count,
+        AVG(sp.score) AS average_score,
+        SUM(CASE WHEN sp.is_flagged = 1 THEN 1 ELSE 0 END) AS flagged_count
+      FROM quiz_sessions qs
+      JOIN quizzes q ON qs.quiz_id = q.id
+      LEFT JOIN session_participants sp ON qs.id = sp.session_id
+      ${isOrgAdmin ? '' : 'WHERE qs.host_id = ?'}
+      GROUP BY qs.id
+      ORDER BY qs.created_at DESC
+      LIMIT 50
+    `, isOrgAdmin ? [] : [userId]);
+
+    // Attach participants drilldown for each live session
+    const liveBattles = await Promise.all(liveSessionsRaw.map(async (sess) => {
+      const participants = await dbAll(`
+        SELECT sp.id, sp.user_id, sp.display_name, sp.score, sp.correct_count, sp.rank,
+               sp.warning_count, sp.is_flagged, sp.flag_reason, u.email
+        FROM session_participants sp
+        LEFT JOIN users u ON sp.user_id = u.id
+        WHERE sp.session_id = ?
+        ORDER BY sp.score DESC, sp.correct_count DESC
+      `, [sess.id]);
+
+      const winner = participants.length > 0 ? participants[0].display_name : null;
+      return {
+        ...sess,
+        winnerName: winner,
+        participants
+      };
+    }));
+
+    // 2. Self-Paced Attempts on teacher's quizzes
+    const selfPacedAttempts = await dbAll(`
+      SELECT 
+        qa.id, qa.quiz_id, qa.quiz_version, qa.status, qa.score, qa.max_score,
+        qa.score_percentage, qa.is_passed, qa.total_questions, qa.correct_answers,
+        qa.warning_count, qa.is_flagged, qa.flag_reason, qa.started_at, qa.submitted_at,
+        qa.time_taken_sec,
+        q.title AS quiz_title, q.category AS quiz_category,
+        u.name AS student_name, u.email AS student_email,
+        se.roll_number, s.name AS section_name
+      FROM quiz_attempts qa
+      JOIN quizzes q ON qa.quiz_id = q.id
+      JOIN users u ON qa.user_id = u.id
+      LEFT JOIN student_enrollments se ON qa.user_id = se.user_id AND se.status = 'ACTIVE'
+      LEFT JOIN sections s ON se.section_id = s.id
+      ${isOrgAdmin ? "WHERE qa.status = 'COMPLETED'" : "WHERE q.creator_id = ? AND qa.status = 'COMPLETED'"}
+      ORDER BY qa.submitted_at DESC
+      LIMIT 100
+    `, isOrgAdmin ? [] : [userId]);
+
+    // 3. Scheduled Assignments authored by teacher
+    const assignmentsRaw = await dbAll(`
+      SELECT 
+        a.id, a.title, a.instructions, a.scope_type, a.due_date, a.time_limit_sec,
+        a.max_attempts, a.created_at, a.status,
+        q.title AS quiz_title, q.category AS quiz_category,
+        COUNT(ar.id) AS total_recipients,
+        SUM(CASE WHEN ar.status = 'SUBMITTED' OR ar.status = 'LATE' THEN 1 ELSE 0 END) AS submitted_count,
+        SUM(CASE WHEN ar.status = 'STARTED' THEN 1 ELSE 0 END) AS in_progress_count,
+        SUM(CASE WHEN ar.status = 'ASSIGNED' THEN 1 ELSE 0 END) AS pending_count,
+        AVG(CASE WHEN ar.score IS NOT NULL THEN ar.score ELSE NULL END) AS average_score
+      FROM assignments a
+      JOIN quizzes q ON a.quiz_id = q.id
+      LEFT JOIN assignment_recipients ar ON a.id = ar.assignment_id
+      ${isOrgAdmin ? '' : 'WHERE a.teacher_id = ?'}
+      GROUP BY a.id
+      ORDER BY a.created_at DESC
+      LIMIT 50
+    `, isOrgAdmin ? [] : [userId]);
+
+    // Attach student recipient breakdown for each assignment
+    const scheduledAssignments = await Promise.all(assignmentsRaw.map(async (assign) => {
+      const recipients = await dbAll(`
+        SELECT 
+          ar.id, ar.student_id, ar.status, ar.score, ar.is_passed, ar.submitted_at, ar.source,
+          u.name AS student_name, u.email AS student_email,
+          se.roll_number, s.name AS section_name,
+          qa.warning_count, qa.is_flagged, qa.flag_reason
+        FROM assignment_recipients ar
+        JOIN users u ON ar.student_id = u.id
+        LEFT JOIN student_enrollments se ON ar.student_id = se.user_id AND se.status = 'ACTIVE'
+        LEFT JOIN sections s ON ar.section_id = s.id
+        LEFT JOIN quiz_attempts qa ON ar.attempt_id = qa.id
+        WHERE ar.assignment_id = ?
+        ORDER BY s.name ASC, se.roll_number ASC, u.name ASC
+      `, [assign.id]);
+
+      return {
+        ...assign,
+        recipients
+      };
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        liveBattles,
+        selfPacedAttempts,
+        scheduledAssignments,
+        assignments: scheduledAssignments,
+        summary: {
+          totalLiveBattles: liveBattles.length,
+          totalSelfPacedAttempts: selfPacedAttempts.length,
+          totalAssignments: scheduledAssignments.length
+        }
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// -------------------------------------------------------------
 // 3. GET /api/v1/analytics/admin - Super admin platform analytics
 // -------------------------------------------------------------
 router.get('/admin', authenticateToken, requireRole('SUPER_ADMIN', 'ADMIN'), async (req, res, next) => {

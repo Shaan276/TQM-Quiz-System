@@ -77,6 +77,8 @@ function authenticateToken(req, res, next) {
 
 // Role-Based Authorization Guard Middleware
 function requireRole(...allowedRoles) {
+  const roles = allowedRoles.flat();
+
   return (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({
@@ -93,8 +95,8 @@ function requireRole(...allowedRoles) {
       return next();
     }
 
-    const normalizedAllowed = allowedRoles.map(r => normalizeRole(r));
-    const rawAllowed = allowedRoles.map(r => r.toUpperCase());
+    const normalizedAllowed = roles.map(r => normalizeRole(r));
+    const rawAllowed = roles.map(r => r.toUpperCase());
 
     const isAuthorized = normalizedAllowed.includes(userNormalized) || 
                          rawAllowed.includes(userRole) || 

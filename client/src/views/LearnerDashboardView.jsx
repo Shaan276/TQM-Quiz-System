@@ -36,6 +36,8 @@ export default function LearnerDashboardView({ onOpenPreview, onStartAttempt, on
   const [subjects, setSubjects] = useState([]);
   const [learnerTab, setLearnerTab] = useState('all'); // 'all' | 'self-paced' | 'live-battles' | 'assessments'
   const [liveHistory, setLiveHistory] = useState([]);
+  const [assignedTests, setAssignedTests] = useState([]);
+  const [enrollment, setEnrollment] = useState(null);
 
   // Fetch subjects for filter
   useEffect(() => {
@@ -92,6 +94,32 @@ export default function LearnerDashboardView({ onOpenPreview, onStartAttempt, on
         }
       } catch (e) {
         console.error('Failed to load live sessions history', e);
+      }
+
+      // 4. Fetch Assigned Assessments
+      try {
+        const asRes = await fetch('/api/v1/assignments/my-assigned', {
+          headers: { 'Authorization': `Bearer ${accessToken}` }
+        });
+        const asData = await asRes.json();
+        if (asData.success && asData.data?.assignments) {
+          setAssignedTests(asData.data.assignments);
+        }
+      } catch (e) {
+        console.error('Failed to load assigned tests', e);
+      }
+
+      // 5. Fetch Institutional Enrollment Details
+      try {
+        const enRes = await fetch('/api/v1/institutions/my-enrollment', {
+          headers: { 'Authorization': `Bearer ${accessToken}` }
+        });
+        const enData = await enRes.json();
+        if (enData.success && enData.data?.enrollment) {
+          setEnrollment(enData.data.enrollment);
+        }
+      } catch (e) {
+        console.error('Failed to load student enrollment', e);
       }
     } catch (err) {
       console.error(err);
@@ -174,7 +202,26 @@ export default function LearnerDashboardView({ onOpenPreview, onStartAttempt, on
         </div>
       </div>
 
-            {/* Join Live Game Quick Bar (Phase P4) */}
+      {/* Institutional Enrollment Banner (Phase P6) */}
+      {enrollment && (
+        <div className="dashboard-card p-3.5 bg-[#121E36]/90 border border-[#38BDF8]/40 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-[#10B981] animate-ping" />
+            <span className="font-bold text-white tracking-wide">{enrollment.organization_name}</span>
+            <span className="text-[#64748B]">&bull;</span>
+            <span className="text-[#94A3B8]">{enrollment.department_name}</span>
+            <span className="text-[#64748B]">&bull;</span>
+            <span className="text-[#38BDF8] font-bold">{enrollment.class_name} ({enrollment.section_name})</span>
+          </div>
+          {enrollment.roll_number && (
+            <div className="font-mono text-[11px] px-2.5 py-1 rounded bg-[#0A1220] border border-[#1B2A44] text-[#A7F3D0]">
+              Roll: <strong>{enrollment.roll_number}</strong>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Join Live Game Quick Bar (Phase P4) */}
       <div className="dashboard-card p-4 sm:p-5 border border-[#10B981]/40 bg-gradient-to-r from-[#10B981]/15 via-[#0E1626] to-[#0A1220] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-[#10B981]/20 border border-[#10B981]/30 flex items-center justify-center text-[#34D399] shrink-0">
@@ -350,7 +397,7 @@ export default function LearnerDashboardView({ onOpenPreview, onStartAttempt, on
           }`}
         >
           <Calendar size={16} />
-          Assessments &amp; Assignments
+          Assessments &amp; Assignments ({assignedTests.length})
         </button>
       </div>
 
@@ -429,18 +476,21 @@ export default function LearnerDashboardView({ onOpenPreview, onStartAttempt, on
                     className="dashboard-card p-5 space-y-4 flex flex-col justify-between hover:border-[#34D399] transition-all relative group"
                   >
                     <div className="space-y-3">
-                      <div className="flex items-center justify-between text-[11px]">
-                        <span className="px-2 py-0.5 rounded bg-[#10B981]/15 text-[#34D399] font-mono font-bold">
+                      <div className="flex items-start justify-between gap-2">
+                        <span 
+                          className="inline-block px-2.5 py-1 rounded-md bg-[#10B981]/15 text-[#34D399] font-mono text-[11px] font-bold truncate max-w-[55%]"
+                          title={quiz.category}
+                        >
                           {quiz.category}
                         </span>
-                        <div className="flex items-center gap-1.5">
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#38BDF8]/15 text-[#38BDF8]">
-                            Self-Paced Ready
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#38BDF8]/15 text-[#38BDF8] border border-[#38BDF8]/30">
+                            Self-Paced
                           </span>
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                            quiz.difficulty === 'HARD' ? 'bg-[#F43F5E]/20 text-[#FB7185]' :
-                            quiz.difficulty === 'EASY' ? 'bg-[#10B981]/20 text-[#34D399]' :
-                            'bg-[#F59E0B]/20 text-[#FBBF24]'
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${
+                            quiz.difficulty === 'HARD' ? 'bg-[#F43F5E]/15 text-[#FB7185] border-[#F43F5E]/30' :
+                            quiz.difficulty === 'EASY' ? 'bg-[#10B981]/15 text-[#34D399] border-[#10B981]/30' :
+                            'bg-[#F59E0B]/15 text-[#FBBF24] border-[#F59E0B]/30'
                           }`}>
                             {quiz.difficulty}
                           </span>
@@ -540,14 +590,17 @@ export default function LearnerDashboardView({ onOpenPreview, onStartAttempt, on
                     className="dashboard-card p-5 space-y-4 flex flex-col justify-between hover:border-[#38BDF8] transition-all relative group"
                   >
                     <div className="space-y-3">
-                      <div className="flex items-center justify-between text-[11px]">
-                        <span className="px-2 py-0.5 rounded bg-[#38BDF8]/15 text-[#38BDF8] font-mono font-bold">
+                      <div className="flex items-start justify-between gap-2">
+                        <span 
+                          className="inline-block px-2.5 py-1 rounded-md bg-[#38BDF8]/15 text-[#38BDF8] font-mono text-[11px] font-bold truncate max-w-[65%]"
+                          title={quiz.category}
+                        >
                           {quiz.category}
                         </span>
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                          quiz.difficulty === 'HARD' ? 'bg-[#F43F5E]/20 text-[#FB7185]' :
-                          quiz.difficulty === 'EASY' ? 'bg-[#10B981]/20 text-[#34D399]' :
-                          'bg-[#F59E0B]/20 text-[#FBBF24]'
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0 border ${
+                          quiz.difficulty === 'HARD' ? 'bg-[#F43F5E]/15 text-[#FB7185] border-[#F43F5E]/30' :
+                          quiz.difficulty === 'EASY' ? 'bg-[#10B981]/15 text-[#34D399] border-[#10B981]/30' :
+                          'bg-[#F59E0B]/15 text-[#FBBF24] border-[#F59E0B]/30'
                         }`}>
                           {quiz.difficulty}
                         </span>
@@ -761,92 +814,128 @@ export default function LearnerDashboardView({ onOpenPreview, onStartAttempt, on
             <div>
               <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
                 <Calendar size={16} className="text-[#F59E0B]" />
-                Scheduled Assessments &amp; Assignments ({quizzes.length})
+                Scheduled Assessments &amp; Assignments ({assignedTests.length})
               </h2>
               <p className="text-xs text-[#94A3B8] mt-0.5">
-                Official course evaluations, graded homework, and scheduled class tests.
+                Official course evaluations and assigned cohort assessments from your instructors.
               </p>
             </div>
           </div>
 
           {loading ? (
             <div className="text-center py-16 text-xs text-[#94A3B8] font-mono">
-              Loading assessments...
+              Loading your assigned assessments...
             </div>
-          ) : quizzes.length === 0 ? (
+          ) : assignedTests.length === 0 ? (
             <div className="dashboard-card p-12 text-center space-y-3 border-dashed border-[#1F304E] max-w-md mx-auto">
               <Calendar size={28} className="text-[#64748B] mx-auto" />
               <h3 className="text-base font-bold text-white">No Scheduled Assessments</h3>
               <p className="text-xs text-[#94A3B8]">
-                You currently have no pending homework or scheduled assessments.
+                You currently have no pending homework or cohort assessments. Your teachers will assign assessments to your section or class.
               </p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {quizzes.map((quiz) => {
-                const timeLimitMins = quiz.time_limit_sec > 0 ? Math.round(quiz.time_limit_sec / 60) : 0;
+              {assignedTests.map((item) => {
+                const timeLimitMins = item.time_limit_sec > 0 ? Math.round(item.time_limit_sec / 60) : 0;
+                const isSubmitted = item.recipient_status === 'SUBMITTED' || item.recipient_status === 'LATE';
+                const isOverdue = item.isOverdue && !isSubmitted;
+
                 return (
                   <div
-                    key={quiz.id}
-                    className="dashboard-card p-5 space-y-4 flex flex-col justify-between hover:border-[#F59E0B] transition-all relative group"
+                    key={item.recipient_id}
+                    className={`dashboard-card p-5 space-y-4 flex flex-col justify-between transition-all relative group ${
+                      isOverdue ? 'border-[#F43F5E]/60 hover:border-[#F43F5E]' :
+                      isSubmitted ? 'border-[#10B981]/60 hover:border-[#34D399]' :
+                      'border-[#F59E0B]/50 hover:border-[#F59E0B]'
+                    }`}
                   >
                     <div className="space-y-3">
-                      <div className="flex items-center justify-between text-[11px]">
-                        <span className="px-2 py-0.5 rounded bg-[#F59E0B]/15 text-[#F59E0B] font-mono font-bold">
-                          {quiz.category}
+                      <div className="flex items-start justify-between gap-2">
+                        <span 
+                          className="inline-block px-2.5 py-1 rounded-md bg-[#F59E0B]/15 text-[#F59E0B] font-mono text-[11px] font-bold truncate max-w-[55%]"
+                          title={item.quiz_category}
+                        >
+                          {item.quiz_category}
                         </span>
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/30">
-                          Graded Assessment
-                        </span>
+
+                        <div className="flex items-center gap-1 shrink-0">
+                          {item.is_flagged ? (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#F43F5E]/20 text-[#FB7185] border border-[#F43F5E]/40">
+                              🚩 Flagged
+                            </span>
+                          ) : null}
+
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${
+                            isSubmitted ? 'bg-[#10B981]/20 text-[#34D399] border-[#10B981]/40' :
+                            isOverdue ? 'bg-[#F43F5E]/20 text-[#FB7185] border-[#F43F5E]/40' :
+                            item.recipient_status === 'STARTED' ? 'bg-[#38BDF8]/20 text-[#38BDF8] border-[#38BDF8]/40' :
+                            'bg-[#F59E0B]/20 text-[#FBBF24] border-[#F59E0B]/40'
+                          }`}>
+                            {isSubmitted ? `✓ Done (${Math.round(item.score_percentage || 0)}%)` :
+                             isOverdue ? '⚠️ Overdue' :
+                             item.recipient_status === 'STARTED' ? '⏳ In Progress' :
+                             '📅 Assigned'}
+                          </span>
+                        </div>
                       </div>
 
                       <div>
                         <h3 className="text-base font-bold text-white line-clamp-1 group-hover:text-[#F59E0B] transition-colors">
-                          {quiz.title}
+                          {item.assignment_title}
                         </h3>
                         <p className="text-xs text-[#94A3B8] line-clamp-2 mt-1 leading-relaxed">
-                          {quiz.description || 'Graded evaluation assessment.'}
+                          {item.instructions || item.quiz_description || 'Mandatory scheduled course assessment.'}
                         </p>
                       </div>
 
-                      <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#1B2A44]/60 text-center font-mono">
+                      <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[#1B2A44]/60 text-center font-mono">
                         <div className="p-1.5 rounded bg-[#121D32]">
-                          <span className="text-[10px] text-[#64748B] block">Questions</span>
-                          <span className="text-xs font-bold text-white">{quiz.question_count || 0}</span>
+                          <span className="text-[10px] text-[#64748B] block">Due Date</span>
+                          <span className={`text-xs font-bold ${isOverdue ? 'text-[#FB7185]' : 'text-white'}`}>
+                            {item.due_date ? new Date(item.due_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : 'No Deadline'}
+                          </span>
                         </div>
                         <div className="p-1.5 rounded bg-[#121D32]">
-                          <span className="text-[10px] text-[#64748B] block">Points</span>
-                          <span className="text-xs font-bold text-white">{quiz.total_marks || 0}</span>
-                        </div>
-                        <div className="p-1.5 rounded bg-[#121D32]">
-                          <span className="text-[10px] text-[#64748B] block">Time</span>
+                          <span className="text-[10px] text-[#64748B] block">Time Limit</span>
                           <span className="text-xs font-bold text-[#F59E0B]">
-                            {timeLimitMins > 0 ? `${timeLimitMins}m` : 'Timed'}
+                            {timeLimitMins > 0 ? `${timeLimitMins}m` : 'Untimed'}
                           </span>
                         </div>
                       </div>
 
                       <div className="flex items-center justify-between text-[11px] text-[#64748B] pt-1">
-                        <span>Teacher: <strong className="text-[#94A3B8]">{quiz.creator_name}</strong></span>
-                        <span className="text-[#34D399]">Passing: {quiz.pass_percentage}%</span>
+                        <span>Instructor: <strong className="text-[#94A3B8]">{item.teacher_name}</strong></span>
+                        <span className="text-[#38BDF8]">{item.quiz_difficulty}</span>
                       </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-2 pt-2">
                       <button
-                        onClick={() => onOpenPreview(quiz.id)}
+                        onClick={() => onOpenPreview(item.quiz_id)}
                         className="btn-secondary text-xs py-2 font-semibold gap-1 justify-center"
                       >
                         <Eye size={13} />
                         Preview
                       </button>
-                      <button
-                        onClick={() => onStartAttempt(quiz.id)}
-                        className="btn-emerald-primary text-xs py-2 font-bold gap-1.5 justify-center bg-[#F59E0B] hover:bg-[#D97706] text-black border-none shadow-lg shadow-[#F59E0B]/20"
-                      >
-                        <Play size={13} className="fill-current text-black" />
-                        Start Assessment
-                      </button>
+
+                      {isSubmitted ? (
+                        <button
+                          onClick={() => setActiveRoute('attempt-history')}
+                          className="btn-secondary text-xs py-2 font-bold gap-1.5 justify-center border-[#10B981]/50 text-[#34D399]"
+                        >
+                          <History size={13} />
+                          Scorecard
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => onStartAttempt(item.quiz_id)}
+                          className="btn-emerald-primary text-xs py-2 font-bold gap-1.5 justify-center bg-[#F59E0B] hover:bg-[#D97706] text-black border-none shadow-lg shadow-[#F59E0B]/20"
+                        >
+                          <Play size={13} className="fill-current text-black" />
+                          Start Test
+                        </button>
+                      )}
                     </div>
                   </div>
                 );

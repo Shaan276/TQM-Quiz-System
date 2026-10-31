@@ -18,6 +18,8 @@ const attemptRoutes = require('./routes/attempts');
 const mistakeRoutes = require('./routes/mistakes');
 const analyticsRoutes = require('./routes/analytics');
 const liveSessionRoutes = require('./routes/liveSessions');
+const institutionRoutes = require('./routes/institutions');
+const assignmentRoutes = require('./routes/assignments');
 
 function createApp(customDb = null) {
   if (customDb) {
@@ -63,6 +65,8 @@ function createApp(customDb = null) {
   app.use('/api/v1/mistakes', mistakeRoutes);
   app.use('/api/v1/analytics', analyticsRoutes);
   app.use('/api/v1/live-sessions', liveSessionRoutes);
+  app.use('/api/v1/institutions', institutionRoutes);
+  app.use('/api/v1/assignments', assignmentRoutes);
 
   // Serve production client build if exists
   const clientDist = path.resolve(__dirname, '../../client/dist');

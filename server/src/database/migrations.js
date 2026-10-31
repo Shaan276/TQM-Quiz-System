@@ -435,6 +435,209 @@ const MIGRATIONS = [
         await dbRun(`ALTER TABLE session_participants ADD COLUMN violations_log TEXT NOT NULL DEFAULT '[]';`, [], db);
       }
     }
+  },
+  {
+    version: 7,
+    name: '007_institutional_structure_and_scoped_assignments',
+    up: async (db) => {
+      // 1. Organizations
+      await dbRun(`
+        CREATE TABLE IF NOT EXISTS organizations (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          code TEXT UNIQUE NOT NULL,
+          type TEXT NOT NULL DEFAULT 'COLLEGE' CHECK (type IN ('SCHOOL', 'COLLEGE', 'UNIVERSITY', 'TRAINING_INSTITUTE', 'ENTERPRISE')),
+          dept_term TEXT NOT NULL DEFAULT 'Department',
+          class_term TEXT NOT NULL DEFAULT 'Class',
+          is_archived INTEGER NOT NULL DEFAULT 0,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+      `, [], db);
+
+      // 2. Academic Years / Sessions
+      await dbRun(`
+        CREATE TABLE IF NOT EXISTS academic_years (
+          id TEXT PRIMARY KEY,
+          organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+          name TEXT NOT NULL,
+          start_date DATE NULL,
+          end_date DATE NULL,
+          is_current INTEGER NOT NULL DEFAULT 1,
+          is_archived INTEGER NOT NULL DEFAULT 0,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(organization_id, name)
+        );
+      `, [], db);
+
+      // 3. Departments / Programs
+      await dbRun(`
+        CREATE TABLE IF NOT EXISTS departments (
+          id TEXT PRIMARY KEY,
+          organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+          name TEXT NOT NULL,
+          code TEXT NOT NULL,
+          description TEXT NOT NULL DEFAULT '',
+          is_archived INTEGER NOT NULL DEFAULT 0,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(organization_id, code)
+        );
+      `, [], db);
+
+      // 4. Classes / Grades
+      await dbRun(`
+        CREATE TABLE IF NOT EXISTS classes (
+          id TEXT PRIMARY KEY,
+          organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+          department_id TEXT NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
+          name TEXT NOT NULL,
+          code TEXT NOT NULL,
+          is_archived INTEGER NOT NULL DEFAULT 0,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(organization_id, department_id, code)
+        );
+      `, [], db);
+
+      // 5. Sections
+      await dbRun(`
+        CREATE TABLE IF NOT EXISTS sections (
+          id TEXT PRIMARY KEY,
+          class_id TEXT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+          academic_year_id TEXT NOT NULL REFERENCES academic_years(id) ON DELETE CASCADE,
+          name TEXT NOT NULL,
+          capacity INTEGER NOT NULL DEFAULT 60,
+          is_archived INTEGER NOT NULL DEFAULT 0,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(class_id, academic_year_id, name)
+        );
+      `, [], db);
+
+      // 6. Subjects
+      await dbRun(`
+        CREATE TABLE IF NOT EXISTS subjects (
+          id TEXT PRIMARY KEY,
+          organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+          department_id TEXT NULL REFERENCES departments(id) ON DELETE SET NULL,
+          name TEXT NOT NULL,
+          code TEXT NOT NULL,
+          description TEXT NOT NULL DEFAULT '',
+          is_archived INTEGER NOT NULL DEFAULT 0,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(organization_id, code)
+        );
+      `, [], db);
+
+      // 7. Student Enrollments
+      await dbRun(`
+        CREATE TABLE IF NOT EXISTS student_enrollments (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+          academic_year_id TEXT NOT NULL REFERENCES academic_years(id) ON DELETE CASCADE,
+          department_id TEXT NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
+          class_id TEXT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+          section_id TEXT NOT NULL REFERENCES sections(id) ON DELETE CASCADE,
+          roll_number TEXT NULL,
+          status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK(status IN ('ACTIVE', 'TRANSFERRED', 'COMPLETED', 'ARCHIVED')),
+          enrolled_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(user_id, academic_year_id)
+        );
+      `, [], db);
+
+      // 8. Teacher Allocations (Teaching assignments)
+      await dbRun(`
+        CREATE TABLE IF NOT EXISTS teacher_assignments (
+          id TEXT PRIMARY KEY,
+          teacher_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+          academic_year_id TEXT NOT NULL REFERENCES academic_years(id) ON DELETE CASCADE,
+          department_id TEXT NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
+          subject_id TEXT NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+          class_id TEXT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+          section_id TEXT NOT NULL REFERENCES sections(id) ON DELETE CASCADE,
+          is_active INTEGER NOT NULL DEFAULT 1,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(teacher_id, subject_id, section_id, academic_year_id)
+        );
+      `, [], db);
+
+      // 9. Assignments
+      await dbRun(`
+        CREATE TABLE IF NOT EXISTS assignments (
+          id TEXT PRIMARY KEY,
+          organization_id TEXT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+          quiz_id TEXT NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
+          quiz_version INTEGER NOT NULL DEFAULT 1,
+          teacher_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          title TEXT NOT NULL,
+          instructions TEXT NOT NULL DEFAULT '',
+          scope_type TEXT NOT NULL DEFAULT 'SECTION' CHECK(scope_type IN ('INDIVIDUAL', 'SECTION', 'MULTI_SECTION', 'COMBINED')),
+          target_sections TEXT NOT NULL DEFAULT '[]',
+          target_students TEXT NOT NULL DEFAULT '[]',
+          start_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          due_date DATETIME NULL,
+          allow_late INTEGER NOT NULL DEFAULT 0,
+          time_limit_sec INTEGER NOT NULL DEFAULT 0,
+          max_attempts INTEGER NOT NULL DEFAULT 1,
+          status TEXT NOT NULL DEFAULT 'PUBLISHED' CHECK(status IN ('DRAFT', 'PUBLISHED', 'ARCHIVED', 'CLOSED')),
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+      `, [], db);
+
+      // 10. Assignment Recipients Snapshot
+      await dbRun(`
+        CREATE TABLE IF NOT EXISTS assignment_recipients (
+          id TEXT PRIMARY KEY,
+          assignment_id TEXT NOT NULL REFERENCES assignments(id) ON DELETE CASCADE,
+          student_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          section_id TEXT NULL REFERENCES sections(id) ON DELETE SET NULL,
+          source TEXT NOT NULL DEFAULT 'SECTION' CHECK(source IN ('SECTION', 'INDIVIDUAL')),
+          status TEXT NOT NULL DEFAULT 'ASSIGNED' CHECK(status IN ('ASSIGNED', 'STARTED', 'SUBMITTED', 'LATE', 'OVERDUE')),
+          attempt_id TEXT NULL REFERENCES quiz_attempts(id) ON DELETE SET NULL,
+          score REAL NULL,
+          is_passed INTEGER NULL,
+          submitted_at DATETIME NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(assignment_id, student_id)
+        );
+      `, [], db);
+
+      // 11. Add assignment_id and recipient_id to quiz_attempts if not present
+      const attCols = await dbAll('PRAGMA table_info(quiz_attempts);', [], db);
+      if (!attCols.some(c => c.name === 'assignment_id')) {
+        await dbRun('ALTER TABLE quiz_attempts ADD COLUMN assignment_id TEXT NULL REFERENCES assignments(id) ON DELETE SET NULL;', [], db);
+      }
+      if (!attCols.some(c => c.name === 'recipient_id')) {
+        await dbRun('ALTER TABLE quiz_attempts ADD COLUMN recipient_id TEXT NULL REFERENCES assignment_recipients(id) ON DELETE SET NULL;', [], db);
+      }
+
+      // Indexes for fast lookup
+      await dbRun('CREATE INDEX IF NOT EXISTS idx_depts_org ON departments(organization_id);', [], db);
+      await dbRun('CREATE INDEX IF NOT EXISTS idx_classes_dept ON classes(organization_id, department_id);', [], db);
+      await dbRun('CREATE INDEX IF NOT EXISTS idx_sections_class ON sections(class_id, academic_year_id);', [], db);
+      await dbRun('CREATE INDEX IF NOT EXISTS idx_subjects_org ON subjects(organization_id);', [], db);
+      await dbRun('CREATE INDEX IF NOT EXISTS idx_enroll_user ON student_enrollments(user_id);', [], db);
+      await dbRun('CREATE INDEX IF NOT EXISTS idx_enroll_sec ON student_enrollments(section_id, status);', [], db);
+      await dbRun('CREATE INDEX IF NOT EXISTS idx_teach_alloc ON teacher_assignments(teacher_id, is_active);', [], db);
+      await dbRun('CREATE INDEX IF NOT EXISTS idx_teach_sec ON teacher_assignments(section_id);', [], db);
+      await dbRun('CREATE INDEX IF NOT EXISTS idx_assignments_teacher ON assignments(teacher_id, status);', [], db);
+      await dbRun('CREATE INDEX IF NOT EXISTS idx_assignments_quiz ON assignments(quiz_id);', [], db);
+      await dbRun('CREATE INDEX IF NOT EXISTS idx_assign_recip_student ON assignment_recipients(student_id, status);', [], db);
+      await dbRun('CREATE INDEX IF NOT EXISTS idx_assign_recip_assign ON assignment_recipients(assignment_id, status);', [], db);
+
+      // Default base organization and academic year
+      await dbRun(`
+        INSERT OR IGNORE INTO organizations (id, name, code, type) 
+        VALUES ('demo-org-uuid', 'Apex Institute of Technology & Management', 'AITM-DELHI', 'COLLEGE');
+      `, [], db);
+
+      await dbRun(`
+        INSERT OR IGNORE INTO academic_years (id, organization_id, name, start_date, end_date, is_current) 
+        VALUES ('demo-ay-2025-2026', 'demo-org-uuid', '2025-2026', '2025-08-01', '2026-06-30', 1);
+      `, [], db);
+    }
   }
 ];
 

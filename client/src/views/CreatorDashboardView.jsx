@@ -62,10 +62,30 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
   const [loadingAttempts, setLoadingAttempts] = useState(false);
   const [teacherAnalytics, setTeacherAnalytics] = useState(null);
 
-  // Live sessions history state (Phase P4)
-  const [dashboardTab, setDashboardTab] = useState('quizzes'); // 'quizzes' | 'live-history'
+  // Live sessions history state (Phase P4 & P6)
+  const [dashboardTab, setDashboardTab] = useState('quizzes'); // 'quizzes' | 'live-history' | 'all-tests'
   const [liveSessionsHistory, setLiveSessionsHistory] = useState([]);
   const [copiedCodeId, setCopiedCodeId] = useState(null);
+
+  // Phase P6 Unified Assessment Analytics State
+  const [allTestsData, setAllTestsData] = useState({ liveBattles: [], selfPacedAttempts: [], scheduledAssignments: [] });
+  const [testsSubTab, setTestsSubTab] = useState('live'); // 'live' | 'self-paced' | 'assignments'
+  const [selectedAssignmentDrilldown, setSelectedAssignmentDrilldown] = useState(null);
+
+  // Phase P6 Scoped Assignment Modal State
+  const [assignmentModalQuiz, setAssignmentModalQuiz] = useState(null);
+  const [teacherAllocations, setTeacherAllocations] = useState([]);
+  const [eligibleStudents, setEligibleStudents] = useState([]);
+  const [assignmentForm, setAssignmentForm] = useState({
+    title: '',
+    instructions: '',
+    selectedSections: [],
+    selectedStudents: [],
+    dueDate: '',
+    timeLimitMins: 10,
+    maxAttempts: 1,
+    allowLate: false
+  });
 
   // Start Test / Launch Mode Modal state
   const [launchModalQuiz, setLaunchModalQuiz] = useState(null);
@@ -158,6 +178,19 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
       } catch (e) {
         console.error('Failed to load live sessions history', e);
       }
+
+      // 5. Fetch Unified Assessment Data (Live, Self-Paced, Assignments)
+      try {
+        const atRes = await fetch('/api/v1/analytics/teacher/all-tests', {
+          headers: { 'Authorization': `Bearer ${accessToken}` }
+        });
+        const atData = await atRes.json();
+        if (atData.success && atData.data) {
+          setAllTestsData(atData.data);
+        }
+      } catch (e) {
+        console.error('Failed to load all tests data', e);
+      }
     } catch (err) {
       setErrorMsg('Failed to load quizzes. Please check server connection.');
     } finally {
@@ -168,6 +201,90 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
   useEffect(() => {
     fetchMetricsAndQuizzes();
   }, [accessToken, isCreatorOrAdmin, search, category, status, difficulty, sort]);
+
+  // Phase P6: Open Scoped Assignment Modal
+  const handleOpenAssignModal = async (quiz) => {
+    setLaunchModalQuiz(null);
+    setAssignmentModalQuiz(quiz);
+    setAssignmentForm({
+      title: `${quiz.title} - Cohort Assessment`,
+      instructions: '',
+      selectedSections: [],
+      selectedStudents: [],
+      dueDate: '',
+      timeLimitMins: quiz.time_limit_sec > 0 ? Math.round(quiz.time_limit_sec / 60) : 10,
+      maxAttempts: 1,
+      allowLate: false
+    });
+
+    try {
+      const res = await fetch('/api/v1/institutions/my-assignments', {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTeacherAllocations(data.data.allocations || []);
+        setEligibleStudents(data.data.eligibleStudents || []);
+      }
+    } catch (e) {
+      console.error('Failed to load teaching allocations', e);
+    }
+  };
+
+  // Phase P6: Publish Assignment
+  const handlePublishAssignment = async (e) => {
+    e.preventDefault();
+    if (!assignmentForm.title.trim()) {
+      alert('Please enter an assignment title');
+      return;
+    }
+    if (assignmentForm.selectedSections.length === 0 && assignmentForm.selectedStudents.length === 0) {
+      alert('Please select at least one section or student recipient.');
+      return;
+    }
+
+    setActionLoading(true);
+    try {
+      const res = await fetch('/api/v1/assignments', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
+        },
+        body: JSON.stringify({
+          quizId: assignmentModalQuiz.id,
+          title: assignmentForm.title,
+          instructions: assignmentForm.instructions,
+          scopeType: assignmentForm.selectedSections.length > 0 && assignmentForm.selectedStudents.length > 0
+            ? 'COMBINED'
+            : assignmentForm.selectedSections.length > 1
+            ? 'MULTI_SECTION'
+            : assignmentForm.selectedSections.length === 1
+            ? 'SECTION'
+            : 'INDIVIDUAL',
+          targetSections: assignmentForm.selectedSections,
+          targetStudents: assignmentForm.selectedStudents,
+          dueDate: assignmentForm.dueDate ? new Date(assignmentForm.dueDate).toISOString() : null,
+          timeLimitSec: (parseInt(assignmentForm.timeLimitMins) || 0) * 60,
+          maxAttempts: parseInt(assignmentForm.maxAttempts) || 1,
+          allowLate: assignmentForm.allowLate
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(data.data.message || 'Assignment published successfully!');
+        setAssignmentModalQuiz(null);
+        fetchMetricsAndQuizzes();
+      } else {
+        alert(data.error?.message || 'Failed to publish assignment');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Network error publishing assignment');
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   // Create new quiz action
   const handleCreateNewQuiz = async () => {
@@ -412,7 +529,22 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
           }`}
         >
           <Radio size={16} className={liveSessionsHistory.some(s => s.status !== 'COMPLETED') ? 'animate-pulse text-[#34D399]' : ''} />
-          Hosted Live Quiz History ({liveSessionsHistory.length})
+          Hosted Live History ({liveSessionsHistory.length})
+        </button>
+
+        <button
+          onClick={() => {
+            setDashboardTab('all-tests');
+            fetchMetricsAndQuizzes();
+          }}
+          className={`pb-2 px-1 text-sm font-bold flex items-center gap-2 border-b-2 transition-all ${
+            dashboardTab === 'all-tests'
+              ? 'border-[#10B981] text-[#34D399]'
+              : 'border-transparent text-[#94A3B8] hover:text-white'
+          }`}
+        >
+          <Award size={16} className="text-[#38BDF8]" />
+          All Tests &amp; Student Data ({ (allTestsData?.liveBattles?.length || 0) + (allTestsData?.selfPacedAttempts?.length || 0) + (allTestsData?.scheduledAssignments?.length || 0) })
         </button>
       </div>
 
@@ -794,6 +926,246 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
         </div>
       )}
 
+      {/* TAB 3: ALL TESTS & STUDENT DATA (LIVE, SELF-PACED, ASSIGNMENTS) */}
+      {dashboardTab === 'all-tests' && (
+        <div className="space-y-6 animate-fadeIn">
+          {/* Header */}
+          <div className="dashboard-card p-6 border border-[#1F304E] space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#1B2A44]">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <Award size={20} className="text-[#38BDF8]" />
+                  Unified Assessment Analytics &amp; Student Data
+                </h3>
+                <p className="text-xs text-[#94A3B8]">
+                  Authoritative student scores, anti-cheat audit flags, and completion rates across all 3 assessment modes.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setTestsSubTab('live')}
+                  className={`text-xs px-3 py-1.5 rounded-lg font-bold transition-all ${
+                    testsSubTab === 'live' ? 'bg-[#10B981] text-black shadow-md shadow-[#10B981]/30' : 'bg-[#121D32] text-[#94A3B8] hover:text-white'
+                  }`}
+                >
+                  Live Battles ({allTestsData?.liveBattles?.length || 0})
+                </button>
+                <button
+                  onClick={() => setTestsSubTab('self-paced')}
+                  className={`text-xs px-3 py-1.5 rounded-lg font-bold transition-all ${
+                    testsSubTab === 'self-paced' ? 'bg-[#38BDF8] text-black shadow-md shadow-[#38BDF8]/30' : 'bg-[#121D32] text-[#94A3B8] hover:text-white'
+                  }`}
+                >
+                  Self-Paced ({allTestsData?.selfPacedAttempts?.length || 0})
+                </button>
+                <button
+                  onClick={() => setTestsSubTab('assignments')}
+                  className={`text-xs px-3 py-1.5 rounded-lg font-bold transition-all ${
+                    testsSubTab === 'assignments' ? 'bg-[#F59E0B] text-black shadow-md shadow-[#F59E0B]/30' : 'bg-[#121D32] text-[#94A3B8] hover:text-white'
+                  }`}
+                >
+                  Assignments ({allTestsData?.scheduledAssignments?.length || 0})
+                </button>
+              </div>
+            </div>
+
+            {/* SUBTAB 1: LIVE BATTLES DATA */}
+            {testsSubTab === 'live' && (
+              <div className="space-y-4">
+                {(!allTestsData?.liveBattles || allTestsData.liveBattles.length === 0) ? (
+                  <div className="text-center py-12 text-xs text-[#94A3B8]">
+                    No live quiz battles recorded yet.
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {allTestsData.liveBattles.map(battle => (
+                      <div key={battle.id} className="p-4 rounded-xl bg-[#0E1626] border border-[#1B2A44] space-y-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1B2A44]/60 pb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-bold text-xs px-2 py-0.5 rounded bg-[#10B981]/20 text-[#34D399]">
+                              PIN: {battle.join_code}
+                            </span>
+                            <h4 className="text-sm font-bold text-white">{battle.quiz_title}</h4>
+                            <span className="text-[11px] text-[#64748B]">({battle.quiz_category})</span>
+                          </div>
+                          <div className="flex items-center gap-3 text-xs">
+                            <span className="text-[#94A3B8]">Players: <strong className="text-white">{battle.participant_count}</strong></span>
+                            <span className="text-[#94A3B8]">Avg Score: <strong className="text-[#34D399]">{Math.round(battle.average_score || 0)} pts</strong></span>
+                            {battle.flagged_count > 0 && (
+                              <span className="px-2 py-0.5 rounded bg-[#F43F5E]/20 text-[#FB7185] font-bold text-[10px] border border-[#F43F5E]/40">
+                                🚩 {battle.flagged_count} Flagged
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Player Roster & Violations */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                          {battle.participants.map(p => (
+                            <div key={p.id} className="p-2.5 rounded-lg bg-[#121D32] border border-[#1F304E] flex items-center justify-between text-xs">
+                              <div>
+                                <p className="font-bold text-white flex items-center gap-1.5">
+                                  <span>#{p.rank || '-'}</span>
+                                  <span>{p.display_name}</span>
+                                </p>
+                                <p className="text-[10px] text-[#64748B]">{p.correct_count} correct</p>
+                              </div>
+                              <div className="text-right">
+                                <span className="font-mono font-black text-white">{p.score} <span className="text-[10px] text-[#34D399]">pts</span></span>
+                                <div>
+                                  {p.is_flagged ? (
+                                    <span className="text-[9px] font-bold text-[#FB7185] block">🚩 Flagged</span>
+                                  ) : p.warning_count > 0 ? (
+                                    <span className="text-[9px] font-bold text-[#FBBF24] block">⚠️ 1 Warning</span>
+                                  ) : (
+                                    <span className="text-[9px] text-[#34D399] block">✓ Clean</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* SUBTAB 2: SELF-PACED ATTEMPTS DATA */}
+            {testsSubTab === 'self-paced' && (
+              <div>
+                {(!allTestsData?.selfPacedAttempts || allTestsData.selfPacedAttempts.length === 0) ? (
+                  <div className="text-center py-12 text-xs text-[#94A3B8]">
+                    No self-paced student attempts recorded yet.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-[#121D32] text-[#64748B] uppercase font-mono text-[10px]">
+                        <tr>
+                          <th className="p-3">Student</th>
+                          <th className="p-3">Cohort / Section</th>
+                          <th className="p-3">Quiz</th>
+                          <th className="p-3">Score &amp; %</th>
+                          <th className="p-3">Integrity &amp; Anti-Cheat</th>
+                          <th className="p-3">Time</th>
+                          <th className="p-3">Submitted</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#1F304E]">
+                        {allTestsData.selfPacedAttempts.map(att => (
+                          <tr key={att.id} className="hover:bg-[#121D32]/50 transition-colors">
+                            <td className="p-3">
+                              <p className="font-bold text-white">{att.student_name}</p>
+                              <p className="text-[11px] text-[#64748B]">{att.student_email}</p>
+                            </td>
+                            <td className="p-3 text-[#94A3B8]">
+                              {att.section_name ? (
+                                <span>{att.section_name} {att.roll_number ? `(${att.roll_number})` : ''}</span>
+                              ) : (
+                                <span className="text-[#64748B]">Independent</span>
+                              )}
+                            </td>
+                            <td className="p-3">
+                              <p className="font-semibold text-white">{att.quiz_title}</p>
+                              <span className="text-[10px] text-[#64748B]">{att.quiz_category}</span>
+                            </td>
+                            <td className="p-3">
+                              <span className="font-mono font-bold text-white">{att.score} / {att.max_score}</span>
+                              <span className={`ml-2 px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                att.is_passed ? 'bg-[#10B981]/20 text-[#34D399]' : 'bg-[#F43F5E]/20 text-[#FB7185]'
+                              }`}>
+                                {Math.round(att.score_percentage)}%
+                              </span>
+                            </td>
+                            <td className="p-3">
+                              {att.is_flagged ? (
+                                <span className="px-2 py-0.5 rounded bg-[#F43F5E]/20 text-[#FB7185] font-bold text-[10px] border border-[#F43F5E]/40" title={att.flag_reason}>
+                                  🚩 FLAGGED ({att.warning_count} warnings)
+                                </span>
+                              ) : att.warning_count > 0 ? (
+                                <span className="px-2 py-0.5 rounded bg-[#F59E0B]/20 text-[#FBBF24] font-bold text-[10px] border border-[#F59E0B]/40">
+                                  ⚠️ 1 Warning
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded bg-[#10B981]/15 text-[#34D399] text-[10px] font-semibold border border-[#10B981]/30">
+                                  ✓ Fullscreen Clean
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-3 font-mono text-[#94A3B8]">
+                              {att.time_taken_sec > 0 ? `${Math.round(att.time_taken_sec / 60)}m ${att.time_taken_sec % 60}s` : 'Untimed'}
+                            </td>
+                            <td className="p-3 text-[#64748B]">
+                              {new Date(att.submitted_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* SUBTAB 3: SCHEDULED ASSIGNMENTS DATA */}
+            {testsSubTab === 'assignments' && (
+              <div className="space-y-4">
+                {(!allTestsData?.scheduledAssignments || allTestsData.scheduledAssignments.length === 0) ? (
+                  <div className="text-center py-12 text-xs text-[#94A3B8]">
+                    No scheduled assignments published yet. Click "Start Test" on any published quiz to create an assignment.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {allTestsData.scheduledAssignments.map(assign => (
+                      <div key={assign.id} className="p-4 rounded-xl bg-[#0E1626] border border-[#1B2A44] hover:border-[#F59E0B]/50 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div className="space-y-1.5 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-sm text-white">{assign.title}</span>
+                            <span className="text-[10px] font-extrabold uppercase bg-[#F59E0B]/20 text-[#F59E0B] px-2 py-0.5 rounded border border-[#F59E0B]/30">
+                              {assign.scope_type}
+                            </span>
+                            <span className="text-xs text-[#64748B]">
+                              Due: {assign.due_date ? new Date(assign.due_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'No Deadline'}
+                            </span>
+                          </div>
+
+                          <p className="text-xs text-[#94A3B8]">
+                            Quiz: <strong className="text-white">{assign.quiz_title}</strong> &bull; {assign.instructions || 'Mandatory scheduled cohort assessment.'}
+                          </p>
+
+                          <div className="flex items-center gap-4 text-xs text-[#94A3B8]">
+                            <span>Recipients: <strong className="text-white">{assign.total_recipients}</strong></span>
+                            <span>&bull;</span>
+                            <span className="text-[#34D399]">Submitted: <strong>{assign.submitted_count || 0}</strong></span>
+                            <span>&bull;</span>
+                            <span className="text-[#FBBF24]">In Progress: <strong>{assign.in_progress_count || 0}</strong></span>
+                            <span>&bull;</span>
+                            <span className="text-[#64748B]">Pending: <strong>{assign.pending_count || 0}</strong></span>
+                            <span>&bull;</span>
+                            <span>Avg Score: <strong className="text-[#38BDF8]">{Math.round(assign.average_score || 0)} pts</strong></span>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => setSelectedAssignmentDrilldown(assign)}
+                          className="btn-secondary text-xs py-2 px-3 font-bold text-[#F59E0B] border-[#F59E0B]/30 hover:bg-[#F59E0B]/15 shrink-0"
+                        >
+                          View Student Progress ({assign.total_recipients})
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+          </div>
+        </div>
+      )}
+
       {/* Student Attempts Breakdown Modal (Phase P3) */}
       {viewingAttemptsQuiz && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
@@ -1010,14 +1382,11 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
                   </p>
                 </div>
                 <button
-                  onClick={() => {
-                    alert(`Assignment scheduled for "${launchModalQuiz.title}"! Students can access it in their Assessments & Assignments tab.`);
-                    setLaunchModalQuiz(null);
-                  }}
+                  onClick={() => handleOpenAssignModal(launchModalQuiz)}
                   className="btn-secondary text-xs py-2 px-3 font-bold w-full justify-center gap-1.5 text-[#F59E0B] border-[#F59E0B]/30 hover:bg-[#F59E0B]/15"
                 >
                   <Calendar size={14} />
-                  <span>Schedule Assignment</span>
+                  <span>Configure &amp; Assign Cohort</span>
                 </button>
               </div>
 
@@ -1042,6 +1411,331 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* SCOPED ASSIGNMENT CREATION MODAL (PHASE P6) */}
+      {assignmentModalQuiz && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="dashboard-card max-w-2xl w-full p-6 space-y-5 border border-[#1B2A44] shadow-2xl animate-in fade-in max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-[#1B2A44]">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <Calendar size={18} className="text-[#F59E0B]" />
+                  Schedule Cohort Assessment &bull; {assignmentModalQuiz.title}
+                </h3>
+                <p className="text-xs text-[#94A3B8]">
+                  Scoped recipient targeting by teaching section or individual learners with de-duplication.
+                </p>
+              </div>
+              <button onClick={() => setAssignmentModalQuiz(null)} className="text-[#64748B] hover:text-white">
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handlePublishAssignment} className="space-y-4 text-xs">
+              <div>
+                <label className="text-[#94A3B8] font-bold block mb-1">Assignment Title *</label>
+                <input
+                  type="text"
+                  required
+                  value={assignmentForm.title}
+                  onChange={(e) => setAssignmentForm({ ...assignmentForm, title: e.target.value })}
+                  className="input-field w-full text-xs"
+                  placeholder="e.g. Midterm Evaluation - Operations Batch A"
+                />
+              </div>
+
+              <div>
+                <label className="text-[#94A3B8] font-bold block mb-1">Instructions / Notes (Optional)</label>
+                <textarea
+                  rows={2}
+                  value={assignmentForm.instructions}
+                  onChange={(e) => setAssignmentForm({ ...assignmentForm, instructions: e.target.value })}
+                  className="input-field w-full text-xs"
+                  placeholder="Instructions for students regarding timing, rules, and topics covered..."
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="text-[#94A3B8] font-bold block mb-1">Submission Deadline</label>
+                  <input
+                    type="datetime-local"
+                    value={assignmentForm.dueDate}
+                    onChange={(e) => setAssignmentForm({ ...assignmentForm, dueDate: e.target.value })}
+                    className="input-field w-full text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="text-[#94A3B8] font-bold block mb-1">Time Limit (Minutes)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={assignmentForm.timeLimitMins}
+                    onChange={(e) => setAssignmentForm({ ...assignmentForm, timeLimitMins: e.target.value })}
+                    className="input-field w-full text-xs"
+                    placeholder="0 for untimed"
+                  />
+                </div>
+                <div>
+                  <label className="text-[#94A3B8] font-bold block mb-1">Max Attempts Allowed</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="10"
+                    value={assignmentForm.maxAttempts}
+                    onChange={(e) => setAssignmentForm({ ...assignmentForm, maxAttempts: e.target.value })}
+                    className="input-field w-full text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  id="allowLateCheckbox"
+                  checked={assignmentForm.allowLate}
+                  onChange={(e) => setAssignmentForm({ ...assignmentForm, allowLate: e.target.checked })}
+                  className="rounded border-[#1B2A44] bg-[#0E1626]"
+                />
+                <label htmlFor="allowLateCheckbox" className="text-white text-xs cursor-pointer">
+                  Accept Late Submissions after deadline (tagged as LATE)
+                </label>
+              </div>
+
+              {/* Recipient Selection Section */}
+              <div className="pt-3 border-t border-[#1B2A44] space-y-3">
+                <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center justify-between">
+                  <span>Target Recipients (Sections &amp; Students)</span>
+                  <span className="text-[#10B981] font-mono lowercase">
+                    {/* Computed live recipient count */}
+                    {(() => {
+                      const secStudentIds = eligibleStudents
+                        .filter(s => assignmentForm.selectedSections.includes(s.section_id))
+                        .map(s => s.id);
+                      const combined = new Set([...secStudentIds, ...assignmentForm.selectedStudents]);
+                      return `${combined.size} unique recipient(s) selected`;
+                    })()}
+                  </span>
+                </h4>
+
+                {/* Section selection */}
+                <div className="space-y-1.5">
+                  <p className="text-[11px] text-[#94A3B8]">Assign to whole Teaching Section(s):</p>
+                  {teacherAllocations.length === 0 ? (
+                    <div className="p-3 rounded-lg bg-[#0E1626] border border-[#1F304E] text-[#64748B] text-xs">
+                      No teaching sections allocated to your account yet. You can still select individual students below.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {teacherAllocations.map(alloc => {
+                        const isChecked = assignmentForm.selectedSections.includes(alloc.section_id);
+                        return (
+                          <label
+                            key={alloc.id}
+                            className={`p-2.5 rounded-lg border text-xs flex items-center gap-2 cursor-pointer transition-colors ${
+                              isChecked ? 'bg-[#10B981]/15 border-[#10B981] text-white' : 'bg-[#0E1626] border-[#1B2A44] text-[#94A3B8] hover:text-white'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setAssignmentForm({
+                                    ...assignmentForm,
+                                    selectedSections: [...assignmentForm.selectedSections, alloc.section_id]
+                                  });
+                                } else {
+                                  setAssignmentForm({
+                                    ...assignmentForm,
+                                    selectedSections: assignmentForm.selectedSections.filter(sid => sid !== alloc.section_id)
+                                  });
+                                }
+                              }}
+                              className="rounded border-[#1B2A44] bg-[#0E1626]"
+                            />
+                            <div>
+                              <p className="font-bold text-white">{alloc.class_name} &bull; {alloc.section_name}</p>
+                              <p className="text-[10px] text-[#64748B]">{alloc.subject_name} ({alloc.academic_year_name})</p>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Individual students selection */}
+                {eligibleStudents.length > 0 && (
+                  <div className="space-y-1.5 pt-2">
+                    <p className="text-[11px] text-[#94A3B8]">Or Select Specific Individual Students:</p>
+                    <div className="max-h-36 overflow-y-auto space-y-1.5 p-2 rounded-lg bg-[#0E1626] border border-[#1B2A44]">
+                      {eligibleStudents.map(st => {
+                        const isChecked = assignmentForm.selectedStudents.includes(st.id);
+                        const isCoveredBySection = assignmentForm.selectedSections.includes(st.section_id);
+                        return (
+                          <label
+                            key={st.id}
+                            className={`p-2 rounded flex items-center justify-between text-xs cursor-pointer ${
+                              isCoveredBySection ? 'opacity-70 bg-[#121D32]' : isChecked ? 'bg-[#38BDF8]/15 text-white' : 'hover:bg-[#121D32]'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                disabled={isCoveredBySection}
+                                checked={isChecked || isCoveredBySection}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setAssignmentForm({
+                                      ...assignmentForm,
+                                      selectedStudents: [...assignmentForm.selectedStudents, st.id]
+                                    });
+                                  } else {
+                                    setAssignmentForm({
+                                      ...assignmentForm,
+                                      selectedStudents: assignmentForm.selectedStudents.filter(uid => uid !== st.id)
+                                    });
+                                  }
+                                }}
+                              />
+                              <span className="font-semibold text-white">{st.name}</span>
+                              <span className="text-[#64748B] text-[10px]">{st.email}</span>
+                            </div>
+                            <span className="text-[10px] text-[#38BDF8] font-mono">
+                              {isCoveredBySection ? '(Included via Section)' : `${st.section_name} ${st.roll_number ? `(${st.roll_number})` : ''}`}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Anti-cheat enforcement notice */}
+              <div className="p-3 rounded-lg bg-[#0E1626] border border-[#1B2A44] flex items-center gap-2 text-xs text-[#94A3B8]">
+                <span>🛡️</span>
+                <span>Enforces automatic full-screen monitoring, 1st warning, and 2nd anti-cheat flag alerts for students during this assignment.</span>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#1B2A44]">
+                <button
+                  type="button"
+                  onClick={() => setAssignmentModalQuiz(null)}
+                  className="btn-secondary text-xs py-2 px-3"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={actionLoading}
+                  className="btn-emerald-primary text-xs py-2 px-4 font-bold shadow-md shadow-[#10B981]/20"
+                >
+                  {actionLoading ? 'Publishing...' : 'Publish & Assign Assessment'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ASSIGNMENT RECIPIENTS DRILLDOWN MODAL */}
+      {selectedAssignmentDrilldown && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="dashboard-card max-w-3xl w-full p-6 space-y-4 border border-[#1B2A44] shadow-2xl animate-in fade-in max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between pb-3 border-b border-[#1B2A44]">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <Users size={18} className="text-[#F59E0B]" />
+                  Recipient Progress &bull; {selectedAssignmentDrilldown.title}
+                </h3>
+                <p className="text-xs text-[#94A3B8]">
+                  Quiz: <strong className="text-white">{selectedAssignmentDrilldown.quiz_title}</strong> &bull; Total Assigned: <strong className="text-white">{selectedAssignmentDrilldown.total_recipients}</strong>
+                </p>
+              </div>
+              <button onClick={() => setSelectedAssignmentDrilldown(null)} className="text-[#64748B] hover:text-white">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-2 text-xs">
+              {(!selectedAssignmentDrilldown.recipients || selectedAssignmentDrilldown.recipients.length === 0) ? (
+                <div className="text-center py-10 text-[#64748B]">No recipient records found.</div>
+              ) : (
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-[#121D32] text-[#64748B] uppercase font-mono text-[10px]">
+                    <tr>
+                      <th className="p-2.5">Student</th>
+                      <th className="p-2.5">Section</th>
+                      <th className="p-2.5">Status</th>
+                      <th className="p-2.5">Score</th>
+                      <th className="p-2.5">Anti-Cheat Flags</th>
+                      <th className="p-2.5">Submitted</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#1F304E]">
+                    {selectedAssignmentDrilldown.recipients.map(r => (
+                      <tr key={r.id} className="hover:bg-[#121D32]/50">
+                        <td className="p-2.5">
+                          <p className="font-bold text-white">{r.student_name}</p>
+                          <p className="text-[10px] text-[#64748B]">{r.student_email}</p>
+                        </td>
+                        <td className="p-2.5 text-[#94A3B8]">
+                          {r.section_name || 'Individual'} {r.roll_number ? `(${r.roll_number})` : ''}
+                        </td>
+                        <td className="p-2.5">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${
+                            r.status === 'SUBMITTED' ? 'bg-[#10B981]/20 text-[#34D399] border-[#10B981]/30' :
+                            r.status === 'LATE' ? 'bg-[#F59E0B]/20 text-[#FBBF24] border-[#F59E0B]/30' :
+                            r.status === 'OVERDUE' ? 'bg-[#F43F5E]/20 text-[#FB7185] border-[#F43F5E]/30' :
+                            r.status === 'STARTED' ? 'bg-[#38BDF8]/20 text-[#38BDF8] border-[#38BDF8]/30' :
+                            'bg-[#64748B]/20 text-[#94A3B8] border-[#64748B]/30'
+                          }`}>
+                            {r.status}
+                          </span>
+                        </td>
+                        <td className="p-2.5 font-mono">
+                          {r.score !== null ? (
+                            <span className="font-bold text-white">{r.score} pts ({r.is_passed ? 'PASS' : 'FAIL'})</span>
+                          ) : (
+                            <span className="text-[#64748B]">-</span>
+                          )}
+                        </td>
+                        <td className="p-2.5">
+                          {r.is_flagged ? (
+                            <span className="px-2 py-0.5 rounded bg-[#F43F5E]/20 text-[#FB7185] font-bold text-[10px] border border-[#F43F5E]/40" title={r.flag_reason}>
+                              🚩 FLAGGED
+                            </span>
+                          ) : r.warning_count > 0 ? (
+                            <span className="px-2 py-0.5 rounded bg-[#F59E0B]/20 text-[#FBBF24] font-bold text-[10px]">
+                              ⚠️ 1 Warning
+                            </span>
+                          ) : (
+                            <span className="text-[#34D399] text-[10px]">✓ Clean</span>
+                          )}
+                        </td>
+                        <td className="p-2.5 text-[#64748B] text-[11px]">
+                          {r.submitted_at ? new Date(r.submitted_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Pending'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            <div className="pt-3 border-t border-[#1B2A44] flex justify-end">
+              <button
+                onClick={() => setSelectedAssignmentDrilldown(null)}
+                className="btn-secondary text-xs py-1.5 px-3"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}
