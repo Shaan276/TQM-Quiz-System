@@ -1360,17 +1360,17 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
             </div>
 
             <div className="space-y-4 text-xs">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block font-semibold text-[#94A3B8] mb-1">Total Duration (Auto-calculated)</label>
+                  <label className="block font-semibold text-[#94A3B8] mb-1">Duration (Auto)</label>
                   <div className="input-field text-xs font-mono bg-[#0B111D] text-[#38BDF8] flex items-center justify-between cursor-not-allowed">
-                    <span>{totalCalculatedSeconds}s ({Math.floor(totalCalculatedSeconds / 60)}m {totalCalculatedSeconds % 60}s)</span>
-                    <span className="text-[10px] text-[#64748B]">Sum of Questions</span>
+                    <span>{totalCalculatedSeconds}s</span>
+                    <span className="text-[10px] text-[#64748B]">{Math.floor(totalCalculatedSeconds / 60)}m</span>
                   </div>
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-[#94A3B8] mb-1">Passing Threshold (%)</label>
+                  <label className="block font-semibold text-[#94A3B8] mb-1">Pass Mark (%)</label>
                   <input
                     type="number"
                     min="0"
@@ -1383,6 +1383,25 @@ export default function QuizStudioView({ quizId, onBack, onOpenPreview }) {
                     }}
                     className="input-field text-xs font-mono"
                   />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-[#94A3B8] mb-1">Max Attempts</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="20"
+                    value={quiz.max_attempts !== undefined && quiz.max_attempts !== null ? quiz.max_attempts : 1}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value);
+                      const updated = { ...quiz, max_attempts: isNaN(val) ? 1 : Math.max(0, val) };
+                      setQuiz(updated);
+                      triggerAutosave(updated, questions);
+                    }}
+                    placeholder="1 (0 = unlimited)"
+                    className="input-field text-xs font-mono"
+                  />
+                  <span className="text-[10px] text-[#64748B] block mt-0.5">0 = Unlimited</span>
                 </div>
               </div>
 

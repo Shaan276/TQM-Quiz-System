@@ -130,12 +130,73 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
     }
   };
 
+  // Question Challenges (Student Regrade & Answer Key Disputes)
+  const [challenges, setChallenges] = useState([]);
+  const [challengesLoading, setChallengesLoading] = useState(false);
+  const [resolvingChallengeId, setResolvingChallengeId] = useState(null);
+  const [teacherFeedbackMap, setTeacherFeedbackMap] = useState({});
+  const [newCorrectAnswerMap, setNewCorrectAnswerMap] = useState({});
+
+  const fetchChallenges = async () => {
+    if (!accessToken) return;
+    try {
+      setChallengesLoading(true);
+      const res = await fetch('/api/v1/challenges/teacher', {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setChallenges(data.data.challenges || []);
+      }
+    } catch (err) {
+      console.error('Failed to load challenges:', err);
+    } finally {
+      setChallengesLoading(false);
+    }
+  };
+
+  const handleResolveChallenge = async (challengeId, action) => {
+    try {
+      setResolvingChallengeId(challengeId);
+      const res = await fetch(`/api/v1/challenges/${challengeId}/resolve`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          action,
+          teacherFeedback: teacherFeedbackMap[challengeId] || '',
+          newCorrectAnswer: newCorrectAnswerMap[challengeId] || null,
+          awardAllStudents: true
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        alert(data.error?.message || 'Failed to resolve challenge');
+      } else {
+        alert(action === 'ACCEPT' 
+          ? `Challenge accepted! Marks updated and regraded for ${data.data.regradedAttemptsCount || 0} student attempt(s).` 
+          : 'Challenge rejected. Student notified.');
+        fetchChallenges();
+      }
+    } catch (err) {
+      console.error(err);
+      alert(err.message);
+    } finally {
+      setResolvingChallengeId(null);
+    }
+  };
+
+  const pendingChallengesCount = challenges.filter(c => c.status === 'PENDING').length;
+
   useEffect(() => {
     if (initialTab) {
       setDashboardTab(initialTab);
     }
     if (accessToken) {
       fetchPendingEnrollments();
+      fetchChallenges();
     }
   }, [initialTab, accessToken]);
 
@@ -655,6 +716,26 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
             </span>
           )}
         </button>
+
+        <button
+          onClick={() => {
+            setDashboardTab('challenges');
+            fetchChallenges();
+          }}
+          className={`pb-2 px-1 text-sm font-bold flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${
+            dashboardTab === 'challenges'
+              ? 'border-amber-400 text-amber-400'
+              : 'border-transparent text-[#94A3B8] hover:text-white'
+          }`}
+        >
+          <HelpCircle size={16} />
+          Question Challenges
+          {pendingChallengesCount > 0 && (
+            <span className="px-1.5 py-0.5 text-[10px] font-black rounded-full bg-amber-500 text-black animate-pulse">
+              {pendingChallengesCount}
+            </span>
+          )}
+        </button>
       </div>
 
       {/* TAB 1: AUTHORED QUIZZES */}
@@ -1133,6 +1214,204 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* TAB: QUESTION CHALLENGES (P8 - Review & Regrade All) */}
+      {dashboardTab === 'challenges' && (
+        <div className="space-y-6 animate-fadeIn">
+          {/* Header Card */}
+          <div className="dashboard-card p-6 border border-amber-500/30 bg-gradient-to-r from-[#1E170A] via-[#141A28] to-[#0A1220]">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <HelpCircle size={20} className="text-amber-400" />
+                  Question Challenges &amp; Regrade All
+                </h3>
+                <p className="text-xs text-[#94A3B8] mt-1 max-w-2xl leading-relaxed">
+                  Review student disputes regarding incorrect answer keys or valid alternative sentences. Accepting a challenge will authoritatively update marks and recalculated scores for <strong>all affected students</strong> who took the test.
+                </p>
+              </div>
+
+              <button
+                onClick={fetchChallenges}
+                className="btn-secondary text-xs py-2 px-3 self-start sm:self-auto gap-1.5"
+              >
+                <RefreshCw size={14} className={challengesLoading ? 'animate-spin' : ''} />
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          {challengesLoading ? (
+            <div className="min-h-[250px] flex items-center justify-center text-xs text-[#94A3B8] font-mono">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
+                Loading question challenges...
+              </div>
+            </div>
+          ) : challenges.length === 0 ? (
+            <div className="dashboard-card p-12 text-center space-y-3 max-w-md mx-auto">
+              <CheckCircle2 size={36} className="text-emerald-400 mx-auto" />
+              <h4 className="text-sm font-bold text-white">No Question Challenges</h4>
+              <p className="text-xs text-[#94A3B8]">
+                There are no open or past question challenges submitted for your quizzes.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {challenges.map((c) => {
+                const isPending = c.status === 'PENDING';
+                const isAccepted = c.status === 'ACCEPTED';
+
+                return (
+                  <div
+                    key={c.id}
+                    className={`dashboard-card p-6 border space-y-4 transition-all ${
+                      isPending
+                        ? 'border-amber-500/40 bg-[#14120A]'
+                        : isAccepted
+                        ? 'border-emerald-500/30 bg-[#0A1612]'
+                        : 'border-slate-800 bg-[#0D1524] opacity-80'
+                    }`}
+                  >
+                    {/* Challenge Header */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-800">
+                      <div className="flex items-center gap-2.5 flex-wrap">
+                        <span className="text-xs font-bold text-white">
+                          Quiz: <span className="text-[#38BDF8]">{c.quiz_title}</span>
+                        </span>
+                        <span className="text-xs text-slate-400">
+                          Student: <strong className="text-slate-200">{c.student_name}</strong> ({c.student_email})
+                        </span>
+                        <span className="text-[10px] text-slate-500 font-mono">
+                          {new Date(c.created_at).toLocaleString()}
+                        </span>
+                      </div>
+
+                      <span
+                        className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
+                          isPending
+                            ? 'bg-amber-500/15 text-amber-400 border-amber-500/40'
+                            : isAccepted
+                            ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/40'
+                            : 'bg-rose-500/15 text-rose-400 border-rose-500/40'
+                        }`}
+                      >
+                        {c.status}
+                      </span>
+                    </div>
+
+                    {/* Question text & Reason */}
+                    <div className="space-y-2">
+                      <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 text-xs">
+                        <span className="text-[10px] text-[#38BDF8] font-mono block mb-1">
+                          QUESTION ({c.question_type || 'MCQ'} - {c.question_marks || 1} mark):
+                        </span>
+                        <p className="text-white font-medium">{c.question_text || 'Question record'}</p>
+                      </div>
+
+                      {/* Answers comparison */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                        <div className="p-3 rounded-xl bg-rose-950/20 border border-rose-500/30 space-y-1">
+                          <span className="text-rose-400 font-bold block">Student's Submitted Answer:</span>
+                          <p className="text-white font-mono">{c.student_answer || '(Blank)'}</p>
+                        </div>
+                        <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 space-y-1">
+                          <span className="text-slate-400 font-bold block">Official / Expected Answer:</span>
+                          <p className="text-emerald-400 font-mono">{c.official_answer || 'N/A'}</p>
+                        </div>
+                      </div>
+
+                      {/* Dispute Details */}
+                      <div className="p-3 rounded-xl bg-amber-950/20 border border-amber-500/30 text-xs space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-amber-400 font-bold">Reason:</span>
+                          <span className="text-white font-medium">{c.challenge_reason}</span>
+                        </div>
+                        {c.student_note && (
+                          <div className="text-slate-300 pt-1">
+                            <span className="text-slate-400 font-bold">Student Note: </span>
+                            "{c.student_note}"
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Action Controls for Pending Challenges */}
+                    {isPending && (
+                      <div className="pt-3 border-t border-slate-800 space-y-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                              New Correct Answer / Key (Optional):
+                            </label>
+                            <input
+                              type="text"
+                              placeholder={c.student_answer || 'Keep student answer or type new correct key...'}
+                              value={newCorrectAnswerMap[c.id] || ''}
+                              onChange={(e) =>
+                                setNewCorrectAnswerMap(prev => ({ ...prev, [c.id]: e.target.value }))
+                              }
+                              className="input-field text-xs font-mono"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                              Teacher Feedback / Note:
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="e.g. Valid alternative sentence accepted, marks updated for all."
+                              value={teacherFeedbackMap[c.id] || ''}
+                              onChange={(e) =>
+                                setTeacherFeedbackMap(prev => ({ ...prev, [c.id]: e.target.value }))
+                              }
+                              className="input-field text-xs"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-end gap-3 pt-1">
+                          <button
+                            disabled={resolvingChallengeId === c.id}
+                            onClick={() => handleResolveChallenge(c.id, 'REJECT')}
+                            className="px-4 py-2 rounded-lg text-xs font-bold text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 transition-all disabled:opacity-50"
+                          >
+                            Reject Challenge
+                          </button>
+                          <button
+                            disabled={resolvingChallengeId === c.id}
+                            onClick={() => handleResolveChallenge(c.id, 'ACCEPT')}
+                            className="px-4 py-2 rounded-lg text-xs font-bold text-black bg-emerald-400 hover:bg-emerald-300 shadow-md shadow-emerald-500/20 transition-all disabled:opacity-50 flex items-center gap-1.5"
+                          >
+                            <CheckCircle2 size={13} />
+                            Accept &amp; Regrade All Students
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Resolution details for resolved challenges */}
+                    {!isPending && (
+                      <div className="pt-2 border-t border-slate-800/80 text-xs text-slate-400 flex flex-wrap items-center justify-between gap-2">
+                        <span>
+                          Resolved at: <strong className="text-slate-300">{c.resolved_at ? new Date(c.resolved_at).toLocaleString() : 'N/A'}</strong>
+                          {c.regraded_attempts_count > 0 && (
+                            <span className="ml-2 text-emerald-400">({c.regraded_attempts_count} student attempts regraded)</span>
+                          )}
+                        </span>
+                        {c.teacher_feedback && (
+                          <span className="text-slate-300 italic">Feedback: "{c.teacher_feedback}"</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 

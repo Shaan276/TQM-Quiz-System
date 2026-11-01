@@ -181,13 +181,15 @@ router.get('/discover', authenticateToken, async (req, res, next) => {
         u.name as creator_name,
         (SELECT COUNT(*) FROM questions WHERE quiz_id = q.id) as question_count,
         (SELECT COALESCE(SUM(marks), 0) FROM questions WHERE quiz_id = q.id) as total_marks,
-        (SELECT COUNT(*) FROM quiz_attempts WHERE quiz_id = q.id AND status = 'COMPLETED') as attempt_count
+        (SELECT COUNT(*) FROM quiz_attempts WHERE quiz_id = q.id AND status = 'COMPLETED') as attempt_count,
+        COALESCE(q.max_attempts, 1) as max_attempts,
+        (SELECT COUNT(*) FROM quiz_attempts qa WHERE qa.quiz_id = q.id AND qa.user_id = ? AND qa.status = 'COMPLETED') as user_attempt_count
        FROM quizzes q
        JOIN users u ON q.creator_id = u.id
        ${whereSQL}
        ORDER BY ${orderBy}
        LIMIT ? OFFSET ?`,
-      [...params, parseInt(limit), offset]
+      [req.user.id, ...params, parseInt(limit), offset]
     );
 
     res.json({
@@ -324,6 +326,8 @@ router.post('/', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (req,
       allow_backtrack = true,
       showCorrectAnswers = true,
       show_correct_answers = true,
+      maxAttempts = 1,
+      max_attempts = 1,
       questions = null
     } = req.body;
 
@@ -341,14 +345,15 @@ router.post('/', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (req,
     const effectiveExplanations = ['ALWAYS', 'AFTER_SUBMIT', 'NEVER'].includes(showExplanations || show_explanations)
       ? (showExplanations || show_explanations)
       : 'AFTER_SUBMIT';
+    const effectiveMaxAttempts = max_attempts !== undefined ? parseInt(max_attempts) : (maxAttempts !== undefined ? parseInt(maxAttempts) : 1);
 
     await dbRun(
       `INSERT INTO quizzes (
         id, creator_id, title, description, category, difficulty, tags,
         status, visibility, time_limit_sec, passing_percentage, show_explanations,
         shuffle_questions, shuffle_options, negative_marking, negative_marks_ratio,
-        allow_flagging, allow_backtrack, show_correct_answers
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'DRAFT', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        allow_flagging, allow_backtrack, show_correct_answers, max_attempts
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'DRAFT', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         quizId,
         userId,
@@ -367,7 +372,8 @@ router.post('/', authenticateToken, requireRole('CREATOR', 'ADMIN'), async (req,
         parseFloat(negativeMarksRatio || negative_marks_ratio) || 0.25,
         (allowFlagging !== undefined ? allowFlagging : allow_flagging) ? 1 : 0,
         (allowBacktrack !== undefined ? allowBacktrack : allow_backtrack) ? 1 : 0,
-        (showCorrectAnswers !== undefined ? showCorrectAnswers : show_correct_answers) ? 1 : 0
+        (showCorrectAnswers !== undefined ? showCorrectAnswers : show_correct_answers) ? 1 : 0,
+        isNaN(effectiveMaxAttempts) ? 1 : effectiveMaxAttempts
       ]
     );
 

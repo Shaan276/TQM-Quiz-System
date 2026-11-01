@@ -24,7 +24,7 @@ import {
   Calendar
 } from 'lucide-react';
 
-export default function LearnerDashboardView({ onOpenPreview, onStartAttempt, onJoinLive, setActiveRoute }) {
+export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setActiveRoute }) {
   const [joinPinInput, setJoinPinInput] = useState('');
   const { user, accessToken, setSession } = useAuth();
   const [quizzes, setQuizzes] = useState([]);
@@ -581,21 +581,23 @@ export default function LearnerDashboardView({ onOpenPreview, onStartAttempt, on
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2 pt-2">
-                      <button
-                        onClick={() => onOpenPreview(quiz.id)}
-                        className="btn-secondary text-xs py-2 font-semibold gap-1 justify-center"
-                      >
-                        <Eye size={13} />
-                        Preview
-                      </button>
-                      <button
-                        onClick={() => onStartAttempt(quiz.id)}
-                        className="btn-emerald-primary text-xs py-2 font-bold gap-1.5 justify-center shadow-lg shadow-[#10B981]/20"
-                      >
-                        <Play size={13} className="fill-current" />
-                        Start Quiz
-                      </button>
+                    <div className="pt-2">
+                      {quiz.max_attempts > 0 && (quiz.user_attempt_count || 0) >= quiz.max_attempts ? (
+                        <button
+                          disabled
+                          className="w-full btn-secondary opacity-60 text-xs py-2 font-bold justify-center cursor-not-allowed bg-slate-800 text-slate-400 border-slate-700"
+                        >
+                          Attempted ({quiz.user_attempt_count}/{quiz.max_attempts})
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => onStartAttempt(quiz.id)}
+                          className="w-full btn-emerald-primary text-xs py-2 font-bold gap-1.5 justify-center shadow-lg shadow-[#10B981]/20"
+                        >
+                          <Play size={13} className="fill-current" />
+                          Start Quiz
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -690,21 +692,23 @@ export default function LearnerDashboardView({ onOpenPreview, onStartAttempt, on
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2 pt-2">
-                      <button
-                        onClick={() => onOpenPreview(quiz.id)}
-                        className="btn-secondary text-xs py-2 font-semibold gap-1 justify-center"
-                      >
-                        <Eye size={13} />
-                        Preview
-                      </button>
-                      <button
-                        onClick={() => onStartAttempt(quiz.id)}
-                        className="btn-emerald-primary text-xs py-2 font-bold gap-1.5 justify-center shadow-lg shadow-[#10B981]/20"
-                      >
-                        <Play size={13} className="fill-current" />
-                        Take Self-Paced
-                      </button>
+                    <div className="pt-2">
+                      {quiz.max_attempts > 0 && (quiz.user_attempt_count || 0) >= quiz.max_attempts ? (
+                        <button
+                          disabled
+                          className="w-full btn-secondary opacity-60 text-xs py-2 font-bold justify-center cursor-not-allowed bg-slate-800 text-slate-400 border-slate-700"
+                        >
+                          Attempted ({quiz.user_attempt_count}/{quiz.max_attempts})
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => onStartAttempt(quiz.id)}
+                          className="w-full btn-emerald-primary text-xs py-2 font-bold gap-1.5 justify-center shadow-lg shadow-[#10B981]/20"
+                        >
+                          <Play size={13} className="fill-current" />
+                          Take Self-Paced
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -962,19 +966,11 @@ export default function LearnerDashboardView({ onOpenPreview, onStartAttempt, on
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2 pt-2">
-                      <button
-                        onClick={() => onOpenPreview(item.quiz_id)}
-                        className="btn-secondary text-xs py-2 font-semibold gap-1 justify-center"
-                      >
-                        <Eye size={13} />
-                        Preview
-                      </button>
-
+                    <div className="pt-2">
                       {isSubmitted ? (
                         <button
                           onClick={() => setActiveRoute('attempt-history')}
-                          className="btn-secondary text-xs py-2 font-bold gap-1.5 justify-center border-[#10B981]/50 text-[#34D399]"
+                          className="w-full btn-secondary text-xs py-2 font-bold gap-1.5 justify-center border-[#10B981]/50 text-[#34D399]"
                         >
                           <History size={13} />
                           Scorecard
@@ -982,7 +978,7 @@ export default function LearnerDashboardView({ onOpenPreview, onStartAttempt, on
                       ) : (
                         <button
                           onClick={() => onStartAttempt(item.quiz_id)}
-                          className="btn-emerald-primary text-xs py-2 font-bold gap-1.5 justify-center bg-[#F59E0B] hover:bg-[#D97706] text-black border-none shadow-lg shadow-[#F59E0B]/20"
+                          className="w-full btn-emerald-primary text-xs py-2 font-bold gap-1.5 justify-center bg-[#F59E0B] hover:bg-[#D97706] text-black border-none shadow-lg shadow-[#F59E0B]/20"
                         >
                           <Play size={13} className="fill-current text-black" />
                           Start Test

@@ -21,6 +21,61 @@ export default function QuizResultView({ attemptId, onRetake, onReviewMistakes, 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // Challenge modal state
+  const [challengeModalItem, setChallengeModalItem] = useState(null);
+  const [challengeReason, setChallengeReason] = useState('Teacher answer key is incorrect');
+  const [challengeNote, setChallengeNote] = useState('');
+  const [submittingChallenge, setSubmittingChallenge] = useState(false);
+  const [challengeSuccess, setChallengeSuccess] = useState('');
+  const [challengeError, setChallengeError] = useState('');
+
+  const openChallengeModal = (q) => {
+    setChallengeModalItem(q);
+    setChallengeReason('Teacher answer key is incorrect');
+    setChallengeNote('');
+    setChallengeError('');
+    setChallengeSuccess('');
+  };
+
+  const handleSubmitChallenge = async (e) => {
+    e.preventDefault();
+    if (!challengeModalItem || !data?.quiz) return;
+    setSubmittingChallenge(true);
+    setChallengeError('');
+    try {
+      const res = await fetch('/api/v1/challenges', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          quizId: data.quiz.id,
+          questionId: challengeModalItem.question_id,
+          attemptId: attemptId || null,
+          studentAnswer: challengeModalItem.user_answer || '',
+          officialAnswer: challengeModalItem.correct_answer || '',
+          challengeReason,
+          studentNote: challengeNote
+        })
+      });
+      const resJson = await res.json();
+      if (!res.ok || !resJson.success) {
+        throw new Error(resJson.error?.message || 'Failed to submit challenge');
+      }
+      setChallengeSuccess('Challenge submitted! Your instructor has been notified to review and update marks.');
+      setTimeout(() => {
+        setChallengeModalItem(null);
+        setChallengeSuccess('');
+        setChallengeNote('');
+      }, 2000);
+    } catch (err) {
+      setChallengeError(err.message);
+    } finally {
+      setSubmittingChallenge(false);
+    }
+  };
+
   useEffect(() => {
     async function fetchSummary() {
       setLoading(true);
@@ -87,13 +142,15 @@ export default function QuizResultView({ attemptId, onRetake, onReviewMistakes, 
         </button>
 
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => onRetake && onRetake(attempt.quizId)}
-            className="btn-secondary text-xs py-2 px-3 gap-1.5 text-[#38BDF8] border-[#38BDF8]/30"
-          >
-            <RotateCcw size={14} />
-            Retake Quiz
-          </button>
+          {(quiz.max_attempts === 0 || (quiz.max_attempts && quiz.max_attempts > 1)) && (
+            <button
+              onClick={() => onRetake && onRetake(attempt.quizId)}
+              className="btn-secondary text-xs py-2 px-3 gap-1.5 text-[#38BDF8] border-[#38BDF8]/30"
+            >
+              <RotateCcw size={14} />
+              Retake Quiz
+            </button>
+          )}
 
           <button
             onClick={onReviewMistakes}
@@ -263,6 +320,16 @@ export default function QuizResultView({ attemptId, onRetake, onReviewMistakes, 
                         Added to Mistake Notebook
                       </span>
                     )}
+
+                    {!isCorrect && (
+                      <button
+                        onClick={() => openChallengeModal(q)}
+                        className="text-[11px] bg-[#F59E0B]/20 text-[#FBBF24] hover:bg-[#F59E0B]/30 px-2.5 py-0.5 rounded border border-[#F59E0B]/40 font-bold flex items-center gap-1 transition-colors"
+                        title="Challenge question or answer key"
+                      >
+                        <HelpCircle size={11} /> Challenge
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -350,6 +417,92 @@ export default function QuizResultView({ attemptId, onRetake, onReviewMistakes, 
           })}
         </div>
       </div>
+
+      {/* Challenge Question Modal */}
+      {challengeModalItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-[#0D1524] border border-[#1E293B] rounded-2xl w-full max-w-lg p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[#1E293B]">
+              <div className="flex items-center gap-2 text-[#FBBF24] font-bold text-sm">
+                <HelpCircle size={18} />
+                <span>Challenge Question / Answer Key</span>
+              </div>
+              <button onClick={() => setChallengeModalItem(null)} className="text-slate-400 hover:text-white">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 text-xs space-y-2">
+              <p className="font-semibold text-white line-clamp-3">{challengeModalItem.question_text}</p>
+              <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-800">
+                <span>Your Answer: <strong className="text-rose-400 font-mono">{challengeModalItem.user_answer || '(Unanswered)'}</strong></span>
+                <span>Official: <strong className="text-emerald-400 font-mono">{challengeModalItem.correct_answer || 'N/A'}</strong></span>
+              </div>
+            </div>
+
+            {challengeSuccess ? (
+              <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-emerald-400 text-xs flex items-center gap-2">
+                <CheckCircle2 size={16} />
+                <span>{challengeSuccess}</span>
+              </div>
+            ) : (
+              <form onSubmit={handleSubmitChallenge} className="space-y-4">
+                {challengeError && (
+                  <div className="p-3 rounded-lg bg-rose-950/40 border border-rose-500/40 text-rose-400 text-xs">
+                    {challengeError}
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Reason for Challenge</label>
+                  <select
+                    value={challengeReason}
+                    onChange={(e) => setChallengeReason(e.target.value)}
+                    className="w-full bg-[#111A2E] border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-400"
+                    required
+                  >
+                    <option value="Teacher answer key is incorrect">Teacher answer key is incorrect</option>
+                    <option value="My answer/sentence was correct">My answer / sentence was correct</option>
+                    <option value="Typo or formatting mismatch in evaluation">Typo or formatting mismatch in evaluation</option>
+                    <option value="Ambiguous or confusing question phrasing">Ambiguous or confusing question phrasing</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Detailed Explanation</label>
+                  <textarea
+                    rows={3}
+                    value={challengeNote}
+                    onChange={(e) => setChallengeNote(e.target.value)}
+                    placeholder="Explain why your answer is valid or why the official answer key needs correction..."
+                    className="w-full bg-[#111A2E] border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-amber-400 placeholder:text-slate-500"
+                    required
+                  />
+                  <p className="text-[11px] text-slate-500 mt-1">If accepted by instructor, marks will be updated for all affected students.</p>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setChallengeModalItem(null)}
+                    className="px-4 py-2 rounded-lg bg-slate-800 text-slate-300 hover:text-white text-xs font-semibold"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submittingChallenge}
+                    className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-black text-xs font-bold transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                  >
+                    {submittingChallenge ? 'Submitting...' : 'Submit Challenge'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
 
     </div>
   );

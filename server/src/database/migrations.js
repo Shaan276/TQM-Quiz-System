@@ -760,6 +760,43 @@ const MIGRATIONS = [
       await dbRun('CREATE INDEX IF NOT EXISTS idx_enroll_sec ON student_enrollments(section_id, status);', [], db);
       await dbRun('CREATE INDEX IF NOT EXISTS idx_enroll_status ON student_enrollments(status);', [], db);
     }
+  },
+  {
+    version: 11,
+    name: '011_question_challenges_and_default_attempts',
+    up: async (db) => {
+      // 1. Set default max_attempts = 1 on quizzes so students can only attempt once unless teacher configures otherwise
+      await dbRun(`UPDATE quizzes SET max_attempts = 1 WHERE max_attempts IS NULL OR max_attempts = 0;`, [], db);
+
+      // 2. Question Challenges table for student mistake / answer key challenges
+      await dbRun(`
+        CREATE TABLE IF NOT EXISTS question_challenges (
+          id TEXT PRIMARY KEY,
+          quiz_id TEXT NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
+          quiz_version INTEGER NOT NULL DEFAULT 1,
+          question_id TEXT NOT NULL,
+          student_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          attempt_id TEXT NULL,
+          student_answer TEXT,
+          official_answer TEXT,
+          challenge_reason TEXT NOT NULL,
+          student_note TEXT,
+          status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'ACCEPTED', 'REJECTED')),
+          teacher_feedback TEXT NULL,
+          accepted_action TEXT NULL,
+          new_correct_answer TEXT NULL,
+          regraded_attempts_count INTEGER NOT NULL DEFAULT 0,
+          resolved_by TEXT NULL REFERENCES users(id),
+          resolved_at DATETIME NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+      `, [], db);
+
+      await dbRun('CREATE INDEX IF NOT EXISTS idx_challenges_quiz ON question_challenges(quiz_id, status);', [], db);
+      await dbRun('CREATE INDEX IF NOT EXISTS idx_challenges_student ON question_challenges(student_id);', [], db);
+      await dbRun('CREATE INDEX IF NOT EXISTS idx_challenges_status ON question_challenges(status);', [], db);
+    }
   }
 ];
 

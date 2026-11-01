@@ -269,18 +269,19 @@ router.post('/start', authenticateToken, async (req, res, next) => {
       }
     }
 
-    // 3. Check max attempts if configured
-    if (quiz.max_attempts && quiz.max_attempts > 0) {
+    // 3. Check max attempts: default is 1 attempt unless configured otherwise (0 = unlimited)
+    const effectiveQuizMax = (quiz.max_attempts !== null && quiz.max_attempts !== undefined) ? quiz.max_attempts : 1;
+    if (effectiveQuizMax > 0) {
       const attemptsCountRow = await dbGet(
         `SELECT COUNT(*) as count FROM quiz_attempts WHERE quiz_id = ? AND user_id = ? AND status = 'COMPLETED'`,
         [quizId, userId]
       );
-      if (attemptsCountRow && attemptsCountRow.count >= quiz.max_attempts) {
+      if (attemptsCountRow && attemptsCountRow.count >= effectiveQuizMax) {
         return res.status(403).json({
           success: false,
           error: {
             code: 'ERR_MAX_ATTEMPTS_EXCEEDED',
-            message: `You have reached the maximum allowed attempts (${quiz.max_attempts}) for this quiz.`
+            message: `You have reached the maximum allowed attempts (${effectiveQuizMax}) for this quiz.`
           }
         });
       }
@@ -1272,7 +1273,8 @@ router.get('/:id/summary', authenticateToken, async (req, res, next) => {
           difficulty: quiz?.difficulty,
           pass_percentage: quiz?.passing_percentage ?? quiz?.pass_percentage ?? 60,
           show_explanations: showExplanations,
-          show_correct_answers: quiz?.show_correct_answers !== undefined ? quiz.show_correct_answers : 1
+          show_correct_answers: quiz?.show_correct_answers !== undefined ? quiz.show_correct_answers : 1,
+          max_attempts: quiz?.max_attempts !== null && quiz?.max_attempts !== undefined ? quiz.max_attempts : 1
         },
         reviewQuestions
       }

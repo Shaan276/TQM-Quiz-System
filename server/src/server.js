@@ -24,6 +24,7 @@ const liveSessionRoutes = require('./routes/liveSessions');
 const institutionRoutes = require('./routes/institutions');
 const assignmentRoutes = require('./routes/assignments');
 const notificationRoutes = require('./routes/notifications');
+const challengeRoutes = require('./routes/challenges');
 const healthRoutes = require('./routes/health');
 
 function createApp(customDb = null) {
@@ -91,6 +92,7 @@ function createApp(customDb = null) {
   app.use('/api/v1/institutions', institutionRoutes);
   app.use('/api/v1/assignments', assignmentRoutes);
   app.use('/api/v1/notifications', notificationRoutes);
+  app.use('/api/v1/challenges', challengeRoutes);
 
   // 6. Serve production client build if exists
   const clientDist = path.resolve(__dirname, '../../client/dist');

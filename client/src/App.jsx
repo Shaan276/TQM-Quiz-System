@@ -286,7 +286,6 @@ export default function App() {
           {/* Learner Arena & Discovery */}
           {activeRoute === 'learner-dashboard' && (
             <LearnerDashboardView
-              onOpenPreview={handleOpenPreview}
               onStartAttempt={handleStartAttempt}
               onJoinLive={handleJoinLive}
               setActiveRoute={setActiveRoute}
@@ -329,7 +328,6 @@ export default function App() {
               />
             ) : (
               <LearnerDashboardView
-                onOpenPreview={handleOpenPreview}
                 onStartAttempt={handleStartAttempt}
                 setActiveRoute={setActiveRoute}
               />
