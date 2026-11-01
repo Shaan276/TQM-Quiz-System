@@ -37,21 +37,53 @@ export default function App() {
   const [activeLiveSessionId, setActiveLiveSessionId] = useState(() => sessionStorage.getItem('quiz_active_live_session_id') || null);
   const [activeLivePin, setActiveLivePin] = useState(() => sessionStorage.getItem('quiz_active_live_pin') || '');
   
+  // Valid routes supported in Qubix
+  const VALID_ROUTES = [
+    'landing', 'register', 'login', 'forgot-password', 'reset-password',
+    'verify-email', 'profile', 'creator-dashboard', 'quiz-studio',
+    'question-bank', 'teacher-insights', 'learner-dashboard', 'quiz-attempt', 'quiz-result',
+    'mistake-notebook', 'attempt-history', 'admin-dashboard',
+    'live-host', 'live-session'
+  ];
+
+  function resolvePathToRoute(pathname, currentUser = null) {
+    const clean = (pathname || '').replace(/^\/|\/$/g, '').trim().toLowerCase();
+    if (!clean || clean === 'landing') return 'landing';
+
+    // Handle generic /dashboard alias mapping to role-specific dashboard
+    if (clean === 'dashboard') {
+      const activeUser = currentUser || user;
+      if (!activeUser) {
+        const hasToken = !!localStorage.getItem('quiz_access_token');
+        if (hasToken) {
+          const saved = sessionStorage.getItem('quiz_active_route');
+          if (saved && saved.includes('dashboard')) return saved;
+          return 'learner-dashboard';
+        }
+        return 'login';
+      }
+      const role = (activeUser.role || '').toUpperCase();
+      if (role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'ORG_ADMIN') return 'admin-dashboard';
+      if (role === 'TEACHER' || role === 'CREATOR') return 'creator-dashboard';
+      return 'learner-dashboard';
+    }
+
+    if (VALID_ROUTES.includes(clean)) return clean;
+    return null;
+  }
+
   // URL check for initial query parameters or persisted route
   const [activeRoute, setActiveRouteState] = useState(() => {
     const path = window.location.pathname;
     if (path.includes('verify-email') || window.location.search.includes('verify-email')) return 'verify-email';
     if (path.includes('reset-password') || window.location.search.includes('reset-password')) return 'reset-password';
     
-    // Check URL hash first (e.g. #creator-dashboard)
+    // Check real URL pathname first (e.g. /profile, /dashboard, /mistake-notebook)
+    const fromPath = resolvePathToRoute(path);
+    if (fromPath) return fromPath;
+
+    // Check URL hash fallback (e.g. #creator-dashboard)
     const hash = (window.location.hash || '').replace('#', '').trim();
-    const VALID_ROUTES = [
-      'landing', 'register', 'login', 'forgot-password', 'reset-password',
-      'verify-email', 'profile', 'creator-dashboard', 'quiz-studio',
-      'question-bank', 'teacher-insights', 'learner-dashboard', 'quiz-attempt', 'quiz-result',
-      'mistake-notebook', 'attempt-history', 'admin-dashboard',
-      'live-host', 'live-session'
-    ];
     if (hash && VALID_ROUTES.includes(hash)) return hash;
 
     // Check sessionStorage
@@ -65,31 +97,47 @@ export default function App() {
     setActiveRouteState(route);
     try {
       sessionStorage.setItem('quiz_active_route', route);
-      if (window.location.hash.replace('#', '') !== route) {
-        window.location.hash = route;
+      const targetPath = route === 'landing' ? '/' : `/${route}`;
+      if (window.location.pathname !== targetPath) {
+        window.history.pushState({ route }, '', targetPath);
       }
     } catch (e) {}
   }, []);
 
-  // Listen for browser Back / Forward hash navigation
+  // Listen for browser Back / Forward (popstate) navigation
   useEffect(() => {
-    const handleHashChange = () => {
-      const hash = (window.location.hash || '').replace('#', '').trim();
-      if (hash && hash !== activeRoute) {
-        setActiveRouteState(hash);
-        sessionStorage.setItem('quiz_active_route', hash);
+    const handlePopState = (e) => {
+      const fromPath = resolvePathToRoute(window.location.pathname, user);
+      if (fromPath && fromPath !== activeRoute) {
+        setActiveRouteState(fromPath);
+        sessionStorage.setItem('quiz_active_route', fromPath);
+      } else if (e.state?.route && e.state.route !== activeRoute) {
+        setActiveRouteState(e.state.route);
+        sessionStorage.setItem('quiz_active_route', e.state.route);
       }
     };
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
-  }, [activeRoute]);
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [activeRoute, user]);
 
-  // Requirement: If on any protected/authenticated page and user logs out, immediately return to landing page
+  // Requirement: If on any protected/authenticated page and user logs out, return to landing page
+  // CRITICAL: Wait until AuthContext finishes loading on refresh before evaluating
   useEffect(() => {
+    if (loading) return;
     if (!user && !['landing', 'login', 'register', 'forgot-password', 'reset-password', 'verify-email'].includes(activeRoute)) {
       setActiveRoute('landing');
     }
-  }, [user, activeRoute, setActiveRoute]);
+  }, [user, loading, activeRoute, setActiveRoute]);
+
+  // Resolve /dashboard to specific role dashboard once user profile finishes loading
+  useEffect(() => {
+    if (!loading && user && window.location.pathname.replace(/^\/|\/$/g, '') === 'dashboard') {
+      const target = resolvePathToRoute('dashboard', user);
+      if (target && target !== activeRoute) {
+        setActiveRoute(target);
+      }
+    }
+  }, [loading, user, activeRoute, setActiveRoute]);
 
   // Strict Role-Based View Guard
   useEffect(() => {

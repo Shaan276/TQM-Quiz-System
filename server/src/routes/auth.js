@@ -89,7 +89,8 @@ router.post(
       const passwordHash = await bcrypt.hash(password, salt);
       const userId = crypto.randomUUID();
 
-      // Enforce default role 'STUDENT' or allow selecting 'TEACHER'/'STUDENT'
+      // Enforce role and account type
+      const isInstitutional = req.body.accountType === 'INSTITUTIONAL' || !!req.body.organizationId;
       let assignedRole = 'STUDENT';
       if (req.body.role) {
         const requested = normalizeRole(req.body.role);
@@ -98,8 +99,10 @@ router.post(
         }
       }
 
-      // Teachers require organization admin approval before accessing teaching operations
-      const initialApproval = assignedRole === 'TEACHER' ? 'PENDING' : 'APPROVED';
+      // Institutional accounts (School / College) require Admin / Teacher approval before login
+      // Individual accounts are approved immediately for self-paced learning
+      const initialApproval = isInstitutional ? 'PENDING' : (assignedRole === 'TEACHER' ? 'PENDING' : 'APPROVED');
+      const targetOrgId = isInstitutional ? (req.body.organizationId || null) : null;
 
       // OTP verification temporarily disabled as requested: new users can directly login!
       // In automated test environments requiring token verification, honor x-require-verification header
@@ -109,9 +112,44 @@ router.post(
       const isVerifiedVal = isAutoVerify ? 1 : 0;
 
       await dbRun(
-        `INSERT INTO users (id, email, password_hash, name, role, is_verified, approval_status) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [userId, cleanEmail, passwordHash, cleanName, assignedRole, isVerifiedVal, initialApproval]
+        `INSERT INTO users (id, email, password_hash, name, role, organization_id, is_verified, approval_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [userId, cleanEmail, passwordHash, cleanName, assignedRole, targetOrgId, isVerifiedVal, initialApproval]
       );
+
+      // If registered under an academic section in institutional mode, record pending student enrollment
+      if (isInstitutional && assignedRole === 'STUDENT' && req.body.sectionId) {
+        try {
+          const sec = await dbGet(`
+            SELECT s.id, s.academic_year_id, s.class_id, c.department_id, c.organization_id
+            FROM sections s
+            JOIN classes c ON s.class_id = c.id
+            WHERE s.id = ?
+          `, [req.body.sectionId]);
+
+          if (sec) {
+            await dbRun(`
+              INSERT OR REPLACE INTO student_enrollments 
+              (id, user_id, organization_id, academic_year_id, department_id, class_id, section_id, roll_number, status)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING')
+            `, [crypto.randomUUID(), userId, sec.organization_id, sec.academic_year_id, sec.department_id, sec.class_id, sec.id, req.body.rollNumber || null]);
+
+            const { notifyUsers } = require('../services/notificationService');
+            const teachers = await dbAll(`SELECT DISTINCT teacher_id AS id FROM teacher_assignments WHERE section_id = ? AND is_active = 1`, [sec.id]);
+            const admins = await dbAll(`SELECT id FROM users WHERE role IN ('ORG_ADMIN', 'SUPER_ADMIN') AND (organization_id = ? OR organization_id IS NULL)`, [sec.organization_id]);
+            const recipientIds = [...new Set([...teachers.map(t => t.id), ...admins.map(a => a.id)])];
+            if (recipientIds.length > 0) {
+              await notifyUsers(recipientIds, {
+                title: 'New Student Enrollment Approval',
+                message: `Student '${cleanName}' registered under section and awaits verification.`,
+                type: 'ACTION_REQUIRED',
+                linkUrl: '/admin-dashboard'
+              });
+            }
+          }
+        } catch (enrollErr) {
+          console.error('[Auth] Error setting up student enrollment on register:', enrollErr);
+        }
+      }
 
       // If teacher registered, notify all Organization / Super Admins
       if (assignedRole === 'TEACHER') {
@@ -203,6 +241,33 @@ router.post(
         return res.status(401).json({
           success: false,
           error: { code: 'ERR_INVALID_CREDENTIALS', message: 'Invalid email or password' }
+        });
+      }
+
+      // Check Institutional Approval Status Gate
+      if (user.approval_status === 'PENDING') {
+        let orgName = 'your institution';
+        if (user.organization_id) {
+          const org = await dbGet(`SELECT name FROM organizations WHERE id = ?`, [user.organization_id]);
+          if (org) orgName = org.name;
+        }
+        return res.status(403).json({
+          success: false,
+          error: {
+            code: 'ERR_APPROVAL_PENDING',
+            message: `Your account under ${orgName} is pending administrator or instructor approval. You will be able to access the platform once approved.`,
+            institutionName: orgName
+          }
+        });
+      }
+
+      if (user.approval_status === 'REJECTED') {
+        return res.status(403).json({
+          success: false,
+          error: {
+            code: 'ERR_APPROVAL_REJECTED',
+            message: 'Your institutional registration request was declined. You may use or register for an Individual account instead.'
+          }
         });
       }
 

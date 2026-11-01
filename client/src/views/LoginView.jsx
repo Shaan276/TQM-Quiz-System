@@ -13,7 +13,9 @@ import {
   CheckCircle2, 
   ArrowRight,
   Sparkles,
-  Lock
+  Lock,
+  User,
+  ShieldAlert
 } from 'lucide-react';
 
 const ROLE_CONFIGS = {
@@ -88,7 +90,10 @@ export default function LoginView({ setActiveRoute }) {
   
   const isDevLoginsEnabled = !import.meta.env.PROD || import.meta.env.VITE_ENABLE_DEV_LOGINS === 'true';
 
-  // Selected role tab for quick presets
+  // Login Mode: 'INDIVIDUAL' vs 'INSTITUTIONAL'
+  const [loginMode, setLoginMode] = useState('INDIVIDUAL');
+
+  // Selected role tab for quick presets in Institutional mode
   const [selectedRole, setSelectedRole] = useState('STUDENT');
   
   const [email, setEmail] = useState(isDevLoginsEnabled ? ROLE_CONFIGS.STUDENT.email : '');
@@ -99,6 +104,7 @@ export default function LoginView({ setActiveRoute }) {
   const [loading, setLoading] = useState(false);
   const [quickLoadingRole, setQuickLoadingRole] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
+  const [approvalNotice, setApprovalNotice] = useState(null);
 
   // Switch active role tab & preset credentials
   const handleSelectRoleTab = (roleKey) => {
@@ -111,6 +117,7 @@ export default function LoginView({ setActiveRoute }) {
       }
       setFieldErrors({});
       setErrorMsg('');
+      setApprovalNotice(null);
     }
   };
 
@@ -132,6 +139,7 @@ export default function LoginView({ setActiveRoute }) {
 
   const executeLogin = async (targetEmail, targetPassword, overrideRoute = null) => {
     setErrorMsg('');
+    setApprovalNotice(null);
     setLoading(true);
 
     try {
@@ -159,7 +167,20 @@ export default function LoginView({ setActiveRoute }) {
           }
         }
       } else {
-        setErrorMsg(data.error?.message || 'Invalid email or password');
+        if (data.error?.code === 'ERR_APPROVAL_PENDING') {
+          setApprovalNotice({
+            type: 'PENDING',
+            message: data.error.message,
+            institutionName: data.error.institutionName || 'your registered college'
+          });
+        } else if (data.error?.code === 'ERR_APPROVAL_REJECTED') {
+          setApprovalNotice({
+            type: 'REJECTED',
+            message: data.error.message
+          });
+        } else {
+          setErrorMsg(data.error?.message || 'Invalid email or password');
+        }
       }
     } catch (err) {
       setErrorMsg('Network error: Failed to connect to server');
@@ -190,20 +211,62 @@ export default function LoginView({ setActiveRoute }) {
   const ActiveIcon = activeRoleConfig.icon;
 
   return (
-    <div className="max-w-4xl mx-auto py-8 space-y-8">
+    <div className="max-w-4xl mx-auto py-8 space-y-7">
       
       {/* Header */}
       <div className="text-center space-y-2">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#121D32] border border-[#1F304E] text-xs font-mono text-[#34D399]">
           <Zap size={14} className="fill-current" />
-          Role-Based Access Control Architecture
+          Qubix Dual Authentication Gateway
         </div>
         <h1 className="text-3xl font-extrabold text-white tracking-wide">
-          Sign In to Quiz System
+          Sign In to Qubix
         </h1>
         <p className="text-xs text-[#94A3B8] max-w-md mx-auto">
-          Select your platform role below or use 1-click Quick Login to preview role-specific features.
+          Choose between Individual self-paced access or your verified School / College portal.
         </p>
+      </div>
+
+      {/* Mode Selector Tabs: Individual vs School/College */}
+      <div className="grid grid-cols-2 gap-3 p-1.5 bg-[#0D1524] border border-[#1E2D4A] rounded-2xl max-w-md mx-auto">
+        <button
+          type="button"
+          onClick={() => {
+            setLoginMode('INDIVIDUAL');
+            setSelectedRole('STUDENT');
+            if (isDevLoginsEnabled) {
+              setEmail(ROLE_CONFIGS.STUDENT.email);
+              setPassword(ROLE_CONFIGS.STUDENT.password);
+            }
+            setErrorMsg('');
+            setApprovalNotice(null);
+          }}
+          className={`py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+            loginMode === 'INDIVIDUAL'
+              ? 'bg-[#10B981]/20 text-[#34D399] border border-[#10B981]/40 shadow-lg shadow-[#10B981]/10'
+              : 'text-[#94A3B8] hover:text-white'
+          }`}
+        >
+          <User size={15} />
+          <span>Individual Login</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setLoginMode('INSTITUTIONAL');
+            setErrorMsg('');
+            setApprovalNotice(null);
+          }}
+          className={`py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+            loginMode === 'INSTITUTIONAL'
+              ? 'bg-[#38BDF8]/20 text-[#38BDF8] border border-[#38BDF8]/40 shadow-lg shadow-[#38BDF8]/10'
+              : 'text-[#94A3B8] hover:text-white'
+          }`}
+        >
+          <Building2 size={15} />
+          <span>School / College Login</span>
+        </button>
       </div>
 
       {/* Global Error Banner */}
@@ -214,137 +277,217 @@ export default function LoginView({ setActiveRoute }) {
         </div>
       )}
 
-      {/* Role Selector Tabs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {Object.values(ROLE_CONFIGS).map(role => {
-          const Icon = role.icon;
-          const isSelected = selectedRole === role.key;
-
-          return (
+      {/* Institutional Approval Notice Gate */}
+      {approvalNotice && (
+        <div className="dashboard-card p-5 border-l-4 border-l-[#F59E0B] bg-[#F59E0B]/10 max-w-2xl mx-auto space-y-3 animate-in fade-in">
+          <div className="flex items-start gap-3">
+            <ShieldAlert size={22} className="text-[#FBBF24] shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <h3 className="text-sm font-bold text-white">
+                {approvalNotice.type === 'PENDING' ? 'Institutional Approval Required' : 'Enrollment Request Declined'}
+              </h3>
+              <p className="text-xs text-[#CBD5E1] leading-relaxed">
+                {approvalNotice.message}
+              </p>
+              {approvalNotice.type === 'PENDING' && (
+                <p className="text-[11px] text-[#94A3B8] pt-1">
+                  Security Rule: To protect academic integrity, no user can access institutional sections until approved by an administrator or instructor.
+                </p>
+              )}
+            </div>
+          </div>
+          <div className="pt-2 border-t border-[#F59E0B]/20 flex items-center justify-between">
+            <span className="text-[11px] text-[#94A3B8]">Want to practice self-paced quizzes in the meantime?</span>
             <button
-              key={role.key}
-              type="button"
-              onClick={() => handleSelectRoleTab(role.key)}
-              className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between gap-3 relative ${
-                isSelected
-                  ? `${role.bgColor} ${role.borderColor} shadow-lg shadow-${role.color}/10 scale-[1.02]`
-                  : 'bg-[#0E1626] border-[#1B2A44] hover:bg-[#142036] hover:border-[#2C3F63] opacity-80 hover:opacity-100'
-              }`}
+              onClick={() => {
+                setLoginMode('INDIVIDUAL');
+                setSelectedRole('STUDENT');
+                if (isDevLoginsEnabled) {
+                  setEmail(ROLE_CONFIGS.STUDENT.email);
+                  setPassword(ROLE_CONFIGS.STUDENT.password);
+                }
+                setApprovalNotice(null);
+                setErrorMsg('');
+              }}
+              className="text-xs font-bold text-[#34D399] hover:underline"
             >
-              <div className="flex items-center justify-between w-full">
-                <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold ${
-                  isSelected ? 'bg-white/10 text-white' : 'bg-[#121D32] text-[#94A3B8]'
-                }`}>
-                  <Icon size={18} />
-                </div>
-                {isSelected && (
-                  <span className="w-2 h-2 rounded-full bg-[#10B981] animate-ping" />
-                )}
-              </div>
-
-              <div>
-                <h3 className="text-xs font-bold text-white truncate">{role.title}</h3>
-                <span className={`text-[10px] font-mono font-semibold ${role.textColor}`}>
-                  {role.badge}
-                </span>
-              </div>
+              Use Individual Mode &rarr;
             </button>
-          );
-        })}
-      </div>
+          </div>
+        </div>
+      )}
 
-      {/* Main Login Area (Split: Left Role Feature Matrix, Right Credentials Form) */}
+      {/* Institutional Role Selector Tabs (Only in Institutional Mode) */}
+      {loginMode === 'INSTITUTIONAL' && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 animate-in fade-in">
+          {Object.values(ROLE_CONFIGS).map(role => {
+            const Icon = role.icon;
+            const isSelected = selectedRole === role.key;
+
+            return (
+              <button
+                key={role.key}
+                type="button"
+                onClick={() => handleSelectRoleTab(role.key)}
+                className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col justify-between gap-3 relative ${
+                  isSelected
+                    ? `${role.bgColor} ${role.borderColor} shadow-lg shadow-${role.color}/10 scale-[1.02]`
+                    : 'bg-[#0E1626] border-[#1B2A44] hover:bg-[#142036] hover:border-[#2C3F63] opacity-80 hover:opacity-100'
+                }`}
+              >
+                <div className="flex items-center justify-between w-full">
+                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold ${
+                    isSelected ? 'bg-white/10 text-white' : 'bg-[#121D32] text-[#94A3B8]'
+                  }`}>
+                    <Icon size={18} />
+                  </div>
+                  {isSelected && (
+                    <span className="w-2 h-2 rounded-full bg-[#10B981] animate-ping" />
+                  )}
+                </div>
+
+                <div>
+                  <h3 className="text-xs font-bold text-white truncate">{role.title}</h3>
+                  <span className={`text-[10px] font-mono font-semibold ${role.textColor}`}>
+                    {role.badge}
+                  </span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Main Login Area */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
         
-        {/* Left Column: Role Features & Quick 1-Click Action (5 Columns) */}
+        {/* Left Column: Explainer / Matrix (5 Columns) */}
         <div className="md:col-span-5 space-y-4">
           
-          <div className={`dashboard-card p-6 border ${activeRoleConfig.borderColor} space-y-4 relative overflow-hidden`}>
-            
-            {/* Role Header */}
-            <div className="flex items-center gap-3 pb-3 border-b border-[#1B2A44]">
-              <div className={`w-10 h-10 rounded-xl ${activeRoleConfig.bgColor} flex items-center justify-center ${activeRoleConfig.textColor}`}>
-                <ActiveIcon size={22} />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-white">{activeRoleConfig.title}</h3>
-                <p className="text-[10px] text-[#64748B] font-mono">Mapped Platform Privileges</p>
-              </div>
-            </div>
-
-            <p className="text-xs text-[#CBD5E1] leading-relaxed">
-              {activeRoleConfig.description}
-            </p>
-
-            {/* Allowed Features */}
-            <div className="space-y-1.5 pt-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-[#34D399] block">
-                Exclusive Features:
-              </span>
-              {activeRoleConfig.features.map(f => (
-                <div key={f} className="flex items-center gap-2 text-xs text-[#94A3B8]">
-                  <CheckCircle2 size={13} className="text-[#34D399] shrink-0" />
-                  <span>{f}</span>
+          {loginMode === 'INDIVIDUAL' ? (
+            <div className="dashboard-card p-6 border border-[#10B981]/30 space-y-4 bg-gradient-to-br from-[#0F1E2A] to-[#0A1220]">
+              <div className="flex items-center gap-3 pb-3 border-b border-[#1B2A44]">
+                <div className="w-10 h-10 rounded-xl bg-[#10B981]/15 text-[#34D399] flex items-center justify-center">
+                  <User size={22} />
                 </div>
-              ))}
-            </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Individual Learner</h3>
+                  <p className="text-[10px] text-[#34D399] font-mono">Open & Unaffiliated</p>
+                </div>
+              </div>
 
-            {/* Restricted Features */}
-            {activeRoleConfig.restricted && activeRoleConfig.restricted[0] !== 'None (Universal Access)' && (
-              <div className="space-y-1.5 pt-2 border-t border-[#1B2A44]">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-[#64748B] block">
-                  Hidden / Restricted by RBAC:
+              <p className="text-xs text-[#CBD5E1] leading-relaxed">
+                Enjoy open access to practice quizzes, custom difficulty filters, Quizlet-style flashcards, and your personal Mistake Notebook.
+              </p>
+
+              <div className="space-y-1.5 pt-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#34D399] block">
+                  Individual Features:
                 </span>
-                {activeRoleConfig.restricted.map(r => (
-                  <div key={r} className="flex items-center gap-2 text-xs text-[#64748B]">
-                    <Lock size={12} className="text-[#F43F5E] shrink-0" />
-                    <span className="line-through decoration-[#F43F5E]/60">{r}</span>
+                <div className="flex items-center gap-2 text-xs text-[#94A3B8]">
+                  <CheckCircle2 size={13} className="text-[#34D399] shrink-0" />
+                  <span>Public & Self-Paced Quizzes</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-[#94A3B8]">
+                  <CheckCircle2 size={13} className="text-[#34D399] shrink-0" />
+                  <span>Interactive Study Flashcards</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-[#94A3B8]">
+                  <CheckCircle2 size={13} className="text-[#34D399] shrink-0" />
+                  <span>Personal Mistake Notebook</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-[#94A3B8]">
+                  <CheckCircle2 size={13} className="text-[#34D399] shrink-0" />
+                  <span>Affiliate with College Anytime</span>
+                </div>
+              </div>
+
+              {isDevLoginsEnabled && (
+                <div className="pt-3">
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={() => handleQuickLogin('STUDENT')}
+                    className="btn-emerald-primary w-full py-2.5 text-xs font-bold gap-2 shadow-lg shadow-[#10B981]/20"
+                  >
+                    <Sparkles size={14} />
+                    1-Click Individual Login
+                    <ArrowRight size={14} />
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className={`dashboard-card p-6 border ${activeRoleConfig.borderColor} space-y-4 relative overflow-hidden`}>
+              {/* Institutional Role Header */}
+              <div className="flex items-center gap-3 pb-3 border-b border-[#1B2A44]">
+                <div className={`w-10 h-10 rounded-xl ${activeRoleConfig.bgColor} flex items-center justify-center ${activeRoleConfig.textColor}`}>
+                  <ActiveIcon size={22} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">{activeRoleConfig.title}</h3>
+                  <p className="text-[10px] text-[#64748B] font-mono">Institutional Role</p>
+                </div>
+              </div>
+
+              <p className="text-xs text-[#CBD5E1] leading-relaxed">
+                {activeRoleConfig.description}
+              </p>
+
+              {/* Allowed Features */}
+              <div className="space-y-1.5 pt-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#34D399] block">
+                  Institutional Scope:
+                </span>
+                {activeRoleConfig.features.map(f => (
+                  <div key={f} className="flex items-center gap-2 text-xs text-[#94A3B8]">
+                    <CheckCircle2 size={13} className="text-[#34D399] shrink-0" />
+                    <span>{f}</span>
                   </div>
                 ))}
               </div>
-            )}
 
-            {/* 1-Click Instant Login Button (Development / Demo only) */}
-            {isDevLoginsEnabled ? (
-              <div className="pt-3">
-                <button
-                  type="button"
-                  disabled={loading}
-                  onClick={() => handleQuickLogin(selectedRole)}
-                  className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-lg ${
-                    selectedRole === 'STUDENT'
-                      ? 'bg-[#10B981] hover:bg-[#059669] text-[#042F2E] shadow-[#10B981]/20'
-                      : selectedRole === 'TEACHER'
-                      ? 'bg-[#8B5CF6] hover:bg-[#7C3AED] text-white shadow-[#8B5CF6]/20'
-                      : selectedRole === 'SUPER_ADMIN'
-                      ? 'bg-[#F59E0B] hover:bg-[#D97706] text-[#042F2E] shadow-[#F59E0B]/20'
-                      : 'bg-[#38BDF8] hover:bg-[#0284C7] text-[#042F2E] shadow-[#38BDF8]/20'
-                  }`}
-                >
-                  {quickLoadingRole === selectedRole ? (
-                    <div className="flex items-center gap-2">
-                      <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                      Signing in as {activeRoleConfig.title}...
-                    </div>
-                  ) : (
-                    <>
-                      <Sparkles size={14} />
-                      1-Click Login as {activeRoleConfig.title}
-                      <ArrowRight size={14} />
-                    </>
-                  )}
-                </button>
-              </div>
-            ) : (
-              <div className="pt-3">
-                <div className="p-3 bg-[#0B111D] rounded-xl border border-[#1B2A44] text-center text-xs text-[#64748B] flex items-center justify-center gap-2 font-mono">
-                  <Lock size={14} className="text-[#38BDF8]" />
-                  <span>Production Credentials Enforced</span>
+              {/* 1-Click Instant Login Button */}
+              {isDevLoginsEnabled ? (
+                <div className="pt-3">
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={() => handleQuickLogin(selectedRole)}
+                    className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-lg ${
+                      selectedRole === 'STUDENT'
+                        ? 'bg-[#10B981] hover:bg-[#059669] text-[#042F2E] shadow-[#10B981]/20'
+                        : selectedRole === 'TEACHER'
+                        ? 'bg-[#8B5CF6] hover:bg-[#7C3AED] text-white shadow-[#8B5CF6]/20'
+                        : selectedRole === 'SUPER_ADMIN'
+                        ? 'bg-[#F59E0B] hover:bg-[#D97706] text-[#042F2E] shadow-[#F59E0B]/20'
+                        : 'bg-[#38BDF8] hover:bg-[#0284C7] text-[#042F2E] shadow-[#38BDF8]/20'
+                    }`}
+                  >
+                    {quickLoadingRole === selectedRole ? (
+                      <div className="flex items-center gap-2">
+                        <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                        Signing in as {activeRoleConfig.title}...
+                      </div>
+                    ) : (
+                      <>
+                        <Sparkles size={14} />
+                        1-Click Login as {activeRoleConfig.title}
+                        <ArrowRight size={14} />
+                      </>
+                    )}
+                  </button>
                 </div>
-              </div>
-            )}
-
-          </div>
+              ) : (
+                <div className="pt-3">
+                  <div className="p-3 bg-[#0B111D] rounded-xl border border-[#1B2A44] text-center text-xs text-[#64748B] flex items-center justify-center gap-2 font-mono">
+                    <Lock size={14} className="text-[#38BDF8]" />
+                    <span>Institutional Security Enforced</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
         </div>
 
@@ -354,13 +497,21 @@ export default function LoginView({ setActiveRoute }) {
             
             <div className="flex items-center justify-between pb-3 border-b border-[#1B2A44]">
               <div>
-                <h2 className="text-base font-bold text-white">Sign In with Credentials</h2>
+                <h2 className="text-base font-bold text-white">
+                  {loginMode === 'INDIVIDUAL' ? 'Individual Sign In' : 'Institutional Sign In'}
+                </h2>
                 <p className="text-xs text-[#94A3B8]">
-                  Enter your credentials or use the role preset above.
+                  {loginMode === 'INDIVIDUAL' 
+                    ? 'Enter your individual credentials to access your personal dashboard.'
+                    : 'Enter your verified college email and password.'}
                 </p>
               </div>
-              <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold ${activeRoleConfig.bgColor} ${activeRoleConfig.textColor}`}>
-                Preset: {selectedRole}
+              <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold ${
+                loginMode === 'INDIVIDUAL' 
+                  ? 'bg-[#10B981]/20 text-[#34D399]'
+                  : `${activeRoleConfig.bgColor} ${activeRoleConfig.textColor}`
+              }`}>
+                {loginMode === 'INDIVIDUAL' ? 'Mode: Individual' : `Role: ${selectedRole}`}
               </span>
             </div>
 
@@ -455,7 +606,7 @@ export default function LoginView({ setActiveRoute }) {
                 ) : (
                   <>
                     <LogIn size={15} />
-                    Sign In to Selected Role
+                    {loginMode === 'INDIVIDUAL' ? 'Sign In (Individual Account)' : 'Sign In (Institutional Portal)'}
                   </>
                 )}
               </button>

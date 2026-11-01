@@ -165,9 +165,9 @@ router.get('/structure', authenticateToken, async (req, res, next) => {
 });
 
 // -------------------------------------------------------------
-// GET /api/v1/institutions/colleges (List all colleges / orgs)
+// GET /api/v1/institutions/colleges (List all colleges / orgs - public directory)
 // -------------------------------------------------------------
-router.get('/colleges', authenticateToken, async (req, res, next) => {
+router.get('/colleges', async (req, res, next) => {
   try {
     const colleges = await dbAll(`
       SELECT o.*,
@@ -238,9 +238,9 @@ router.post('/colleges', authenticateToken, requireRole(['SUPER_ADMIN', 'ADMIN']
 });
 
 // -------------------------------------------------------------
-// GET /api/v1/institutions/colleges/:id/structure
+// GET /api/v1/institutions/colleges/:id/structure (Public hierarchy lookup)
 // -------------------------------------------------------------
-router.get('/colleges/:id/structure', authenticateToken, async (req, res, next) => {
+router.get('/colleges/:id/structure', async (req, res, next) => {
   try {
     const orgId = req.params.id;
     const organization = await dbGet(`SELECT * FROM organizations WHERE id = ?`, [orgId]);

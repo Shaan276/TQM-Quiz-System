@@ -44,10 +44,15 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
   const [assignedTests, setAssignedTests] = useState([]);
   const [enrollment, setEnrollment] = useState(null);
 
-  // Enrollment Request Modal State
+  // Enrollment Request Modal & Dismissal State
+  const [isBannerDismissed, setIsBannerDismissed] = useState(() => localStorage.getItem('qubix_dismiss_enroll_banner') === 'true');
   const [showEnrollModal, setShowEnrollModal] = useState(false);
-  const [instSections, setInstSections] = useState([]);
-  const [enrollForm, setEnrollForm] = useState({ section_id: '', roll_number: '' });
+  const [collegesList, setCollegesList] = useState([]);
+  const [selectedCollegeId, setSelectedCollegeId] = useState('');
+  const [collegeStructure, setCollegeStructure] = useState({ departments: [], classes: [], sections: [] });
+  const [selectedDeptId, setSelectedDeptId] = useState('');
+  const [selectedClassId, setSelectedClassId] = useState('');
+  const [enrollForm, setEnrollForm] = useState({ section_id: '', roll_number: '', semester: '' });
   const [enrollSubmitting, setEnrollSubmitting] = useState(false);
   const [enrollSuccessMsg, setEnrollSuccessMsg] = useState('');
 
@@ -105,24 +110,54 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
     setIsCardFlipped(false);
   };
 
-  const handleOpenEnrollModal = async () => {
-    setShowEnrollModal(true);
+  const loadCollegeStructure = async (collegeId) => {
+    if (!collegeId) return;
     try {
-      const res = await fetch('/api/v1/institutions/structure', {
+      const res = await fetch(`/api/v1/institutions/colleges/${collegeId}/structure`, {
         headers: { 'Authorization': `Bearer ${accessToken}` }
       });
       const data = await res.json();
-      if (data.success && data.data?.sections) {
-        setInstSections(data.data.sections);
+      if (data.success && data.data) {
+        setCollegeStructure(data.data);
       }
     } catch (e) {
-      console.error(e);
+      console.error('Failed to load college hierarchy', e);
     }
+  };
+
+  const handleOpenEnrollModal = async () => {
+    setShowEnrollModal(true);
+    setEnrollSuccessMsg('');
+    try {
+      const res = await fetch('/api/v1/institutions/colleges');
+      const data = await res.json();
+      if (data.success && data.data?.colleges) {
+        setCollegesList(data.data.colleges);
+        if (data.data.colleges.length > 0) {
+          const firstId = data.data.colleges[0].id;
+          setSelectedCollegeId(firstId);
+          await loadCollegeStructure(firstId);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to fetch colleges', e);
+    }
+  };
+
+  const handleCollegeChange = async (collegeId) => {
+    setSelectedCollegeId(collegeId);
+    setSelectedDeptId('');
+    setSelectedClassId('');
+    setEnrollForm(prev => ({ ...prev, section_id: '' }));
+    await loadCollegeStructure(collegeId);
   };
 
   const handleRequestEnrollment = async (e) => {
     e.preventDefault();
-    if (!enrollForm.section_id) return;
+    if (!enrollForm.section_id) {
+      alert('Please select your section / cohort.');
+      return;
+    }
     try {
       setEnrollSubmitting(true);
       const res = await fetch('/api/v1/institutions/students/request-enrollment', {
@@ -131,16 +166,19 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
           'Authorization': `Bearer ${accessToken}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(enrollForm)
+        body: JSON.stringify({
+          section_id: enrollForm.section_id,
+          roll_number: enrollForm.roll_number
+        })
       });
       const data = await res.json();
       if (data.success) {
-        setEnrollSuccessMsg(data.data.message || 'Enrollment request submitted! Awaiting approval.');
+        setEnrollSuccessMsg(data.data?.message || 'Enrollment request submitted! Awaiting college approval.');
         setTimeout(() => {
           setShowEnrollModal(false);
           setEnrollSuccessMsg('');
           fetchData();
-        }, 1500);
+        }, 1800);
       } else {
         alert(data.error?.message || 'Error submitting enrollment request');
       }
@@ -330,17 +368,39 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
             Awaiting Verification
           </span>
         </div>
-      ) : (
-        <div className="w-full dashboard-card p-4 px-6 bg-[#0E172A] border border-[#1E2E4A] flex flex-wrap items-center justify-between gap-4 text-xs rounded-2xl">
+      ) : !isBannerDismissed ? (
+        <div className="w-full dashboard-card p-4 px-6 bg-[#0E172A] border border-[#1E2E4A] flex flex-wrap items-center justify-between gap-4 text-xs rounded-2xl relative group animate-in fade-in">
           <div className="flex items-center gap-3 text-[#94A3B8]">
             <GraduationCap size={18} className="text-[#38BDF8] shrink-0" />
             <span>Not currently enrolled in an academic section? Join your college section to access official assessments.</span>
           </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleOpenEnrollModal}
+              className="btn-emerald-primary text-xs py-2 px-4 font-bold flex items-center gap-2"
+            >
+              Request Section Enrollment
+            </button>
+            <button
+              onClick={() => {
+                setIsBannerDismissed(true);
+                localStorage.setItem('qubix_dismiss_enroll_banner', 'true');
+              }}
+              className="text-[#64748B] hover:text-white p-1 rounded-lg hover:bg-white/5 transition-colors font-bold text-base leading-none"
+              title="Close and dismiss this card"
+            >
+              &times;
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex justify-end">
           <button
             onClick={handleOpenEnrollModal}
-            className="btn-emerald-primary text-xs py-2 px-4 font-bold flex items-center gap-2"
+            className="text-xs text-[#38BDF8] hover:text-white flex items-center gap-1.5 py-1.5 px-3.5 rounded-xl bg-[#0E172A] border border-[#1E2E4A] hover:border-[#38BDF8]/40 transition-all font-semibold shadow-sm"
           >
-            Request Section Enrollment
+            <GraduationCap size={14} />
+            <span>Affiliate with College Section</span>
           </button>
         </div>
       )}
@@ -1337,11 +1397,11 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
       {/* Student Request Section Enrollment Modal */}
       {showEnrollModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-[#0E1626] border border-[#1B2A44] rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
+          <div className="bg-[#0E1626] border border-[#1B2A44] rounded-2xl w-full max-w-lg p-6 space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-[#1B2A44]">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
                 <GraduationCap size={18} className="text-[#38BDF8]" />
-                Request Section Enrollment
+                Request Institutional Section Enrollment
               </h3>
               <button
                 onClick={() => setShowEnrollModal(false)}
@@ -1355,47 +1415,140 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
               <div className="p-4 rounded-xl bg-[#10B981]/15 border border-[#10B981]/30 text-center space-y-2">
                 <CheckCircle2 size={28} className="mx-auto text-[#10B981]" />
                 <p className="text-xs font-bold text-white">{enrollSuccessMsg}</p>
-                <p className="text-[11px] text-[#94A3B8]">Your section teacher and organization admins have been notified.</p>
+                <p className="text-[11px] text-[#94A3B8]">Your section teacher and organization admins have been notified to approve your enrollment.</p>
               </div>
             ) : (
               <form onSubmit={handleRequestEnrollment} className="space-y-4">
                 <p className="text-xs text-[#94A3B8]">
-                  Select the class and section you are attending. Once submitted, your teacher or organization admin will verify and activate your enrollment.
+                  Select your College, Department, and Cohort Section. Your enrollment will be submitted for teacher / admin verification.
                 </p>
 
+                {/* 1. College Selection */}
                 <div>
                   <label className="block text-xs font-bold text-[#94A3B8] mb-1.5 uppercase font-mono">
-                    Select Section / Cohort *
+                    1. Select College / University *
                   </label>
                   <select
                     required
-                    value={enrollForm.section_id}
-                    onChange={(e) => setEnrollForm({ ...enrollForm, section_id: e.target.value })}
+                    value={selectedCollegeId}
+                    onChange={(e) => handleCollegeChange(e.target.value)}
                     className="input-field text-xs py-2 w-full"
                   >
-                    <option value="">-- Choose Section --</option>
-                    {instSections.map((sec) => (
-                      <option key={sec.id} value={sec.id}>
-                        {sec.name} ({sec.class_name})
+                    <option value="">-- Choose Registered College --</option>
+                    {collegesList.map((col) => (
+                      <option key={col.id} value={col.id}>
+                        {col.name} ({col.code})
                       </option>
                     ))}
                   </select>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-[#94A3B8] mb-1.5 uppercase font-mono">
-                    Student Roll / ID Number (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={enrollForm.roll_number}
-                    onChange={(e) => setEnrollForm({ ...enrollForm, roll_number: e.target.value })}
-                    placeholder="e.g. ROLL-2026-042"
-                    className="input-field text-xs py-2 w-full"
-                  />
+                {/* 2. Department Selection */}
+                {selectedCollegeId && (
+                  <div>
+                    <label className="block text-xs font-bold text-[#94A3B8] mb-1.5 uppercase font-mono">
+                      2. Department / Program *
+                    </label>
+                    <select
+                      required
+                      value={selectedDeptId}
+                      onChange={(e) => {
+                        setSelectedDeptId(e.target.value);
+                        setSelectedClassId('');
+                        setEnrollForm(prev => ({ ...prev, section_id: '' }));
+                      }}
+                      className="input-field text-xs py-2 w-full"
+                    >
+                      <option value="">-- Choose Department (e.g. Computer Science) --</option>
+                      {collegeStructure.departments.map((dept) => (
+                        <option key={dept.id} value={dept.id}>
+                          {dept.name} ({dept.code})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* 3. Class / Degree / Year Selection */}
+                {selectedDeptId && (
+                  <div>
+                    <label className="block text-xs font-bold text-[#94A3B8] mb-1.5 uppercase font-mono">
+                      3. Course / Class / Year *
+                    </label>
+                    <select
+                      required
+                      value={selectedClassId}
+                      onChange={(e) => {
+                        setSelectedClassId(e.target.value);
+                        setEnrollForm(prev => ({ ...prev, section_id: '' }));
+                      }}
+                      className="input-field text-xs py-2 w-full"
+                    >
+                      <option value="">-- Choose Class / Year (e.g. B.Tech Year 3) --</option>
+                      {collegeStructure.classes
+                        .filter(c => c.department_id === selectedDeptId)
+                        .map((cls) => (
+                          <option key={cls.id} value={cls.id}>
+                            {cls.name} ({cls.code})
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* 4. Section Selection */}
+                {selectedClassId && (
+                  <div>
+                    <label className="block text-xs font-bold text-[#94A3B8] mb-1.5 uppercase font-mono">
+                      4. Section / Cohort *
+                    </label>
+                    <select
+                      required
+                      value={enrollForm.section_id}
+                      onChange={(e) => setEnrollForm({ ...enrollForm, section_id: e.target.value })}
+                      className="input-field text-xs py-2 w-full"
+                    >
+                      <option value="">-- Choose Section --</option>
+                      {collegeStructure.sections
+                        .filter(s => s.class_id === selectedClassId)
+                        .map((sec) => (
+                          <option key={sec.id} value={sec.id}>
+                            Section {sec.name} ({sec.class_name || 'Active Cohort'})
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* 5. Student Identification Details */}
+                <div className="pt-2 border-t border-[#1E2D4A] grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-[#94A3B8] mb-1.5 uppercase font-mono">
+                      Student Full Name
+                    </label>
+                    <input
+                      type="text"
+                      disabled
+                      value={user?.name || ''}
+                      className="input-field text-xs py-2 w-full opacity-70 cursor-not-allowed"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-[#94A3B8] mb-1.5 uppercase font-mono">
+                      University Roll / Student ID *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={enrollForm.roll_number}
+                      onChange={(e) => setEnrollForm({ ...enrollForm, roll_number: e.target.value })}
+                      placeholder="e.g. 2024-CSE-042"
+                      className="input-field text-xs py-2 w-full"
+                    />
+                  </div>
                 </div>
 
-                <div className="flex justify-end gap-3 pt-2">
+                <div className="flex justify-end gap-3 pt-3">
                   <button
                     type="button"
                     onClick={() => setShowEnrollModal(false)}
@@ -1405,10 +1558,10 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
                   </button>
                   <button
                     type="submit"
-                    disabled={enrollSubmitting}
-                    className="btn-emerald-primary text-xs py-2 px-5 font-bold"
+                    disabled={enrollSubmitting || !enrollForm.section_id || !enrollForm.roll_number}
+                    className="btn-emerald-primary text-xs py-2 px-5 font-bold disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    {enrollSubmitting ? 'Submitting...' : 'Submit Request'}
+                    {enrollSubmitting ? 'Submitting Request...' : 'Submit Enrollment Request'}
                   </button>
                 </div>
               </form>
