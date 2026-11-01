@@ -129,7 +129,7 @@ export default function QuizResultView({ attemptId, onRetake, onReviewMistakes, 
   const secs = (attempt.timeTakenSec || 0) % 60;
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 pb-12">
+    <div className="max-w-5xl mx-auto space-y-8 pb-16">
       
       {/* Top Navigation */}
       <div className="flex items-center justify-between">

@@ -173,48 +173,48 @@ export default function MistakeNotebookView({ setActiveRoute }) {
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 pb-12">
+    <div className="w-full max-w-[1400px] mx-auto space-y-8 pb-16">
       
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#1B2A44]">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5 pb-6 border-b border-[#1E2D4A]">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-wide flex items-center gap-2">
-            <BookMarked className="text-[#34D399]" size={26} />
+          <h1 className="text-3xl font-extrabold text-white tracking-tight flex items-center gap-3">
+            <BookMarked className="text-[#34D399]" size={28} />
             Mistake Notebook &bull; Smart Revision
           </h1>
-          <p className="text-xs text-[#94A3B8] mt-1">
-            Questions you answered incorrectly during quizzes are automatically captured here for targeted study.
+          <p className="text-sm text-[#94A3B8] mt-1.5">
+            Questions you answered incorrectly during quizzes are automatically captured here for targeted study and challenges.
           </p>
         </div>
 
         <button
           onClick={() => setActiveRoute('learner-dashboard')}
-          className="btn-secondary text-xs py-2 px-3 font-semibold"
+          className="btn-secondary text-xs py-2.5 px-4 font-semibold shrink-0"
         >
           Explore More Quizzes
         </button>
       </div>
 
       {/* Stats Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
         
-        <div className="dashboard-card p-5 flex items-center justify-between border border-[#1B2A44]">
+        <div className="dashboard-card p-6 flex items-center justify-between border border-[#1E2D4A]">
           <div>
             <p className="text-xs text-[#94A3B8] font-bold uppercase tracking-wider">Total Recorded</p>
-            <p className="text-2xl font-black text-white font-mono mt-1">{stats.totalMistakes}</p>
+            <p className="text-3xl font-black text-white font-mono mt-1">{stats.totalMistakes}</p>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-[#121D32] flex items-center justify-center text-[#94A3B8]">
-            <BookMarked size={20} />
+          <div className="w-12 h-12 rounded-2xl bg-[#121D32] flex items-center justify-center text-[#94A3B8]">
+            <BookMarked size={22} />
           </div>
         </div>
 
-        <div className="dashboard-card p-5 flex items-center justify-between border border-[#F43F5E]/30 bg-[#160E18]">
+        <div className="dashboard-card p-6 flex items-center justify-between border border-[#F43F5E]/30 bg-[#160E18]">
           <div>
             <p className="text-xs text-[#FB7185] font-bold uppercase tracking-wider">Pending Review</p>
-            <p className="text-2xl font-black text-[#FB7185] font-mono mt-1">{stats.unresolvedCount}</p>
+            <p className="text-3xl font-black text-[#FB7185] font-mono mt-1">{stats.unresolvedCount}</p>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-[#F43F5E]/20 flex items-center justify-center text-[#FB7185]">
-            <AlertCircle size={20} />
+          <div className="w-12 h-12 rounded-2xl bg-[#F43F5E]/20 flex items-center justify-center text-[#FB7185]">
+            <AlertCircle size={22} />
           </div>
         </div>
 

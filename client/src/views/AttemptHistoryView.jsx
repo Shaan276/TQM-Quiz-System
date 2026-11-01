@@ -48,23 +48,23 @@ export default function AttemptHistoryView({ onViewResult, onResumeAttempt, setA
   }, [accessToken, statusFilter, page]);
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 pb-12">
+    <div className="w-full max-w-[1400px] mx-auto space-y-8 pb-16">
       
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#1B2A44]">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5 pb-6 border-b border-[#1E2D4A]">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-wide flex items-center gap-2">
-            <History className="text-[#34D399]" size={26} />
+          <h1 className="text-3xl font-extrabold text-white tracking-tight flex items-center gap-3">
+            <History className="text-[#34D399]" size={28} />
             My Assessment History
           </h1>
-          <p className="text-xs text-[#94A3B8] mt-1">
+          <p className="text-sm text-[#94A3B8] mt-1.5">
             Complete record of your self-paced quiz attempts, scores, and performance milestones.
           </p>
         </div>
 
         <button
           onClick={() => setActiveRoute('learner-dashboard')}
-          className="btn-secondary text-xs py-2 px-3 font-semibold"
+          className="btn-secondary text-xs py-2.5 px-4 font-semibold"
         >
           Explore More Quizzes
         </button>

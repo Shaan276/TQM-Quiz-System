@@ -310,23 +310,23 @@ export default function QuestionBankView({ setActiveRoute }) {
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
+    <div className="w-full max-w-[1400px] mx-auto space-y-8 pb-16">
       
       {/* Top Header */}
-      <div className="pb-4 border-b border-[#1B2A44] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="pb-6 border-b border-[#1E2D4A] flex flex-col sm:flex-row sm:items-center justify-between gap-5">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-wide flex items-center gap-2">
-            <Database className="text-[#06B6D4]" size={24} />
+          <h1 className="text-3xl font-extrabold text-white tracking-tight flex items-center gap-3">
+            <Database className="text-[#06B6D4]" size={28} />
             Question Bank Repository
           </h1>
-          <p className="text-xs text-[#94A3B8] mt-1">
+          <p className="text-sm text-[#94A3B8] mt-1.5">
             Organized question collections by Quiz Title and Subject Name. Select whole quizzes or individual questions.
           </p>
         </div>
 
         <button
           onClick={() => setShowAddModal(true)}
-          className="btn-emerald-primary text-xs py-2.5 px-4 font-bold gap-2"
+          className="btn-emerald-primary text-xs py-2.5 px-5 font-bold gap-2"
         >
           <Plus size={16} />
           Add Question to Bank

@@ -47,17 +47,19 @@ body {
   background: #2D436B;
 }
 
-/* Reference Design Panels */
+/* Reference Design Panels with Spacious Breathing Room */
 .dashboard-card {
   background-color: #0E1626;
-  border: 1px solid #1B2A44;
-  border-radius: 18px;
+  border: 1px solid #1E2D4A;
+  border-radius: 20px;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.25);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .dashboard-card-inner {
-  background-color: #121D32;
-  border: 1px solid #1F304E;
-  border-radius: 14px;
+  background-color: #121E36;
+  border: 1px solid #1F3254;
+  border-radius: 16px;
 }
 
 /* Emerald Primary Pill Button (Matching Reference) */

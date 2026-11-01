@@ -556,16 +556,16 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
+    <div className="w-full max-w-[1400px] mx-auto space-y-8 pb-16">
       
       {/* Top Header & CTAs */}
-      <div className="pb-4 border-b border-[#1B2A44] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="pb-6 border-b border-[#1E2D4A] flex flex-col sm:flex-row sm:items-center justify-between gap-5">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-wide flex items-center gap-2">
-            <Zap className="text-[#10B981] fill-current" size={24} />
+          <h1 className="text-3xl font-extrabold text-white tracking-tight flex items-center gap-3">
+            <Zap className="text-[#10B981] fill-current" size={28} />
             Quiz Studio & Assessment Center
           </h1>
-          <p className="text-xs text-[#94A3B8] mt-1">
+          <p className="text-sm text-[#94A3B8] mt-1.5">
             Author interactive assessments, configure scoring policies, and publish quizzes.
           </p>
         </div>
@@ -581,7 +581,7 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
           
           <button
             onClick={handleCreateNewQuiz}
-            className="btn-emerald-primary text-xs py-2.5 px-4 font-bold shadow-lg shadow-[#10B981]/20 gap-2"
+            className="btn-emerald-primary text-xs py-2.5 px-5 font-bold shadow-lg shadow-[#10B981]/20 gap-2"
           >
             <Plus size={16} />
             Create New Quiz
@@ -591,9 +591,9 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
 
       {/* Account Pending Approval Banner (Security Gate) */}
       {user?.approvalStatus === 'PENDING' && (
-        <div className="p-4 rounded-2xl bg-[#F59E0B]/10 border border-[#F59E0B]/40 flex items-start gap-3.5 animate-in fade-in">
-          <div className="p-2 rounded-xl bg-[#F59E0B]/20 text-[#F59E0B] shrink-0 mt-0.5">
-            <AlertCircle size={20} />
+        <div className="p-5 rounded-2xl bg-[#F59E0B]/10 border border-[#F59E0B]/40 flex items-start gap-4 animate-in fade-in">
+          <div className="p-2.5 rounded-xl bg-[#F59E0B]/20 text-[#F59E0B] shrink-0 mt-0.5">
+            <AlertCircle size={22} />
           </div>
           <div>
             <h4 className="text-sm font-bold text-[#FBBF24]">Teacher Account Pending Administrator Approval</h4>
@@ -605,42 +605,42 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
         </div>
       )}
 
-      {/* Aggregate Metrics Dashboard */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="dashboard-card p-4 space-y-1">
-          <p className="text-[10px] uppercase font-bold text-[#64748B] flex items-center justify-between">
+      {/* Aggregate Metrics Dashboard (Spacious 4-Card Grid) */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+        <div className="dashboard-card p-5 space-y-1.5 border border-[#1E2D4A]">
+          <p className="text-xs uppercase font-bold text-[#64748B] flex items-center justify-between">
             Total Quizzes
-            <Layers size={14} className="text-[#06B6D4]" />
+            <Layers size={15} className="text-[#06B6D4]" />
           </p>
-          <p className="text-2xl font-black text-white">{metrics.totalQuizzes}</p>
-          <span className="text-[10px] text-[#94A3B8]">Authored by you</span>
+          <p className="text-3xl font-black text-white font-mono">{metrics.totalQuizzes}</p>
+          <span className="text-xs text-[#94A3B8]">Authored by you</span>
         </div>
 
-        <div className="dashboard-card p-4 space-y-1">
-          <p className="text-[10px] uppercase font-bold text-[#64748B] flex items-center justify-between">
+        <div className="dashboard-card p-5 space-y-1.5 border border-[#1E2D4A]">
+          <p className="text-xs uppercase font-bold text-[#64748B] flex items-center justify-between">
             Published Quizzes
-            <CheckCircle2 size={14} className="text-[#10B981]" />
+            <CheckCircle2 size={15} className="text-[#10B981]" />
           </p>
-          <p className="text-2xl font-black text-[#34D399]">{metrics.publishedQuizzes}</p>
-          <span className="text-[10px] text-[#94A3B8]">Live for students</span>
+          <p className="text-3xl font-black text-[#34D399] font-mono">{metrics.publishedQuizzes}</p>
+          <span className="text-xs text-[#94A3B8]">Live for students</span>
         </div>
 
-        <div className="dashboard-card p-4 space-y-1">
-          <p className="text-[10px] uppercase font-bold text-[#64748B] flex items-center justify-between">
+        <div className="dashboard-card p-5 space-y-1.5 border border-[#1E2D4A]">
+          <p className="text-xs uppercase font-bold text-[#64748B] flex items-center justify-between">
             Draft Quizzes
-            <Clock size={14} className="text-[#F59E0B]" />
+            <Clock size={15} className="text-[#F59E0B]" />
           </p>
-          <p className="text-2xl font-black text-[#F59E0B]">{metrics.draftQuizzes}</p>
-          <span className="text-[10px] text-[#94A3B8]">Work in progress</span>
+          <p className="text-3xl font-black text-[#F59E0B] font-mono">{metrics.draftQuizzes}</p>
+          <span className="text-xs text-[#94A3B8]">Work in progress</span>
         </div>
 
-        <div className="dashboard-card p-4 space-y-1">
-          <p className="text-[10px] uppercase font-bold text-[#64748B] flex items-center justify-between">
+        <div className="dashboard-card p-5 space-y-1.5 border border-[#1E2D4A]">
+          <p className="text-xs uppercase font-bold text-[#64748B] flex items-center justify-between">
             Total Questions
-            <HelpCircle size={14} className="text-[#8B5CF6]" />
+            <HelpCircle size={15} className="text-[#8B5CF6]" />
           </p>
-          <p className="text-2xl font-black text-[#A78BFA]">{metrics.totalQuestions}</p>
-          <span className="text-[10px] text-[#94A3B8]">Across all quizzes</span>
+          <p className="text-3xl font-black text-[#A78BFA] font-mono">{metrics.totalQuestions}</p>
+          <span className="text-xs text-[#94A3B8]">Across all quizzes</span>
         </div>
       </div>
 
@@ -836,11 +836,11 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {quizzes.map((quiz) => (
             <div
               key={quiz.id}
-              className="dashboard-card p-5 space-y-4 flex flex-col justify-between hover:border-[#2D436B] transition-all group"
+              className="dashboard-card p-6 space-y-5 flex flex-col justify-between hover:border-[#34D399] transition-all group shadow-sm hover:shadow-lg hover:shadow-[#10B981]/5"
             >
               
               {/* Header Info */}

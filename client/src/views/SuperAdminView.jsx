@@ -378,31 +378,31 @@ export default function SuperAdminView({ setActiveRoute }) {
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 pb-12">
+    <div className="w-full max-w-[1400px] mx-auto space-y-8 pb-16">
       
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#1B2A44]">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5 pb-6 border-b border-[#1E2D4A]">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-wide flex items-center gap-2">
-            <ShieldCheck className="text-[#F59E0B]" size={26} />
+          <h1 className="text-3xl font-extrabold text-white tracking-tight flex items-center gap-3">
+            <ShieldCheck className="text-[#F59E0B]" size={28} />
             Superadmin Command Center
           </h1>
-          <p className="text-xs text-[#94A3B8] mt-1">
+          <p className="text-sm text-[#94A3B8] mt-1.5">
             Global administrative controls, role promotion, user management, and system metrics.
           </p>
         </div>
 
         <button
           onClick={fetchAdminData}
-          className="btn-secondary text-xs py-2 px-3 gap-1.5 font-semibold"
+          className="btn-secondary text-xs py-2.5 px-4 gap-2 font-semibold"
         >
-          <RefreshCw size={14} />
+          <RefreshCw size={15} />
           Refresh Metrics
         </button>
       </div>
 
       {actionMessage && (
-        <div className="p-3 rounded-xl bg-[#10B981]/15 border border-[#10B981]/40 text-[#34D399] text-xs font-semibold flex items-center gap-2 animate-in fade-in">
+        <div className="p-4 rounded-xl bg-[#10B981]/15 border border-[#10B981]/40 text-[#34D399] text-xs font-semibold flex items-center gap-2.5 animate-in fade-in">
           <CheckCircle2 size={16} />
           {actionMessage}
         </div>
@@ -410,8 +410,8 @@ export default function SuperAdminView({ setActiveRoute }) {
 
       {/* Platform Summary Stats */}
       {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="dashboard-card p-4 border border-[#1B2A44]">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+          <div className="dashboard-card p-5 border border-[#1E2D4A] space-y-1">
             <p className="text-xs text-[#94A3B8] font-bold uppercase tracking-wider">Total Accounts</p>
             <p className="text-2xl font-black text-white font-mono mt-1">{stats.users?.total || 0}</p>
             <p className="text-[11px] text-[#64748B] mt-0.5">

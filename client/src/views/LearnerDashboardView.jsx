@@ -190,37 +190,74 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
   const isStudent = user?.role === 'STUDENT' || user?.role === 'LEARNER';
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 pb-12">
+    <div className="w-full max-w-[1400px] mx-auto space-y-8 pb-16">
       
-      {/* Header */}
-      <div className="pb-4 border-b border-[#1B2A44] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      {/* Top Header & Quick Actions */}
+      <div className="pb-6 border-b border-[#1E2D4A] flex flex-col md:flex-row md:items-center justify-between gap-5">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-wide flex items-center gap-2">
-            <GraduationCap className="text-[#34D399]" size={26} />
-            Learner Arena &bull; Assessment Hub
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#10B981] animate-pulse" />
+            <span className="text-xs text-[#34D399] font-bold tracking-wider uppercase">
+              Learner Arena &bull; Assessment Portal
+            </span>
+          </div>
+          <h1 className="text-3xl font-extrabold text-white tracking-tight flex items-center gap-3">
+            <GraduationCap className="text-[#34D399]" size={30} />
+            Assessment Hub
           </h1>
-          <p className="text-xs text-[#94A3B8] mt-1">
-            Welcome back, <strong className="text-white">{user?.name}</strong> &bull; Self-paced quizzes, instant grading, and personalized analytics.
+          <p className="text-sm text-[#94A3B8] mt-1.5">
+            Welcome back, <strong className="text-white font-semibold">{user?.name}</strong> &bull; Practice self-paced quizzes, review mistake corrections, and join live competitions.
           </p>
+
+          {/* Institutional Enrollment Status Badge (Integrated cleanly under header) */}
+          <div className="mt-3 flex items-center gap-2">
+            {enrollment && enrollment.status === 'ACTIVE' ? (
+              <div className="inline-flex items-center gap-2.5 py-1.5 px-3.5 rounded-full bg-[#121E36] border border-[#38BDF8]/40 text-xs">
+                <span className="w-2 h-2 rounded-full bg-[#10B981]" />
+                <span className="font-semibold text-white">{enrollment.organization_name}</span>
+                <span className="text-[#64748B]">&bull;</span>
+                <span className="text-[#38BDF8] font-bold">{enrollment.class_name} ({enrollment.section_name})</span>
+                {enrollment.roll_number && (
+                  <>
+                    <span className="text-[#64748B]">&bull;</span>
+                    <span className="font-mono text-[#A7F3D0]">Roll: {enrollment.roll_number}</span>
+                  </>
+                )}
+              </div>
+            ) : enrollment && enrollment.status === 'PENDING' ? (
+              <div className="inline-flex items-center gap-2 py-1.5 px-3.5 rounded-full bg-[#F59E0B]/15 border border-[#F59E0B]/40 text-xs text-[#FBBF24]">
+                <span className="w-2 h-2 rounded-full bg-[#F59E0B] animate-ping" />
+                <span>Section request for <strong>{enrollment.section_name}</strong> ({enrollment.class_name}) is awaiting teacher review.</span>
+              </div>
+            ) : (
+              <button
+                onClick={handleOpenEnrollModal}
+                className="inline-flex items-center gap-2 py-1.5 px-3.5 rounded-full bg-[#121E36] hover:bg-[#1A2C4E] border border-[#1E2E48] text-xs text-[#94A3B8] hover:text-white transition-colors"
+              >
+                <GraduationCap size={14} className="text-[#38BDF8]" />
+                <span>Not enrolled in a class section? <span className="text-[#34D399] font-semibold underline underline-offset-2">Join Section</span></span>
+              </button>
+            )}
+          </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 shrink-0">
           <button
             onClick={() => setActiveRoute('attempt-history')}
-            className="btn-secondary text-xs py-2 px-3 font-semibold gap-1.5"
+            className="btn-secondary text-xs py-2.5 px-4 font-semibold gap-2"
           >
-            <History size={14} className="text-[#38BDF8]" />
+            <History size={15} className="text-[#38BDF8]" />
             Past Attempts
           </button>
 
           <button
             onClick={() => setActiveRoute('mistake-notebook')}
-            className="btn-secondary text-xs py-2 px-3 font-semibold gap-1.5 text-[#34D399] border-[#34D399]/30"
+            className="btn-secondary text-xs py-2.5 px-4 font-semibold gap-2 text-[#34D399] border-[#34D399]/30 hover:border-[#34D399]/60"
           >
-            <BookMarked size={14} />
+            <BookMarked size={15} />
             Mistake Notebook
             {analytics?.mistakes?.unresolved > 0 && (
-              <span className="ml-1 px-1.5 py-0.2 rounded-full bg-[#F43F5E] text-white text-[10px] font-bold">
+              <span className="ml-1 px-2 py-0.5 rounded-full bg-[#F43F5E] text-white text-[10px] font-bold shadow-sm">
                 {analytics.mistakes.unresolved}
               </span>
             )}
@@ -228,174 +265,142 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
         </div>
       </div>
 
-      {/* Institutional Enrollment Banner (Phase P6 & P8) */}
-      {enrollment && enrollment.status === 'ACTIVE' ? (
-        <div className="dashboard-card p-3.5 bg-[#121E36]/90 border border-[#38BDF8]/40 flex flex-wrap items-center justify-between gap-3 text-xs">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-[#10B981] animate-ping" />
-            <span className="font-bold text-white tracking-wide">{enrollment.organization_name}</span>
-            <span className="text-[#64748B]">&bull;</span>
-            <span className="text-[#94A3B8]">{enrollment.department_name}</span>
-            <span className="text-[#64748B]">&bull;</span>
-            <span className="text-[#38BDF8] font-bold">{enrollment.class_name} ({enrollment.section_name})</span>
-          </div>
-          {enrollment.roll_number && (
-            <div className="font-mono text-[11px] px-2.5 py-1 rounded bg-[#0A1220] border border-[#1B2A44] text-[#A7F3D0]">
-              Roll: <strong>{enrollment.roll_number}</strong>
+      {/* Balanced 2-Column Hero Section: Reward Points + Live Multiplayer PIN */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+        
+        {/* Left Column (7 cols): Calm Reward Points & Progress */}
+        <div className="lg:col-span-7 dashboard-card p-6 border border-[#1E2D4A] bg-gradient-to-r from-[#0E172A] to-[#0A1220] flex flex-col justify-between space-y-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#F59E0B] to-[#D97706] flex items-center justify-center text-white shadow-lg shadow-[#F59E0B]/20 shrink-0">
+                <Trophy size={26} className="fill-current" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-[#F59E0B] tracking-wider uppercase">
+                  Total Reward Points
+                </p>
+                <div className="flex items-baseline gap-2 mt-0.5">
+                  <h2 className="text-3xl font-black text-white font-mono">
+                    {(analytics?.totalPoints || 0).toLocaleString()}
+                  </h2>
+                  <span className="text-sm font-bold text-[#34D399]">PTS</span>
+                </div>
+                <p className="text-xs text-[#94A3B8] mt-1">
+                  Accumulated from completed quizzes and live session participation.
+                </p>
+              </div>
             </div>
-          )}
-        </div>
-      ) : enrollment && enrollment.status === 'PENDING' ? (
-        <div className="dashboard-card p-3.5 bg-[#F59E0B]/10 border border-[#F59E0B]/40 flex flex-wrap items-center justify-between gap-3 text-xs animate-in fade-in">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-[#F59E0B] animate-pulse" />
-            <span className="font-bold text-[#FBBF24]">Enrollment Pending Approval:</span>
-            <span className="text-[#CBD5E1]">
-              Your request for section <strong className="text-white">{enrollment.section_name}</strong> ({enrollment.class_name}) is currently awaiting teacher or admin review.
-            </span>
           </div>
-          <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-[#F59E0B]/20 text-[#FBBF24] border border-[#F59E0B]/30">
-            Awaiting Verification
-          </span>
-        </div>
-      ) : (
-        <div className="dashboard-card p-3.5 bg-[#0D1524] border border-[#1E2E48] flex flex-wrap items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-2 text-[#94A3B8]">
-            <GraduationCap size={16} className="text-[#38BDF8]" />
-            <span>Not currently enrolled in an academic section? Join your class to access teacher-assigned tests.</span>
-          </div>
-          <button
-            onClick={handleOpenEnrollModal}
-            className="btn-emerald-primary text-xs py-1.5 px-3 font-bold flex items-center gap-1.5"
-          >
-            Request Section Enrollment
-          </button>
-        </div>
-      )}
 
-      {/* Join Live Game Quick Bar (Phase P4) */}
-      <div className="dashboard-card p-4 sm:p-5 border border-[#10B981]/40 bg-gradient-to-r from-[#10B981]/15 via-[#0E1626] to-[#0A1220] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-[#10B981]/20 border border-[#10B981]/30 flex items-center justify-center text-[#34D399] shrink-0">
-            <Radio size={20} className="animate-pulse" />
-          </div>
-          <div>
-            <h3 className="text-sm font-black text-white flex items-center gap-2">
-              Have a Live Quiz PIN?
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#34D399]/20 text-[#34D399] font-bold border border-[#34D399]/30">Live Multiplayer</span>
-            </h3>
-            <p className="text-xs text-[#94A3B8]">
-              Enter the session PIN from your teacher to join the real-time live assessment.
-            </p>
-          </div>
-        </div>
-
-        <form 
-          onSubmit={(e) => { 
-            e.preventDefault(); 
-            if (joinPinInput.trim() && onJoinLive) {
-              onJoinLive(joinPinInput.trim());
-            } 
-          }} 
-          className="flex items-center gap-2 shrink-0"
-        >
-          <input
-            type="text"
-            maxLength={12}
-            value={joinPinInput}
-            onChange={(e) => setJoinPinInput(e.target.value.replace(/[^0-9a-zA-Z]/g, '').toUpperCase())}
-            placeholder="e.g. AJM63B17"
-            className="w-36 bg-[#0B111D] border border-[#2D436B] focus:border-[#34D399] rounded-xl px-3 py-2 text-xs font-mono font-bold text-center text-white outline-none placeholder:text-[#64748B]"
-          />
-          <button
-            type="submit"
-            disabled={!joinPinInput.trim()}
-            className="btn-emerald-primary text-xs py-2 px-4 font-bold shadow-md shadow-[#10B981]/20"
-          >
-            Join Live
-          </button>
-        </form>
-      </div>
-
-      {/* Student Total Reward Points Hero Banner */}
-      <div className="dashboard-card p-5 border-2 border-[#10B981]/40 bg-gradient-to-r from-[#10B981]/15 via-[#0E1626] to-[#0A1220] flex flex-col md:flex-row md:items-center justify-between gap-5 shadow-xl shadow-[#10B981]/5">
-        <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#F59E0B] to-[#D97706] flex items-center justify-center text-black font-black text-2xl shadow-lg shadow-[#F59E0B]/25 shrink-0">
-            <Trophy size={28} className="fill-current text-white" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-extrabold text-[#F59E0B] uppercase tracking-wider">
-                Total Reward Points
-              </span>
-              <span className="px-2 py-0.5 rounded-full bg-[#34D399]/20 text-[#34D399] text-[10px] font-bold border border-[#34D399]/30">
-                Active Student Score
+          <div className="grid grid-cols-3 gap-3 pt-3 border-t border-[#1E2D4A]/70">
+            <div className="p-3 rounded-xl bg-[#111A2E] border border-[#1C2C4A] text-center">
+              <span className="text-[11px] text-[#94A3B8] block">Self-Paced</span>
+              <span className="text-sm font-bold text-[#38BDF8] font-mono mt-0.5 block">
+                {(analytics?.selfPacedPoints || 0).toLocaleString()} pts
               </span>
             </div>
-            <h2 className="text-3xl font-black text-white font-mono mt-0.5">
-              {(analytics?.totalPoints || 0).toLocaleString()} <span className="text-lg font-bold text-[#34D399]">PTS</span>
-            </h2>
-            <p className="text-xs text-[#94A3B8]">
-              Points accumulated from self-paced quizzes &amp; live multiplayer battles.
-            </p>
+            <div className="p-3 rounded-xl bg-[#111A2E] border border-[#1C2C4A] text-center">
+              <span className="text-[11px] text-[#94A3B8] block">Live Battles</span>
+              <span className="text-sm font-bold text-[#F59E0B] font-mono mt-0.5 block">
+                {(analytics?.liveBattlePoints || 0).toLocaleString()} pts
+              </span>
+            </div>
+            <div className="p-3 rounded-xl bg-[#111A2E] border border-[#1C2C4A] text-center">
+              <span className="text-[11px] text-[#94A3B8] block">Sessions Played</span>
+              <span className="text-sm font-bold text-[#10B981] font-mono mt-0.5 block">
+                {(analytics?.liveSessionsPlayed || 0)}
+              </span>
+            </div>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 border-t md:border-t-0 md:border-l border-[#1B2A44] pt-3 md:pt-0 md:pl-5">
-          <div className="p-3 rounded-xl bg-[#0B111D] border border-[#1F304E] text-center min-w-[110px]">
-            <p className="text-[10px] text-[#94A3B8] font-semibold">Self-Paced Pts</p>
-            <p className="text-base font-black text-[#38BDF8] font-mono">{(analytics?.selfPacedPoints || 0).toLocaleString()}</p>
+        {/* Right Column (5 cols): Live Multiplayer PIN Quick Access */}
+        <div className="lg:col-span-5 dashboard-card p-6 border border-[#10B981]/30 bg-gradient-to-br from-[#0F1E2E] to-[#0A1220] flex flex-col justify-between space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-xl bg-[#10B981]/15 border border-[#10B981]/30 flex items-center justify-center text-[#34D399] shrink-0">
+              <Radio size={20} className="animate-pulse" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                Join Live Quiz
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#34D399]/20 text-[#34D399] font-bold border border-[#34D399]/30">
+                  Real-Time
+                </span>
+              </h3>
+              <p className="text-xs text-[#94A3B8] mt-0.5">
+                Have a session PIN from your teacher? Join now.
+              </p>
+            </div>
           </div>
-          <div className="p-3 rounded-xl bg-[#0B111D] border border-[#1F304E] text-center min-w-[110px]">
-            <p className="text-[10px] text-[#94A3B8] font-semibold">Live Battle Pts</p>
-            <p className="text-base font-black text-[#F59E0B] font-mono">{(analytics?.liveBattlePoints || 0).toLocaleString()}</p>
-          </div>
-          <div className="p-3 rounded-xl bg-[#0B111D] border border-[#1F304E] text-center min-w-[110px]">
-            <p className="text-[10px] text-[#94A3B8] font-semibold">Live Battles</p>
-            <p className="text-base font-black text-[#10B981] font-mono">{(analytics?.liveSessionsPlayed || 0)}</p>
-          </div>
+
+          <form 
+            onSubmit={(e) => { 
+              e.preventDefault(); 
+              if (joinPinInput.trim() && onJoinLive) {
+                onJoinLive(joinPinInput.trim());
+              } 
+            }} 
+            className="flex items-center gap-2.5 pt-2"
+          >
+            <input
+              type="text"
+              maxLength={12}
+              value={joinPinInput}
+              onChange={(e) => setJoinPinInput(e.target.value.replace(/[^0-9a-zA-Z]/g, '').toUpperCase())}
+              placeholder="ENTER PIN (e.g. AJM63B17)"
+              className="flex-1 bg-[#090F1A] border border-[#243656] focus:border-[#34D399] rounded-xl px-4 py-2.5 text-xs font-mono font-bold tracking-wider text-center text-white outline-none placeholder:text-[#64748B]"
+            />
+            <button
+              type="submit"
+              disabled={!joinPinInput.trim()}
+              className="btn-emerald-primary text-xs py-2.5 px-5 font-bold shadow-md shadow-[#10B981]/20 shrink-0"
+            >
+              Join
+            </button>
+          </form>
         </div>
+
       </div>
 
-      {/* Real Performance Analytics Metric Bar */}
+      {/* Real Performance Analytics Metric Bar (Clean, Spacious 4-Card Grid) */}
       {analytics && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
           
-          <div className="dashboard-card p-4 border border-[#1B2A44]">
-            <p className="text-xs text-[#94A3B8] font-bold uppercase tracking-wider">Quizzes Completed</p>
-            <p className="text-2xl font-black text-white font-mono mt-1">{analytics.completedAttempts}</p>
-            <p className="text-[11px] text-[#64748B] mt-0.5">
+          <div className="dashboard-card p-5 border border-[#1E2D4A] space-y-1">
+            <p className="text-xs text-[#94A3B8] font-semibold tracking-wide">Quizzes Completed</p>
+            <p className="text-2xl font-black text-white font-mono">{analytics.completedAttempts}</p>
+            <p className="text-xs text-[#64748B]">
               {analytics.passedAttempts} passed
             </p>
           </div>
 
-          <div className="dashboard-card p-4 border border-[#1B2A44]">
-            <p className="text-xs text-[#94A3B8] font-bold uppercase tracking-wider">Overall Pass Rate</p>
-            <p className="text-2xl font-black text-[#10B981] font-mono mt-1">{analytics.passRate}%</p>
-            <p className="text-[11px] text-[#64748B] mt-0.5">
-              Across all finished attempts
+          <div className="dashboard-card p-5 border border-[#1E2D4A] space-y-1">
+            <p className="text-xs text-[#94A3B8] font-semibold tracking-wide">Overall Pass Rate</p>
+            <p className="text-2xl font-black text-[#10B981] font-mono">{analytics.passRate}%</p>
+            <p className="text-xs text-[#64748B]">
+              Across all completed attempts
             </p>
           </div>
 
-          <div className="dashboard-card p-4 border border-[#1B2A44]">
-            <p className="text-xs text-[#94A3B8] font-bold uppercase tracking-wider">Average Score</p>
-            <p className="text-2xl font-black text-[#38BDF8] font-mono mt-1">{analytics.averageScore}%</p>
-            <p className="text-[11px] text-[#64748B] mt-0.5">
-              Accurate grading breakdown
+          <div className="dashboard-card p-5 border border-[#1E2D4A] space-y-1">
+            <p className="text-xs text-[#94A3B8] font-semibold tracking-wide">Average Score</p>
+            <p className="text-2xl font-black text-[#38BDF8] font-mono">{analytics.averageScore}%</p>
+            <p className="text-xs text-[#64748B]">
+              Cumulative score average
             </p>
           </div>
 
           <div 
             onClick={() => setActiveRoute('mistake-notebook')}
-            className="dashboard-card p-4 border border-[#F43F5E]/30 bg-[#140E18] cursor-pointer hover:border-[#F43F5E]/60 transition-colors"
+            className="dashboard-card p-5 border border-[#F43F5E]/30 bg-[#140E18] cursor-pointer hover:border-[#F43F5E]/60 transition-colors space-y-1"
           >
             <div className="flex items-center justify-between">
-              <p className="text-xs text-[#FB7185] font-bold uppercase tracking-wider">Mistakes Logged</p>
-              <BookMarked size={14} className="text-[#FB7185]" />
+              <p className="text-xs text-[#FB7185] font-semibold tracking-wide">Mistakes Logged</p>
+              <BookMarked size={15} className="text-[#FB7185]" />
             </div>
-            <p className="text-2xl font-black text-[#FB7185] font-mono mt-1">{analytics.mistakes?.unresolved || 0}</p>
-            <p className="text-[11px] text-[#94A3B8] mt-0.5">
-              Click to review & practice &rarr;
+            <p className="text-2xl font-black text-[#FB7185] font-mono">{analytics.mistakes?.unresolved || 0}</p>
+            <p className="text-xs text-[#94A3B8]">
+              Review &amp; practice mistakes &rarr;
             </p>
           </div>
 
@@ -519,27 +524,27 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {quizzes.map((quiz) => {
                 const timeLimitMins = quiz.time_limit_sec > 0 ? Math.round(quiz.time_limit_sec / 60) : 0;
                 return (
                   <div
                     key={quiz.id}
-                    className="dashboard-card p-5 space-y-4 flex flex-col justify-between hover:border-[#34D399] transition-all relative group"
+                    className="dashboard-card p-6 space-y-5 flex flex-col justify-between hover:border-[#34D399] transition-all relative group shadow-sm hover:shadow-lg hover:shadow-[#10B981]/5"
                   >
-                    <div className="space-y-3">
+                    <div className="space-y-3.5">
                       <div className="flex items-start justify-between gap-2">
                         <span 
-                          className="inline-block px-2.5 py-1 rounded-md bg-[#10B981]/15 text-[#34D399] font-mono text-[11px] font-bold truncate max-w-[55%]"
+                          className="inline-block px-3 py-1 rounded-lg bg-[#10B981]/15 text-[#34D399] font-mono text-xs font-bold truncate max-w-[55%]"
                           title={quiz.category}
                         >
                           {quiz.category}
                         </span>
                         <div className="flex items-center gap-1.5 shrink-0">
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#38BDF8]/15 text-[#38BDF8] border border-[#38BDF8]/30">
+                          <span className="px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-[#38BDF8]/15 text-[#38BDF8] border border-[#38BDF8]/30">
                             Self-Paced
                           </span>
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${
+                          <span className={`px-2.5 py-0.5 rounded-md text-[11px] font-bold uppercase border ${
                             quiz.difficulty === 'HARD' ? 'bg-[#F43F5E]/15 text-[#FB7185] border-[#F43F5E]/30' :
                             quiz.difficulty === 'EASY' ? 'bg-[#10B981]/15 text-[#34D399] border-[#10B981]/30' :
                             'bg-[#F59E0B]/15 text-[#FBBF24] border-[#F59E0B]/30'
@@ -553,29 +558,29 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
                         <h3 className="text-base font-bold text-white line-clamp-1 group-hover:text-[#34D399] transition-colors">
                           {quiz.title}
                         </h3>
-                        <p className="text-xs text-[#94A3B8] line-clamp-2 mt-1 leading-relaxed">
+                        <p className="text-xs text-[#94A3B8] line-clamp-2 mt-1.5 leading-relaxed">
                           {quiz.description || 'Comprehensive evaluation assessment.'}
                         </p>
                       </div>
 
-                      <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#1B2A44]/60 text-center font-mono">
-                        <div className="p-1.5 rounded bg-[#121D32]">
-                          <span className="text-[10px] text-[#64748B] block">Questions</span>
+                      <div className="grid grid-cols-3 gap-2.5 pt-3 border-t border-[#1E2D4A]/70 text-center font-mono">
+                        <div className="p-2 rounded-xl bg-[#111A2E] border border-[#1C2C4A]">
+                          <span className="text-[11px] text-[#64748B] block">Questions</span>
                           <span className="text-xs font-bold text-white">{quiz.question_count || 0}</span>
                         </div>
-                        <div className="p-1.5 rounded bg-[#121D32]">
-                          <span className="text-[10px] text-[#64748B] block">Points</span>
+                        <div className="p-2 rounded-xl bg-[#111A2E] border border-[#1C2C4A]">
+                          <span className="text-[11px] text-[#64748B] block">Points</span>
                           <span className="text-xs font-bold text-white">{quiz.total_marks || 0}</span>
                         </div>
-                        <div className="p-1.5 rounded bg-[#121D32]">
-                          <span className="text-[10px] text-[#64748B] block">Time</span>
+                        <div className="p-2 rounded-xl bg-[#111A2E] border border-[#1C2C4A]">
+                          <span className="text-[11px] text-[#64748B] block">Time</span>
                           <span className="text-xs font-bold text-[#38BDF8]">
                             {timeLimitMins > 0 ? `${timeLimitMins}m` : 'Untimed'}
                           </span>
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between text-[11px] text-[#64748B] pt-1">
+                      <div className="flex items-center justify-between text-xs text-[#64748B] pt-1">
                         <span>By <strong className="text-[#94A3B8]">{quiz.creator_name}</strong></span>
                         <span>Pass: {quiz.pass_percentage}%</span>
                       </div>
@@ -585,16 +590,16 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
                       {quiz.max_attempts > 0 && (quiz.user_attempt_count || 0) >= quiz.max_attempts ? (
                         <button
                           disabled
-                          className="w-full btn-secondary opacity-60 text-xs py-2 font-bold justify-center cursor-not-allowed bg-slate-800 text-slate-400 border-slate-700"
+                          className="w-full btn-secondary opacity-60 text-xs py-2.5 font-bold justify-center cursor-not-allowed bg-slate-800 text-slate-400 border-slate-700"
                         >
                           Attempted ({quiz.user_attempt_count}/{quiz.max_attempts})
                         </button>
                       ) : (
                         <button
                           onClick={() => onStartAttempt(quiz.id)}
-                          className="w-full btn-emerald-primary text-xs py-2 font-bold gap-1.5 justify-center shadow-lg shadow-[#10B981]/20"
+                          className="w-full btn-emerald-primary text-xs py-2.5 font-bold gap-2 justify-center shadow-lg shadow-[#10B981]/20"
                         >
-                          <Play size={13} className="fill-current" />
+                          <Play size={14} className="fill-current" />
                           Start Quiz
                         </button>
                       )}
@@ -635,23 +640,23 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {quizzes.map((quiz) => {
                 const timeLimitMins = quiz.time_limit_sec > 0 ? Math.round(quiz.time_limit_sec / 60) : 0;
                 return (
                   <div
                     key={quiz.id}
-                    className="dashboard-card p-5 space-y-4 flex flex-col justify-between hover:border-[#38BDF8] transition-all relative group"
+                    className="dashboard-card p-6 space-y-5 flex flex-col justify-between hover:border-[#38BDF8] transition-all relative group shadow-sm hover:shadow-lg hover:shadow-[#38BDF8]/5"
                   >
-                    <div className="space-y-3">
+                    <div className="space-y-3.5">
                       <div className="flex items-start justify-between gap-2">
                         <span 
-                          className="inline-block px-2.5 py-1 rounded-md bg-[#38BDF8]/15 text-[#38BDF8] font-mono text-[11px] font-bold truncate max-w-[65%]"
+                          className="inline-block px-3 py-1 rounded-lg bg-[#38BDF8]/15 text-[#38BDF8] font-mono text-xs font-bold truncate max-w-[65%]"
                           title={quiz.category}
                         >
                           {quiz.category}
                         </span>
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0 border ${
+                        <span className={`px-2.5 py-0.5 rounded-md text-[11px] font-bold uppercase shrink-0 border ${
                           quiz.difficulty === 'HARD' ? 'bg-[#F43F5E]/15 text-[#FB7185] border-[#F43F5E]/30' :
                           quiz.difficulty === 'EASY' ? 'bg-[#10B981]/15 text-[#34D399] border-[#10B981]/30' :
                           'bg-[#F59E0B]/15 text-[#FBBF24] border-[#F59E0B]/30'
@@ -664,29 +669,29 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
                         <h3 className="text-base font-bold text-white line-clamp-1 group-hover:text-[#38BDF8] transition-colors">
                           {quiz.title}
                         </h3>
-                        <p className="text-xs text-[#94A3B8] line-clamp-2 mt-1 leading-relaxed">
+                        <p className="text-xs text-[#94A3B8] line-clamp-2 mt-1.5 leading-relaxed">
                           {quiz.description || 'Flexible self-paced evaluation.'}
                         </p>
                       </div>
 
-                      <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#1B2A44]/60 text-center font-mono">
-                        <div className="p-1.5 rounded bg-[#121D32]">
-                          <span className="text-[10px] text-[#64748B] block">Questions</span>
+                      <div className="grid grid-cols-3 gap-2.5 pt-3 border-t border-[#1E2D4A]/70 text-center font-mono">
+                        <div className="p-2 rounded-xl bg-[#111A2E] border border-[#1C2C4A]">
+                          <span className="text-[11px] text-[#64748B] block">Questions</span>
                           <span className="text-xs font-bold text-white">{quiz.question_count || 0}</span>
                         </div>
-                        <div className="p-1.5 rounded bg-[#121D32]">
-                          <span className="text-[10px] text-[#64748B] block">Points</span>
+                        <div className="p-2 rounded-xl bg-[#111A2E] border border-[#1C2C4A]">
+                          <span className="text-[11px] text-[#64748B] block">Points</span>
                           <span className="text-xs font-bold text-white">{quiz.total_marks || 0}</span>
                         </div>
-                        <div className="p-1.5 rounded bg-[#121D32]">
-                          <span className="text-[10px] text-[#64748B] block">Duration</span>
+                        <div className="p-2 rounded-xl bg-[#111A2E] border border-[#1C2C4A]">
+                          <span className="text-[11px] text-[#64748B] block">Duration</span>
                           <span className="text-xs font-bold text-[#38BDF8]">
                             {timeLimitMins > 0 ? `${timeLimitMins}m` : 'Untimed'}
                           </span>
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between text-[11px] text-[#64748B] pt-1">
+                      <div className="flex items-center justify-between text-xs text-[#64748B] pt-1">
                         <span>Instructor: <strong className="text-[#94A3B8]">{quiz.creator_name}</strong></span>
                         <span>Pass: {quiz.pass_percentage}%</span>
                       </div>
@@ -696,16 +701,16 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
                       {quiz.max_attempts > 0 && (quiz.user_attempt_count || 0) >= quiz.max_attempts ? (
                         <button
                           disabled
-                          className="w-full btn-secondary opacity-60 text-xs py-2 font-bold justify-center cursor-not-allowed bg-slate-800 text-slate-400 border-slate-700"
+                          className="w-full btn-secondary opacity-60 text-xs py-2.5 font-bold justify-center cursor-not-allowed bg-slate-800 text-slate-400 border-slate-700"
                         >
                           Attempted ({quiz.user_attempt_count}/{quiz.max_attempts})
                         </button>
                       ) : (
                         <button
                           onClick={() => onStartAttempt(quiz.id)}
-                          className="w-full btn-emerald-primary text-xs py-2 font-bold gap-1.5 justify-center shadow-lg shadow-[#10B981]/20"
+                          className="w-full btn-emerald-primary text-xs py-2.5 font-bold gap-2 justify-center shadow-lg shadow-[#10B981]/20"
                         >
-                          <Play size={13} className="fill-current" />
+                          <Play size={14} className="fill-current" />
                           Take Self-Paced
                         </button>
                       )}
@@ -891,7 +896,7 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {assignedTests.map((item) => {
                 const timeLimitMins = item.time_limit_sec > 0 ? Math.round(item.time_limit_sec / 60) : 0;
                 const isSubmitted = item.recipient_status === 'SUBMITTED' || item.recipient_status === 'LATE';
@@ -900,29 +905,29 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
                 return (
                   <div
                     key={item.recipient_id}
-                    className={`dashboard-card p-5 space-y-4 flex flex-col justify-between transition-all relative group ${
-                      isOverdue ? 'border-[#F43F5E]/60 hover:border-[#F43F5E]' :
-                      isSubmitted ? 'border-[#10B981]/60 hover:border-[#34D399]' :
-                      'border-[#F59E0B]/50 hover:border-[#F59E0B]'
+                    className={`dashboard-card p-6 space-y-5 flex flex-col justify-between transition-all relative group shadow-sm hover:shadow-lg ${
+                      isOverdue ? 'border-[#F43F5E]/60 hover:border-[#F43F5E] hover:shadow-[#F43F5E]/5' :
+                      isSubmitted ? 'border-[#10B981]/60 hover:border-[#34D399] hover:shadow-[#10B981]/5' :
+                      'border-[#F59E0B]/50 hover:border-[#F59E0B] hover:shadow-[#F59E0B]/5'
                     }`}
                   >
-                    <div className="space-y-3">
+                    <div className="space-y-3.5">
                       <div className="flex items-start justify-between gap-2">
                         <span 
-                          className="inline-block px-2.5 py-1 rounded-md bg-[#F59E0B]/15 text-[#F59E0B] font-mono text-[11px] font-bold truncate max-w-[55%]"
+                          className="inline-block px-3 py-1 rounded-lg bg-[#F59E0B]/15 text-[#F59E0B] font-mono text-xs font-bold truncate max-w-[55%]"
                           title={item.quiz_category}
                         >
                           {item.quiz_category}
                         </span>
 
-                        <div className="flex items-center gap-1 shrink-0">
+                        <div className="flex items-center gap-1.5 shrink-0">
                           {item.is_flagged ? (
-                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#F43F5E]/20 text-[#FB7185] border border-[#F43F5E]/40">
+                            <span className="px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-[#F43F5E]/20 text-[#FB7185] border border-[#F43F5E]/40">
                               🚩 Flagged
                             </span>
                           ) : null}
 
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${
+                          <span className={`px-2.5 py-0.5 rounded-md text-[11px] font-bold uppercase border ${
                             isSubmitted ? 'bg-[#10B981]/20 text-[#34D399] border-[#10B981]/40' :
                             isOverdue ? 'bg-[#F43F5E]/20 text-[#FB7185] border-[#F43F5E]/40' :
                             item.recipient_status === 'STARTED' ? 'bg-[#38BDF8]/20 text-[#38BDF8] border-[#38BDF8]/40' :
@@ -940,27 +945,27 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
                         <h3 className="text-base font-bold text-white line-clamp-1 group-hover:text-[#F59E0B] transition-colors">
                           {item.assignment_title}
                         </h3>
-                        <p className="text-xs text-[#94A3B8] line-clamp-2 mt-1 leading-relaxed">
+                        <p className="text-xs text-[#94A3B8] line-clamp-2 mt-1.5 leading-relaxed">
                           {item.instructions || item.quiz_description || 'Mandatory scheduled course assessment.'}
                         </p>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-2 pt-2 border-t border-[#1B2A44]/60 text-center font-mono">
-                        <div className="p-1.5 rounded bg-[#121D32]">
-                          <span className="text-[10px] text-[#64748B] block">Due Date</span>
+                      <div className="grid grid-cols-2 gap-2.5 pt-3 border-t border-[#1E2D4A]/70 text-center font-mono">
+                        <div className="p-2 rounded-xl bg-[#111A2E] border border-[#1C2C4A]">
+                          <span className="text-[11px] text-[#64748B] block">Due Date</span>
                           <span className={`text-xs font-bold ${isOverdue ? 'text-[#FB7185]' : 'text-white'}`}>
                             {item.due_date ? new Date(item.due_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : 'No Deadline'}
                           </span>
                         </div>
-                        <div className="p-1.5 rounded bg-[#121D32]">
-                          <span className="text-[10px] text-[#64748B] block">Time Limit</span>
+                        <div className="p-2 rounded-xl bg-[#111A2E] border border-[#1C2C4A]">
+                          <span className="text-[11px] text-[#64748B] block">Time Limit</span>
                           <span className="text-xs font-bold text-[#F59E0B]">
                             {timeLimitMins > 0 ? `${timeLimitMins}m` : 'Untimed'}
                           </span>
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between text-[11px] text-[#64748B] pt-1">
+                      <div className="flex items-center justify-between text-xs text-[#64748B] pt-1">
                         <span>Instructor: <strong className="text-[#94A3B8]">{item.teacher_name}</strong></span>
                         <span className="text-[#38BDF8]">{item.quiz_difficulty}</span>
                       </div>
@@ -970,17 +975,17 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
                       {isSubmitted ? (
                         <button
                           onClick={() => setActiveRoute('attempt-history')}
-                          className="w-full btn-secondary text-xs py-2 font-bold gap-1.5 justify-center border-[#10B981]/50 text-[#34D399]"
+                          className="w-full btn-secondary text-xs py-2.5 font-bold gap-2 justify-center border-[#10B981]/50 text-[#34D399]"
                         >
-                          <History size={13} />
+                          <History size={14} />
                           Scorecard
                         </button>
                       ) : (
                         <button
                           onClick={() => onStartAttempt(item.quiz_id)}
-                          className="w-full btn-emerald-primary text-xs py-2 font-bold gap-1.5 justify-center bg-[#F59E0B] hover:bg-[#D97706] text-black border-none shadow-lg shadow-[#F59E0B]/20"
+                          className="w-full btn-emerald-primary text-xs py-2.5 font-bold gap-2 justify-center bg-[#F59E0B] hover:bg-[#D97706] text-black border-none shadow-lg shadow-[#F59E0B]/20"
                         >
-                          <Play size={13} className="fill-current text-black" />
+                          <Play size={14} className="fill-current text-black" />
                           Start Test
                         </button>
                       )}

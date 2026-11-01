@@ -204,33 +204,33 @@ export default function App() {
       <div className="flex-1 min-w-0 flex flex-col">
         {/* Top-Right Notification & Status Bar (Logged-in Pages) */}
         {user && activeRoute !== 'landing' && (
-          <header className="h-14 border-b border-[#1B2A44] bg-[#0A101D]/90 backdrop-blur-md px-6 lg:px-8 flex items-center justify-between sticky top-0 z-30">
+          <header className="h-16 border-b border-[#1E2D4A] bg-[#0A101D]/90 backdrop-blur-md px-6 lg:px-10 flex items-center justify-between sticky top-0 z-30">
             <div className="flex items-center gap-2 text-xs font-semibold text-[#64748B]">
               <span className="text-[#38BDF8] font-bold uppercase tracking-wider">{user.role}</span>
               <span>/</span>
               <span className="text-white capitalize">{activeRoute.replace(/-/g, ' ')}</span>
             </div>
-            <div className="flex items-center gap-3.5">
+            <div className="flex items-center gap-4">
               {/* Notification Bell positioned in top right */}
               <NotificationBell setActiveRoute={setActiveRoute} />
               
               {/* Quick Profile Link */}
               <div 
                 onClick={() => setActiveRoute('profile')}
-                className="flex items-center gap-2 py-1 px-2.5 rounded-lg bg-[#121D32] border border-[#1F304E] hover:border-[#38BDF8]/40 cursor-pointer transition-all"
+                className="flex items-center gap-2.5 py-1.5 px-3 rounded-xl bg-[#121D32] border border-[#1F304E] hover:border-[#38BDF8]/40 cursor-pointer transition-all"
                 title="View Profile & Security"
               >
-                <div className="w-6 h-6 rounded-md bg-[#38BDF8]/20 text-[#38BDF8] flex items-center justify-center font-bold text-xs">
+                <div className="w-7 h-7 rounded-lg bg-[#38BDF8]/20 text-[#38BDF8] flex items-center justify-center font-bold text-xs">
                   {user.name ? user.name[0].toUpperCase() : 'U'}
                 </div>
-                <span className="text-xs font-bold text-white max-w-[130px] truncate hidden sm:inline">{user.name}</span>
+                <span className="text-xs font-bold text-white max-w-[140px] truncate hidden sm:inline">{user.name}</span>
               </div>
             </div>
           </header>
         )}
 
         {/* Viewport protected by Isolated ErrorBoundary per Route */}
-        <main className={`flex-1 min-w-0 ${activeRoute === 'landing' ? 'p-0' : 'p-6 lg:p-8'}`}>
+        <main className={`flex-1 min-w-0 ${activeRoute === 'landing' ? 'p-0' : 'p-6 lg:p-10 xl:p-12'}`}>
           <ErrorBoundary key={activeRoute} route={activeRoute} onReset={() => window.location.reload()}>
           {activeRoute === 'landing' && <LandingView setActiveRoute={setActiveRoute} />}
           {activeRoute === 'register' && <RegisterView setActiveRoute={setActiveRoute} />}

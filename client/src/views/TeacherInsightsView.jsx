@@ -175,27 +175,27 @@ export default function TeacherInsightsView({ onNavigateToQuizStudio }) {
   }, [activeTab, accessToken, fetchQuestions, fetchStudents, fetchSections]);
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 animate-fadeIn pb-12">
+    <div className="w-full max-w-[1400px] mx-auto space-y-8 pb-16">
       
       {/* Top Header */}
-      <div className="pb-4 border-b border-[#1B2A44] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="pb-6 border-b border-[#1E2D4A] flex flex-col sm:flex-row sm:items-center justify-between gap-5">
         <div>
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-[#10B981] animate-pulse" />
-            <span className="text-[10px] text-[#34D399] font-bold tracking-widest uppercase">
+            <span className="text-xs text-[#34D399] font-bold tracking-widest uppercase">
               TQM Analytics &amp; Assessment Intelligence
             </span>
           </div>
-          <h1 className="text-2xl font-black text-white tracking-wide flex items-center gap-2.5 mt-1">
-            <BarChart3 className="text-[#38BDF8]" size={26} />
+          <h1 className="text-3xl font-extrabold text-white tracking-tight flex items-center gap-3 mt-1.5">
+            <BarChart3 className="text-[#38BDF8]" size={28} />
             Advanced Assessment Insights
           </h1>
-          <p className="text-xs text-[#94A3B8] mt-1">
+          <p className="text-sm text-[#94A3B8] mt-1.5">
             Authoritative question-level analytics, distractor analysis, student mastery tracking, and section comparisons.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <button
             onClick={() => {
               fetchOverview();
@@ -203,10 +203,10 @@ export default function TeacherInsightsView({ onNavigateToQuizStudio }) {
               if (activeTab === 'students') fetchStudents();
               if (activeTab === 'sections') fetchSections();
             }}
-            className="btn-secondary text-xs py-2 px-3 font-semibold flex items-center gap-1.5"
+            className="btn-secondary text-xs py-2.5 px-4 font-semibold flex items-center gap-2"
             title="Refresh analytics data"
           >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
             <span>Refresh</span>
           </button>
         </div>
