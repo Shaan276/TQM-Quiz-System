@@ -2,6 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const { dbGet, dbAll, dbRun } = require('../database');
 const { authenticateToken, requireRole } = require('../middleware/auth');
+const { createNotification, notifyUsers } = require('../services/notificationService');
 
 const router = express.Router();
 
@@ -36,7 +37,9 @@ router.get('/my-enrollment', authenticateToken, async (req, res, next) => {
       JOIN departments d ON e.department_id = d.id
       JOIN classes c ON e.class_id = c.id
       JOIN sections s ON e.section_id = s.id
-      WHERE e.user_id = ? AND e.status = 'ACTIVE'
+      WHERE e.user_id = ? AND e.status IN ('ACTIVE', 'PENDING')
+      ORDER BY CASE WHEN e.status = 'ACTIVE' THEN 1 ELSE 2 END
+      LIMIT 1
     `, [req.user.id]);
 
     res.json({
@@ -482,6 +485,404 @@ router.get('/students', authenticateToken, async (req, res, next) => {
 
     const students = await dbAll(query, params);
     res.json({ success: true, data: { students } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// -------------------------------------------------------------
+// GET /api/v1/institutions/teachers/pending - Org Admin gets pending teachers
+// -------------------------------------------------------------
+router.get('/teachers/pending', authenticateToken, requireRole(['ORG_ADMIN', 'SUPER_ADMIN', 'ADMIN']), async (req, res, next) => {
+  try {
+    const orgId = await getEffectiveOrgId(req);
+    const teachers = await dbAll(`
+      SELECT id, name, email, role, approval_status, created_at
+      FROM users
+      WHERE role IN ('TEACHER', 'CREATOR') 
+        AND approval_status = 'PENDING'
+        AND (organization_id = ? OR organization_id IS NULL)
+      ORDER BY created_at DESC
+    `, [orgId]);
+
+    res.json({ success: true, data: { teachers } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// -------------------------------------------------------------
+// POST /api/v1/institutions/teachers/:userId/approve - Org Admin approves teacher
+// -------------------------------------------------------------
+router.post('/teachers/:userId/approve', authenticateToken, requireRole(['ORG_ADMIN', 'SUPER_ADMIN', 'ADMIN']), async (req, res, next) => {
+  try {
+    const orgId = await getEffectiveOrgId(req);
+    const { userId } = req.params;
+
+    const teacher = await dbGet(`SELECT id, name, email, role, approval_status FROM users WHERE id = ?`, [userId]);
+    if (!teacher) {
+      return res.status(404).json({ success: false, error: { message: 'Teacher user not found' } });
+    }
+
+    await dbRun(`UPDATE users SET approval_status = 'APPROVED', organization_id = ? WHERE id = ?`, [orgId, userId]);
+
+    // Send in-app notification to the teacher
+    await createNotification({
+      userId,
+      title: 'Teacher Account Approved',
+      message: 'Your teacher account has been approved by the organization administrator. You now have full access to create quizzes, manage assessments, and assign work.',
+      type: 'SUCCESS',
+      linkUrl: '/creator'
+    });
+
+    res.json({
+      success: true,
+      data: {
+        message: `Teacher ${teacher.name} has been approved successfully.`,
+        teacher: { ...teacher, approval_status: 'APPROVED', organization_id: orgId }
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// -------------------------------------------------------------
+// POST /api/v1/institutions/teachers/:userId/reject - Org Admin rejects teacher
+// -------------------------------------------------------------
+router.post('/teachers/:userId/reject', authenticateToken, requireRole(['ORG_ADMIN', 'SUPER_ADMIN', 'ADMIN']), async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+
+    const teacher = await dbGet(`SELECT id, name, email FROM users WHERE id = ?`, [userId]);
+    if (!teacher) {
+      return res.status(404).json({ success: false, error: { message: 'Teacher user not found' } });
+    }
+
+    await dbRun(`UPDATE users SET approval_status = 'REJECTED' WHERE id = ?`, [userId]);
+
+    await createNotification({
+      userId,
+      title: 'Teacher Account Registration Declined',
+      message: 'Your registration request for a teacher account was reviewed and declined by the organization administrator.',
+      type: 'WARNING'
+    });
+
+    res.json({
+      success: true,
+      data: {
+        message: `Teacher registration for ${teacher.name} has been declined.`,
+        teacher: { ...teacher, approval_status: 'REJECTED' }
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// -------------------------------------------------------------
+// POST /api/v1/institutions/students/request-enrollment - Student requests section enrollment
+// -------------------------------------------------------------
+router.post('/students/request-enrollment', authenticateToken, async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const { section_id, roll_number = null } = req.body;
+
+    if (!section_id) {
+      return res.status(400).json({ success: false, error: { message: 'section_id is required' } });
+    }
+
+    // Lookup section hierarchy
+    const sec = await dbGet(`
+      SELECT s.id, s.name AS section_name, s.academic_year_id, s.class_id,
+             c.name AS class_name, c.department_id, c.organization_id,
+             d.name AS department_name
+      FROM sections s
+      JOIN classes c ON s.class_id = c.id
+      JOIN departments d ON c.department_id = d.id
+      WHERE s.id = ?
+    `, [section_id]);
+
+    if (!sec) {
+      return res.status(404).json({ success: false, error: { message: 'Selected section not found' } });
+    }
+
+    // Check if user already has an ACTIVE or PENDING enrollment for this academic year
+    const existing = await dbGet(`
+      SELECT id, status, section_id FROM student_enrollments
+      WHERE user_id = ? AND academic_year_id = ?
+    `, [userId, sec.academic_year_id]);
+
+    if (existing) {
+      if (existing.status === 'ACTIVE') {
+        return res.status(400).json({
+          success: false,
+          error: { message: 'You are already actively enrolled in this academic year.' }
+        });
+      }
+      if (existing.status === 'PENDING') {
+        return res.status(400).json({
+          success: false,
+          error: { message: 'You already have a pending enrollment request awaiting approval.' }
+        });
+      }
+      // If REJECTED or ARCHIVED, allow re-request
+      await dbRun(`
+        UPDATE student_enrollments
+        SET department_id = ?, class_id = ?, section_id = ?, roll_number = ?, status = 'PENDING',
+            approved_by = NULL, approved_at = NULL, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `, [sec.department_id, sec.class_id, sec.id, roll_number, existing.id]);
+
+      const updated = await dbGet(`SELECT * FROM student_enrollments WHERE id = ?`, [existing.id]);
+      await notifyAdminsAndTeachers(sec, req.user);
+      return res.json({
+        success: true,
+        data: { enrollment: updated, message: 'Enrollment request re-submitted. Awaiting approval.' }
+      });
+    }
+
+    const enrollmentId = generateUUID();
+    await dbRun(`
+      INSERT INTO student_enrollments (
+        id, user_id, organization_id, academic_year_id, department_id, class_id, section_id, roll_number, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING')
+    `, [enrollmentId, userId, sec.organization_id, sec.academic_year_id, sec.department_id, sec.class_id, sec.id, roll_number]);
+
+    // Ensure student organization is updated
+    await dbRun(`UPDATE users SET organization_id = ? WHERE id = ?`, [sec.organization_id, userId]);
+
+    const created = await dbGet(`SELECT * FROM student_enrollments WHERE id = ?`, [enrollmentId]);
+    await notifyAdminsAndTeachers(sec, req.user);
+
+    res.status(201).json({
+      success: true,
+      data: {
+        enrollment: created,
+        message: `Enrollment request for ${sec.section_name} submitted successfully. Awaiting teacher or admin approval.`
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Helper to notify both Org Admins and Section Teachers of enrollment requests
+async function notifyAdminsAndTeachers(sectionData, student) {
+  try {
+    const adminRows = await dbAll(`
+      SELECT id FROM users 
+      WHERE (organization_id = ? OR organization_id IS NULL) 
+        AND role IN ('ORG_ADMIN', 'SUPER_ADMIN', 'ADMIN')
+    `, [sectionData.organization_id]);
+
+    const teacherRows = await dbAll(`
+      SELECT teacher_id AS id FROM teacher_assignments
+      WHERE section_id = ? AND is_active = 1
+    `, [sectionData.id]);
+
+    const recipientIds = [...new Set([...adminRows.map(r => r.id), ...teacherRows.map(r => r.id)])];
+
+    if (recipientIds.length > 0) {
+      await notifyUsers(recipientIds, {
+        title: 'New Student Enrollment Request',
+        message: `${student.name || 'A student'} requested enrollment in section '${sectionData.section_name}' (${sectionData.class_name}).`,
+        type: 'ACTION_REQUIRED',
+        linkUrl: '/creator'
+      });
+    }
+  } catch (err) {
+    console.error('[Institutions] notifyAdminsAndTeachers error:', err);
+  }
+}
+
+// -------------------------------------------------------------
+// GET /api/v1/institutions/enrollments/pending - Get pending student enrollments
+// -------------------------------------------------------------
+router.get('/enrollments/pending', authenticateToken, requireRole(['TEACHER', 'CREATOR', 'ORG_ADMIN', 'SUPER_ADMIN', 'ADMIN']), async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const isOrgAdmin = ['ORG_ADMIN', 'SUPER_ADMIN', 'ADMIN'].includes(req.user.role);
+    const orgId = await getEffectiveOrgId(req);
+
+    let enrollments = [];
+
+    if (isOrgAdmin) {
+      enrollments = await dbAll(`
+        SELECT se.*, 
+               u.name AS student_name, u.email AS student_email,
+               s.name AS section_name, c.name AS class_name, d.name AS department_name,
+               ay.name AS academic_year_name
+        FROM student_enrollments se
+        JOIN users u ON se.user_id = u.id
+        JOIN sections s ON se.section_id = s.id
+        JOIN classes c ON se.class_id = c.id
+        JOIN departments d ON se.department_id = d.id
+        JOIN academic_years ay ON se.academic_year_id = ay.id
+        WHERE se.status = 'PENDING' AND se.organization_id = ?
+        ORDER BY se.enrolled_at DESC
+      `, [orgId]);
+    } else {
+      // Teacher: only enrollments for sections they teach
+      const teacherSections = await dbAll(`
+        SELECT DISTINCT section_id FROM teacher_assignments
+        WHERE teacher_id = ? AND is_active = 1
+      `, [userId]);
+
+      const secIds = teacherSections.map(t => t.section_id);
+      if (secIds.length > 0) {
+        const placeholders = secIds.map(() => '?').join(',');
+        enrollments = await dbAll(`
+          SELECT se.*, 
+                 u.name AS student_name, u.email AS student_email,
+                 s.name AS section_name, c.name AS class_name, d.name AS department_name,
+                 ay.name AS academic_year_name
+          FROM student_enrollments se
+          JOIN users u ON se.user_id = u.id
+          JOIN sections s ON se.section_id = s.id
+          JOIN classes c ON se.class_id = c.id
+          JOIN departments d ON se.department_id = d.id
+          JOIN academic_years ay ON se.academic_year_id = ay.id
+          WHERE se.status = 'PENDING' AND se.section_id IN (${placeholders})
+          ORDER BY se.enrolled_at DESC
+        `, secIds);
+      }
+    }
+
+    res.json({ success: true, data: { pendingEnrollments: enrollments } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// -------------------------------------------------------------
+// POST /api/v1/institutions/enrollments/:id/approve - Teacher OR Org Admin approves student enrollment
+// -------------------------------------------------------------
+router.post('/enrollments/:id/approve', authenticateToken, requireRole(['TEACHER', 'CREATOR', 'ORG_ADMIN', 'SUPER_ADMIN', 'ADMIN']), async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    const isOrgAdmin = ['ORG_ADMIN', 'SUPER_ADMIN', 'ADMIN'].includes(req.user.role);
+
+    const enrollment = await dbGet(`
+      SELECT se.*, s.name AS section_name, c.name AS class_name, u.name AS student_name
+      FROM student_enrollments se
+      JOIN sections s ON se.section_id = s.id
+      JOIN classes c ON se.class_id = c.id
+      JOIN users u ON se.user_id = u.id
+      WHERE se.id = ?
+    `, [id]);
+
+    if (!enrollment) {
+      return res.status(404).json({ success: false, error: { message: 'Enrollment record not found' } });
+    }
+
+    if (enrollment.status !== 'PENDING') {
+      return res.status(400).json({ success: false, error: { message: `Enrollment is already in status: ${enrollment.status}` } });
+    }
+
+    // If teacher, verify they teach this section
+    if (!isOrgAdmin) {
+      const authAssignment = await dbGet(`
+        SELECT id FROM teacher_assignments 
+        WHERE teacher_id = ? AND section_id = ? AND is_active = 1
+      `, [userId, enrollment.section_id]);
+
+      if (!authAssignment) {
+        return res.status(403).json({
+          success: false,
+          error: { message: 'You are not assigned to teach this section and cannot approve this student.' }
+        });
+      }
+    }
+
+    await dbRun(`
+      UPDATE student_enrollments
+      SET status = 'ACTIVE', approved_by = ?, approved_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `, [userId, id]);
+
+    // Send in-app notification to the approved student
+    await createNotification({
+      userId: enrollment.user_id,
+      title: 'Enrollment Approved!',
+      message: `Your enrollment in section '${enrollment.section_name}' (${enrollment.class_name}) has been approved. You now have access to all tests and coursework for this class.`,
+      type: 'SUCCESS',
+      linkUrl: '/student/quizzes'
+    });
+
+    res.json({
+      success: true,
+      data: {
+        message: `Student ${enrollment.student_name} enrolled successfully into section ${enrollment.section_name}.`,
+        enrollmentId: id,
+        status: 'ACTIVE'
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// -------------------------------------------------------------
+// POST /api/v1/institutions/enrollments/:id/reject - Teacher OR Org Admin rejects student enrollment
+// -------------------------------------------------------------
+router.post('/enrollments/:id/reject', authenticateToken, requireRole(['TEACHER', 'CREATOR', 'ORG_ADMIN', 'SUPER_ADMIN', 'ADMIN']), async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    const isOrgAdmin = ['ORG_ADMIN', 'SUPER_ADMIN', 'ADMIN'].includes(req.user.role);
+
+    const enrollment = await dbGet(`
+      SELECT se.*, s.name AS section_name, c.name AS class_name, u.name AS student_name
+      FROM student_enrollments se
+      JOIN sections s ON se.section_id = s.id
+      JOIN classes c ON se.class_id = c.id
+      JOIN users u ON se.user_id = u.id
+      WHERE se.id = ?
+    `, [id]);
+
+    if (!enrollment) {
+      return res.status(404).json({ success: false, error: { message: 'Enrollment record not found' } });
+    }
+
+    if (!isOrgAdmin) {
+      const authAssignment = await dbGet(`
+        SELECT id FROM teacher_assignments 
+        WHERE teacher_id = ? AND section_id = ? AND is_active = 1
+      `, [userId, enrollment.section_id]);
+
+      if (!authAssignment) {
+        return res.status(403).json({
+          success: false,
+          error: { message: 'You are not assigned to teach this section and cannot review this student.' }
+        });
+      }
+    }
+
+    await dbRun(`
+      UPDATE student_enrollments
+      SET status = 'REJECTED', approved_by = ?, approved_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `, [userId, id]);
+
+    // Send in-app notification to student
+    await createNotification({
+      userId: enrollment.user_id,
+      title: 'Enrollment Request Declined',
+      message: `Your enrollment request for section '${enrollment.section_name}' was not approved. Please consult with your teacher or administration.`,
+      type: 'WARNING',
+      linkUrl: '/student'
+    });
+
+    res.json({
+      success: true,
+      data: {
+        message: `Enrollment request for ${enrollment.student_name} was rejected.`,
+        enrollmentId: id,
+        status: 'REJECTED'
+      }
+    });
   } catch (err) {
     next(err);
   }

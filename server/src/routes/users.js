@@ -11,7 +11,7 @@ const router = express.Router();
 router.get('/profile', authenticateToken, async (req, res, next) => {
   try {
     const user = await dbGet(
-      `SELECT id, email, name, role, is_verified, created_at, updated_at FROM users WHERE id = ?`,
+      `SELECT id, email, name, role, is_verified, approval_status, organization_id, created_at, updated_at FROM users WHERE id = ?`,
       [req.user.id]
     );
 
@@ -31,6 +31,8 @@ router.get('/profile', authenticateToken, async (req, res, next) => {
           name: user.name,
           role: user.role,
           isVerified: user.is_verified === 1,
+          approvalStatus: user.approval_status || 'APPROVED',
+          organizationId: user.organization_id || null,
           createdAt: user.created_at,
           updatedAt: user.updated_at
         }

@@ -38,6 +38,20 @@ router.post('/', authenticateToken, requireRole(['TEACHER', 'CREATOR', 'ORG_ADMI
     const timeLimitSec = req.body.timeLimitSec ?? req.body.time_limit_sec ?? 0;
     const maxAttempts = req.body.maxAttempts ?? req.body.max_attempts ?? 1;
 
+    // Security check: Teacher must be approved by Organization Admin
+    if (!isOrgAdmin) {
+      const teacherUser = await dbGet(`SELECT approval_status FROM users WHERE id = ?`, [teacherId]);
+      if (teacherUser && teacherUser.approval_status === 'PENDING') {
+        return res.status(403).json({
+          success: false,
+          error: {
+            code: 'ERR_TEACHER_PENDING_APPROVAL',
+            message: 'Your teacher account is pending organization admin approval before you can create assignments.'
+          }
+        });
+      }
+    }
+
     if (!quizId || !title) {
       return res.status(400).json({
         success: false,
@@ -156,6 +170,22 @@ router.post('/', authenticateToken, requireRole(['TEACHER', 'CREATOR', 'ORG_ADMI
           id, assignment_id, student_id, section_id, source, status
         ) VALUES (?, ?, ?, ?, ?, 'ASSIGNED')
       `, [recipId, assignmentId, recip.studentId, recip.sectionId, recip.source]);
+    }
+
+    // 6. Notify all assigned students
+    try {
+      const { notifyUsers } = require('../services/notificationService');
+      const studentIds = Array.from(recipientMap.keys());
+      if (studentIds.length > 0) {
+        await notifyUsers(studentIds, {
+          title: 'New Assessment Assigned',
+          message: `You have been assigned: "${title.trim()}". Check your dashboard to take it.`,
+          type: 'ACTION_REQUIRED',
+          linkUrl: '/student/quizzes'
+        });
+      }
+    } catch (notifErr) {
+      console.error('[Assignments] Failed to notify students:', notifErr);
     }
 
     const createdAssignment = await dbGet(`SELECT * FROM assignments WHERE id = ?`, [assignmentId]);

@@ -4,11 +4,14 @@
   "description": "Next-Generation Quiz & Assessment SaaS Platform",
   "scripts": {
     "start": "node server/src/server.js",
-    "test": "node server/tests/run_tests.js && node server/tests/run_p2_tests.js && node server/tests/run_p3_tests.js && node server/tests/run_p4_tests.js && node server/tests/run_p6_tests.js && node server/tests/run_p7_tests.js && node server/tests/run_p8_tests.js",
+    "test": "node server/tests/run_tests.js && node server/tests/run_p2_tests.js && node server/tests/run_p3_tests.js && node server/tests/run_p4_tests.js && node server/tests/run_p6_tests.js && node server/tests/run_p7_tests.js && node server/tests/run_p8_tests.js && node server/tests/run_p8_notifications_and_approvals_test.js",
     "build:client": "cd client && npm run build",
     "dev:server": "cd server && node src/server.js",
     "dev:client": "cd client && npm run dev"
   },
   "author": "Piyush Pilkhwal (2410301049)",
-  "license": "ISC"
+  "license": "ISC",
+  "devDependencies": {
+    "puppeteer-core": "^24.43.1"
+  }
 }

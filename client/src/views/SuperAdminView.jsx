@@ -22,7 +22,7 @@ import {
 
 export default function SuperAdminView({ setActiveRoute }) {
   const { accessToken, user } = useAuth();
-  const [adminTab, setAdminTab] = useState('users'); // 'users' | 'institution'
+  const [adminTab, setAdminTab] = useState('users'); // 'users' | 'institution' | 'approvals'
   const [users, setUsers] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -31,6 +31,12 @@ export default function SuperAdminView({ setActiveRoute }) {
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ total: 0, totalPages: 1 });
   const [actionMessage, setActionMessage] = useState('');
+
+  // Approvals State (Teachers and Students)
+  const [pendingTeachers, setPendingTeachers] = useState([]);
+  const [pendingEnrollments, setPendingEnrollments] = useState([]);
+  const [approvalsSubTab, setApprovalsSubTab] = useState('teachers'); // 'teachers' | 'enrollments'
+  const [approvalsLoading, setApprovalsLoading] = useState(false);
 
   // Phase P6 Institutional State
   const [instStructure, setInstStructure] = useState({
@@ -108,10 +114,109 @@ export default function SuperAdminView({ setActiveRoute }) {
     }
   };
 
+  const fetchPendingApprovals = async () => {
+    if (!accessToken) return;
+    setApprovalsLoading(true);
+    try {
+      const [tRes, eRes] = await Promise.all([
+        fetch('/api/v1/institutions/teachers/pending', { headers: { 'Authorization': `Bearer ${accessToken}` } }),
+        fetch('/api/v1/institutions/enrollments/pending', { headers: { 'Authorization': `Bearer ${accessToken}` } })
+      ]);
+      const [tData, eData] = await Promise.all([tRes.json(), eRes.json()]);
+      if (tData.success) setPendingTeachers(tData.data.teachers || []);
+      if (eData.success) setPendingEnrollments(eData.data.pendingEnrollments || []);
+    } catch (err) {
+      console.error('Failed to load pending approvals:', err);
+    } finally {
+      setApprovalsLoading(false);
+    }
+  };
+
+  const handleApproveTeacher = async (teacherId, teacherName) => {
+    try {
+      const res = await fetch(`/api/v1/institutions/teachers/${teacherId}/approve`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setActionMessage(`Teacher ${teacherName} approved successfully.`);
+        setTimeout(() => setActionMessage(''), 3500);
+        fetchPendingApprovals();
+        fetchAdminData();
+      } else {
+        alert(data.error?.message || 'Error approving teacher');
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleRejectTeacher = async (teacherId, teacherName) => {
+    if (!confirm(`Are you sure you want to decline registration for ${teacherName}?`)) return;
+    try {
+      const res = await fetch(`/api/v1/institutions/teachers/${teacherId}/reject`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setActionMessage(`Teacher ${teacherName} registration declined.`);
+        setTimeout(() => setActionMessage(''), 3500);
+        fetchPendingApprovals();
+      } else {
+        alert(data.error?.message || 'Error declining teacher');
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleApproveEnrollment = async (enrollmentId, studentName) => {
+    try {
+      const res = await fetch(`/api/v1/institutions/enrollments/${enrollmentId}/approve`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setActionMessage(`Student ${studentName} enrollment approved.`);
+        setTimeout(() => setActionMessage(''), 3500);
+        fetchPendingApprovals();
+        fetchInstitutionData();
+      } else {
+        alert(data.error?.message || 'Error approving enrollment');
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleRejectEnrollment = async (enrollmentId, studentName) => {
+    if (!confirm(`Decline enrollment request for ${studentName}?`)) return;
+    try {
+      const res = await fetch(`/api/v1/institutions/enrollments/${enrollmentId}/reject`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setActionMessage(`Student enrollment request declined.`);
+        setTimeout(() => setActionMessage(''), 3500);
+        fetchPendingApprovals();
+      } else {
+        alert(data.error?.message || 'Error declining enrollment');
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   useEffect(() => {
     if (accessToken) {
       fetchAdminData();
       fetchInstitutionData();
+      fetchPendingApprovals();
     }
   }, [accessToken, search, roleFilter, page]);
 
@@ -361,7 +466,26 @@ export default function SuperAdminView({ setActiveRoute }) {
           }`}
         >
           <Building size={16} />
-          Academic Hierarchy & Cohorts (P6)
+          Academic Hierarchy & Cohorts
+        </button>
+        <button
+          onClick={() => {
+            setAdminTab('approvals');
+            fetchPendingApprovals();
+          }}
+          className={`px-4 py-2.5 text-xs font-bold rounded-t-xl transition-all border-b-2 flex items-center gap-2 ${
+            adminTab === 'approvals'
+              ? 'border-[#10B981] text-[#34D399] bg-[#10B981]/10'
+              : 'border-transparent text-[#94A3B8] hover:text-white'
+          }`}
+        >
+          <ShieldCheck size={16} />
+          Security Approvals Gate
+          {(pendingTeachers.length + pendingEnrollments.length) > 0 && (
+            <span className="px-1.5 py-0.5 text-[10px] font-extrabold rounded-full bg-[#EF4444]/20 text-[#EF4444] border border-[#EF4444]/30 animate-pulse">
+              {pendingTeachers.length + pendingEnrollments.length}
+            </span>
+          )}
         </button>
       </div>
 
@@ -731,6 +855,223 @@ export default function SuperAdminView({ setActiveRoute }) {
               </table>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* APPROVALS GATE TAB */}
+      {adminTab === 'approvals' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          
+          {/* Header Banner */}
+          <div className="dashboard-card p-6 bg-gradient-to-r from-[#0E1B2E] via-[#0E1626] to-[#0A1220] border border-[#10B981]/30">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-black text-white flex items-center gap-2">
+                  <ShieldCheck size={22} className="text-[#34D399]" />
+                  Institutional Security Approvals Gate
+                </h2>
+                <p className="text-xs text-[#94A3B8] mt-1 max-w-2xl leading-relaxed">
+                  For platform safety and institutional integrity, new teacher registrations and student section enrollments require administrative verification before permissions or scoped assessments become accessible.
+                </p>
+              </div>
+
+              <button
+                onClick={fetchPendingApprovals}
+                disabled={approvalsLoading}
+                className="btn-secondary text-xs py-2 px-3 self-start md:self-auto flex items-center gap-2"
+              >
+                <RefreshCw size={13} className={approvalsLoading ? 'animate-spin' : ''} />
+                Refresh Requests
+              </button>
+            </div>
+
+            {/* Approval Sub-Tabs */}
+            <div className="flex items-center gap-3 mt-6 pt-4 border-t border-[#1B2A44]">
+              <button
+                onClick={() => setApprovalsSubTab('teachers')}
+                className={`px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-2 ${
+                  approvalsSubTab === 'teachers'
+                    ? 'bg-[#8B5CF6]/20 text-[#A78BFA] border border-[#8B5CF6]/40'
+                    : 'bg-[#121D32] text-[#94A3B8] hover:text-white border border-transparent'
+                }`}
+              >
+                <FolderKanban size={15} />
+                Teacher Registrations
+                {pendingTeachers.length > 0 && (
+                  <span className="px-1.5 py-0.5 text-[10px] font-black rounded-full bg-[#8B5CF6] text-white">
+                    {pendingTeachers.length}
+                  </span>
+                )}
+              </button>
+
+              <button
+                onClick={() => setApprovalsSubTab('enrollments')}
+                className={`px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-2 ${
+                  approvalsSubTab === 'enrollments'
+                    ? 'bg-[#10B981]/20 text-[#34D399] border border-[#10B981]/40'
+                    : 'bg-[#121D32] text-[#94A3B8] hover:text-white border border-transparent'
+                }`}
+              >
+                <GraduationCap size={15} />
+                Student Section Enrollments
+                {pendingEnrollments.length > 0 && (
+                  <span className="px-1.5 py-0.5 text-[10px] font-black rounded-full bg-[#10B981] text-white">
+                    {pendingEnrollments.length}
+                  </span>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* SUB-PANEL 1: PENDING TEACHERS */}
+          {approvalsSubTab === 'teachers' && (
+            <div className="dashboard-card p-6 space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-[#1B2A44]">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <FolderKanban size={16} className="text-[#8B5CF6]" />
+                  Awaiting Teacher Verification ({pendingTeachers.length})
+                </h3>
+                <span className="text-xs text-[#94A3B8]">
+                  Teachers must be approved to publish assignments or launch live games
+                </span>
+              </div>
+
+              {pendingTeachers.length === 0 ? (
+                <div className="py-12 text-center space-y-2">
+                  <div className="w-12 h-12 mx-auto rounded-full bg-[#10B981]/10 text-[#34D399] flex items-center justify-center">
+                    <CheckCircle2 size={24} />
+                  </div>
+                  <p className="text-sm font-bold text-white">No Pending Teachers</p>
+                  <p className="text-xs text-[#64748B]">All registered instructors have been approved or reviewed.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-[#1B2A44] text-[#64748B] uppercase tracking-wider text-[10px]">
+                        <th className="py-3 px-4">Instructor Name</th>
+                        <th className="py-3 px-4">Email</th>
+                        <th className="py-3 px-4">Registered At</th>
+                        <th className="py-3 px-4">Verification Status</th>
+                        <th className="py-3 px-4 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#1B2A44]">
+                      {pendingTeachers.map((t) => (
+                        <tr key={t.id} className="hover:bg-[#121E36]/40 transition-colors">
+                          <td className="py-3 px-4 font-bold text-white flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-lg bg-[#8B5CF6]/20 border border-[#8B5CF6]/30 flex items-center justify-center text-[#A78BFA] font-bold">
+                              {t.name?.charAt(0) || 'T'}
+                            </div>
+                            {t.name}
+                          </td>
+                          <td className="py-3 px-4 text-[#94A3B8] font-mono">{t.email}</td>
+                          <td className="py-3 px-4 text-[#64748B]">
+                            {new Date(t.created_at).toLocaleDateString()}
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className="px-2.5 py-1 text-[10px] font-bold rounded-full bg-[#F59E0B]/15 text-[#FBBF24] border border-[#F59E0B]/30 flex items-center gap-1.5 w-fit">
+                              <span className="w-1.5 h-1.5 rounded-full bg-[#F59E0B] animate-pulse" />
+                              AWAITING APPROVAL
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-right space-x-2">
+                            <button
+                              onClick={() => handleRejectTeacher(t.id, t.name)}
+                              className="px-3 py-1.5 rounded-lg text-xs font-bold text-[#F43F5E] bg-[#F43F5E]/10 hover:bg-[#F43F5E]/20 border border-[#F43F5E]/30 transition-all"
+                            >
+                              Decline
+                            </button>
+                            <button
+                              onClick={() => handleApproveTeacher(t.id, t.name)}
+                              className="px-3 py-1.5 rounded-lg text-xs font-bold text-[#10B981] bg-[#10B981]/15 hover:bg-[#10B981]/25 border border-[#10B981]/40 transition-all shadow-sm shadow-[#10B981]/10"
+                            >
+                              Approve Teacher
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* SUB-PANEL 2: PENDING STUDENT ENROLLMENTS */}
+          {approvalsSubTab === 'enrollments' && (
+            <div className="dashboard-card p-6 space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-[#1B2A44]">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <GraduationCap size={16} className="text-[#34D399]" />
+                  Student Section Enrollment Requests ({pendingEnrollments.length})
+                </h3>
+                <span className="text-xs text-[#94A3B8]">
+                  Both Organization Admins and Assigned Teachers can approve section students
+                </span>
+              </div>
+
+              {pendingEnrollments.length === 0 ? (
+                <div className="py-12 text-center space-y-2">
+                  <div className="w-12 h-12 mx-auto rounded-full bg-[#10B981]/10 text-[#34D399] flex items-center justify-center">
+                    <CheckCircle2 size={24} />
+                  </div>
+                  <p className="text-sm font-bold text-white">No Pending Enrollment Requests</p>
+                  <p className="text-xs text-[#64748B]">All student applicants have been processed.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-[#1B2A44] text-[#64748B] uppercase tracking-wider text-[10px]">
+                        <th className="py-3 px-4">Student</th>
+                        <th className="py-3 px-4">Target Section &amp; Class</th>
+                        <th className="py-3 px-4">Department</th>
+                        <th className="py-3 px-4">Requested At</th>
+                        <th className="py-3 px-4 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#1B2A44]">
+                      {pendingEnrollments.map((e) => (
+                        <tr key={e.id} className="hover:bg-[#121E36]/40 transition-colors">
+                          <td className="py-3 px-4">
+                            <p className="font-bold text-white">{e.student_name}</p>
+                            <p className="text-[11px] text-[#64748B] font-mono">{e.student_email}</p>
+                            {e.roll_number && (
+                              <span className="text-[10px] text-[#38BDF8]">Roll: {e.roll_number}</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-4">
+                            <p className="font-bold text-[#34D399]">{e.section_name}</p>
+                            <p className="text-[11px] text-[#94A3B8]">{e.class_name} ({e.academic_year_name})</p>
+                          </td>
+                          <td className="py-3 px-4 text-[#94A3B8]">{e.department_name}</td>
+                          <td className="py-3 px-4 text-[#64748B]">
+                            {new Date(e.enrolled_at).toLocaleDateString()}
+                          </td>
+                          <td className="py-3 px-4 text-right space-x-2">
+                            <button
+                              onClick={() => handleRejectEnrollment(e.id, e.student_name)}
+                              className="px-3 py-1.5 rounded-lg text-xs font-bold text-[#F43F5E] bg-[#F43F5E]/10 hover:bg-[#F43F5E]/20 border border-[#F43F5E]/30 transition-all"
+                            >
+                              Decline
+                            </button>
+                            <button
+                              onClick={() => handleApproveEnrollment(e.id, e.student_name)}
+                              className="px-3 py-1.5 rounded-lg text-xs font-bold text-[#10B981] bg-[#10B981]/15 hover:bg-[#10B981]/25 border border-[#10B981]/40 transition-all shadow-sm shadow-[#10B981]/10"
+                            >
+                              Approve Enrollment
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
         </div>
       )}
 

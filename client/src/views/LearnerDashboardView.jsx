@@ -39,6 +39,59 @@ export default function LearnerDashboardView({ onOpenPreview, onStartAttempt, on
   const [assignedTests, setAssignedTests] = useState([]);
   const [enrollment, setEnrollment] = useState(null);
 
+  // Enrollment Request Modal State
+  const [showEnrollModal, setShowEnrollModal] = useState(false);
+  const [instSections, setInstSections] = useState([]);
+  const [enrollForm, setEnrollForm] = useState({ section_id: '', roll_number: '' });
+  const [enrollSubmitting, setEnrollSubmitting] = useState(false);
+  const [enrollSuccessMsg, setEnrollSuccessMsg] = useState('');
+
+  const handleOpenEnrollModal = async () => {
+    setShowEnrollModal(true);
+    try {
+      const res = await fetch('/api/v1/institutions/structure', {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      const data = await res.json();
+      if (data.success && data.data?.sections) {
+        setInstSections(data.data.sections);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleRequestEnrollment = async (e) => {
+    e.preventDefault();
+    if (!enrollForm.section_id) return;
+    try {
+      setEnrollSubmitting(true);
+      const res = await fetch('/api/v1/institutions/students/request-enrollment', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(enrollForm)
+      });
+      const data = await res.json();
+      if (data.success) {
+        setEnrollSuccessMsg(data.data.message || 'Enrollment request submitted! Awaiting approval.');
+        setTimeout(() => {
+          setShowEnrollModal(false);
+          setEnrollSuccessMsg('');
+          fetchData();
+        }, 1500);
+      } else {
+        alert(data.error?.message || 'Error submitting enrollment request');
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setEnrollSubmitting(false);
+    }
+  };
+
   // Fetch subjects for filter
   useEffect(() => {
     async function loadSubjects() {
@@ -202,8 +255,8 @@ export default function LearnerDashboardView({ onOpenPreview, onStartAttempt, on
         </div>
       </div>
 
-      {/* Institutional Enrollment Banner (Phase P6) */}
-      {enrollment && (
+      {/* Institutional Enrollment Banner (Phase P6 & P8) */}
+      {enrollment && enrollment.status === 'ACTIVE' ? (
         <div className="dashboard-card p-3.5 bg-[#121E36]/90 border border-[#38BDF8]/40 flex flex-wrap items-center justify-between gap-3 text-xs">
           <div className="flex flex-wrap items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-[#10B981] animate-ping" />
@@ -218,6 +271,32 @@ export default function LearnerDashboardView({ onOpenPreview, onStartAttempt, on
               Roll: <strong>{enrollment.roll_number}</strong>
             </div>
           )}
+        </div>
+      ) : enrollment && enrollment.status === 'PENDING' ? (
+        <div className="dashboard-card p-3.5 bg-[#F59E0B]/10 border border-[#F59E0B]/40 flex flex-wrap items-center justify-between gap-3 text-xs animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-[#F59E0B] animate-pulse" />
+            <span className="font-bold text-[#FBBF24]">Enrollment Pending Approval:</span>
+            <span className="text-[#CBD5E1]">
+              Your request for section <strong className="text-white">{enrollment.section_name}</strong> ({enrollment.class_name}) is currently awaiting teacher or admin review.
+            </span>
+          </div>
+          <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-[#F59E0B]/20 text-[#FBBF24] border border-[#F59E0B]/30">
+            Awaiting Verification
+          </span>
+        </div>
+      ) : (
+        <div className="dashboard-card p-3.5 bg-[#0D1524] border border-[#1E2E48] flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2 text-[#94A3B8]">
+            <GraduationCap size={16} className="text-[#38BDF8]" />
+            <span>Not currently enrolled in an academic section? Join your class to access teacher-assigned tests.</span>
+          </div>
+          <button
+            onClick={handleOpenEnrollModal}
+            className="btn-emerald-primary text-xs py-1.5 px-3 font-bold flex items-center gap-1.5"
+          >
+            Request Section Enrollment
+          </button>
         </div>
       )}
 
@@ -942,6 +1021,89 @@ export default function LearnerDashboardView({ onOpenPreview, onStartAttempt, on
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Student Request Section Enrollment Modal */}
+      {showEnrollModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-[#0E1626] border border-[#1B2A44] rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-[#1B2A44]">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <GraduationCap size={18} className="text-[#38BDF8]" />
+                Request Section Enrollment
+              </h3>
+              <button
+                onClick={() => setShowEnrollModal(false)}
+                className="text-[#64748B] hover:text-white"
+              >
+                &times;
+              </button>
+            </div>
+
+            {enrollSuccessMsg ? (
+              <div className="p-4 rounded-xl bg-[#10B981]/15 border border-[#10B981]/30 text-center space-y-2">
+                <CheckCircle2 size={28} className="mx-auto text-[#10B981]" />
+                <p className="text-xs font-bold text-white">{enrollSuccessMsg}</p>
+                <p className="text-[11px] text-[#94A3B8]">Your section teacher and organization admins have been notified.</p>
+              </div>
+            ) : (
+              <form onSubmit={handleRequestEnrollment} className="space-y-4">
+                <p className="text-xs text-[#94A3B8]">
+                  Select the class and section you are attending. Once submitted, your teacher or organization admin will verify and activate your enrollment.
+                </p>
+
+                <div>
+                  <label className="block text-xs font-bold text-[#94A3B8] mb-1.5 uppercase font-mono">
+                    Select Section / Cohort *
+                  </label>
+                  <select
+                    required
+                    value={enrollForm.section_id}
+                    onChange={(e) => setEnrollForm({ ...enrollForm, section_id: e.target.value })}
+                    className="input-field text-xs py-2 w-full"
+                  >
+                    <option value="">-- Choose Section --</option>
+                    {instSections.map((sec) => (
+                      <option key={sec.id} value={sec.id}>
+                        {sec.name} ({sec.class_name})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-[#94A3B8] mb-1.5 uppercase font-mono">
+                    Student Roll / ID Number (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={enrollForm.roll_number}
+                    onChange={(e) => setEnrollForm({ ...enrollForm, roll_number: e.target.value })}
+                    placeholder="e.g. ROLL-2026-042"
+                    className="input-field text-xs py-2 w-full"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowEnrollModal(false)}
+                    className="btn-secondary text-xs py-2 px-4"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={enrollSubmitting}
+                    className="btn-emerald-primary text-xs py-2 px-5 font-bold"
+                  >
+                    {enrollSubmitting ? 'Submitting...' : 'Submit Request'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
         </div>
       )}
 

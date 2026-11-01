@@ -90,10 +90,31 @@ router.post(
         }
       }
 
+      // Teachers require organization admin approval before accessing teaching operations
+      const initialApproval = assignedRole === 'TEACHER' ? 'PENDING' : 'APPROVED';
+
       await dbRun(
-        `INSERT INTO users (id, email, password_hash, name, role, is_verified) VALUES (?, ?, ?, ?, ?, 0)`,
-        [userId, cleanEmail, passwordHash, cleanName, assignedRole]
+        `INSERT INTO users (id, email, password_hash, name, role, is_verified, approval_status) VALUES (?, ?, ?, ?, ?, 0, ?)`,
+        [userId, cleanEmail, passwordHash, cleanName, assignedRole, initialApproval]
       );
+
+      // If teacher registered, notify all Organization / Super Admins
+      if (assignedRole === 'TEACHER') {
+        try {
+          const { notifyUsers } = require('../services/notificationService');
+          const admins = await dbAll(`SELECT id FROM users WHERE role IN ('ORG_ADMIN', 'SUPER_ADMIN', 'ADMIN')`);
+          if (admins.length > 0) {
+            await notifyUsers(admins.map(a => a.id), {
+              title: 'Teacher Approval Required',
+              message: `New teacher '${cleanName}' (${cleanEmail}) registered and is awaiting approval.`,
+              type: 'ACTION_REQUIRED',
+              linkUrl: '/super-admin'
+            });
+          }
+        } catch (notifErr) {
+          console.error('[Auth] Failed to send teacher registration notification:', notifErr);
+        }
+      }
 
       // Generate Verification Token
       const rawToken = generateSecureToken();
@@ -205,6 +226,8 @@ router.post(
             email: user.email,
             role: user.role,
             isVerified: user.is_verified === 1,
+            approvalStatus: user.approval_status || 'APPROVED',
+            organizationId: user.organization_id || null,
             createdAt: user.created_at
           }
         }

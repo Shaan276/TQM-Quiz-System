@@ -65,15 +65,75 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
   const [teacherAnalytics, setTeacherAnalytics] = useState(null);
 
   // Live sessions history state (Phase P4, P6 & P8)
-  const [dashboardTab, setDashboardTab] = useState(initialTab || 'quizzes'); // 'quizzes' | 'insights' | 'all-tests' | 'live-history'
+  const [dashboardTab, setDashboardTab] = useState(initialTab || 'quizzes'); // 'quizzes' | 'insights' | 'all-tests' | 'live-history' | 'student-approvals'
   const [liveSessionsHistory, setLiveSessionsHistory] = useState([]);
   const [copiedCodeId, setCopiedCodeId] = useState(null);
+
+  // Pending student enrollments for sections taught by this teacher
+  const [pendingEnrollments, setPendingEnrollments] = useState([]);
+  const [enrollmentsLoading, setEnrollmentsLoading] = useState(false);
+
+  const fetchPendingEnrollments = async () => {
+    if (!accessToken) return;
+    try {
+      setEnrollmentsLoading(true);
+      const res = await fetch('/api/v1/institutions/enrollments/pending', {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setPendingEnrollments(data.data.pendingEnrollments || []);
+      }
+    } catch (err) {
+      console.error('Failed to load pending student enrollments:', err);
+    } finally {
+      setEnrollmentsLoading(false);
+    }
+  };
+
+  const handleApproveEnrollment = async (enrollmentId, studentName) => {
+    try {
+      const res = await fetch(`/api/v1/institutions/enrollments/${enrollmentId}/approve`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchPendingEnrollments();
+      } else {
+        alert(data.error?.message || 'Error approving student enrollment');
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleRejectEnrollment = async (enrollmentId, studentName) => {
+    if (!confirm(`Decline enrollment request for ${studentName}?`)) return;
+    try {
+      const res = await fetch(`/api/v1/institutions/enrollments/${enrollmentId}/reject`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchPendingEnrollments();
+      } else {
+        alert(data.error?.message || 'Error declining student enrollment');
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   useEffect(() => {
     if (initialTab) {
       setDashboardTab(initialTab);
     }
-  }, [initialTab]);
+    if (accessToken) {
+      fetchPendingEnrollments();
+    }
+  }, [initialTab, accessToken]);
 
   // Phase P6 Unified Assessment Analytics State
   const [allTestsData, setAllTestsData] = useState({ liveBattles: [], selfPacedAttempts: [], scheduledAssignments: [] });
@@ -475,6 +535,22 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
         </div>
       </div>
 
+      {/* Account Pending Approval Banner (Security Gate) */}
+      {user?.approvalStatus === 'PENDING' && (
+        <div className="p-4 rounded-2xl bg-[#F59E0B]/10 border border-[#F59E0B]/40 flex items-start gap-3.5 animate-in fade-in">
+          <div className="p-2 rounded-xl bg-[#F59E0B]/20 text-[#F59E0B] shrink-0 mt-0.5">
+            <AlertCircle size={20} />
+          </div>
+          <div>
+            <h4 className="text-sm font-bold text-[#FBBF24]">Teacher Account Pending Administrator Approval</h4>
+            <p className="text-xs text-[#94A3B8] mt-1 leading-relaxed">
+              Your instructor registration has been logged and is awaiting approval by the Organization Administrator.
+              During this pending stage, you can explore the question bank and draft quizzes. Cohort assignment publishing and live multiplayer test hosting will be unlocked upon admin confirmation.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Aggregate Metrics Dashboard */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="dashboard-card p-4 space-y-1">
@@ -565,6 +641,26 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
         >
           <Radio size={16} className={liveSessionsHistory.some(s => s.status !== 'COMPLETED') ? 'animate-pulse text-[#34D399]' : ''} />
           Hosted Live History ({liveSessionsHistory.length})
+        </button>
+
+        <button
+          onClick={() => {
+            setDashboardTab('student-approvals');
+            fetchPendingEnrollments();
+          }}
+          className={`pb-2 px-1 text-sm font-bold flex items-center gap-2 border-b-2 transition-all whitespace-nowrap ${
+            dashboardTab === 'student-approvals'
+              ? 'border-[#8B5CF6] text-[#A78BFA]'
+              : 'border-transparent text-[#94A3B8] hover:text-white'
+          }`}
+        >
+          <GraduationCap size={16} />
+          Student Enrollments
+          {pendingEnrollments.length > 0 && (
+            <span className="px-1.5 py-0.5 text-[10px] font-black rounded-full bg-[#8B5CF6] text-white animate-pulse">
+              {pendingEnrollments.length}
+            </span>
+          )}
         </button>
       </div>
 
@@ -940,6 +1036,105 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB: STUDENT ENROLLMENT APPROVALS (Phase P8 / Security Workflows) */}
+      {dashboardTab === 'student-approvals' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <div className="dashboard-card p-6 border border-[#8B5CF6]/30 bg-gradient-to-r from-[#12142B] via-[#0E1626] to-[#0A1220]">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <GraduationCap size={20} className="text-[#A78BFA]" />
+                  Section Student Enrollments &amp; Approvals
+                </h3>
+                <p className="text-xs text-[#94A3B8] mt-1 max-w-2xl leading-relaxed">
+                  As an instructor, you can accept student enrollment requests for sections assigned to you. When approved, students immediately gain access to your scheduled assignments and tests.
+                </p>
+              </div>
+
+              <button
+                onClick={fetchPendingEnrollments}
+                disabled={enrollmentsLoading}
+                className="btn-secondary text-xs py-2 px-3 flex items-center gap-2 self-start sm:self-auto"
+              >
+                <RefreshCw size={13} className={enrollmentsLoading ? 'animate-spin' : ''} />
+                Refresh List
+              </button>
+            </div>
+          </div>
+
+          <div className="dashboard-card p-6 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[#1B2A44]">
+              <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                <Users size={16} className="text-[#38BDF8]" />
+                Pending Applicants ({pendingEnrollments.length})
+              </h4>
+              <span className="text-xs text-[#94A3B8]">
+                Scoped to sections you teach
+              </span>
+            </div>
+
+            {pendingEnrollments.length === 0 ? (
+              <div className="py-12 text-center space-y-2">
+                <div className="w-12 h-12 mx-auto rounded-full bg-[#10B981]/10 text-[#34D399] flex items-center justify-center">
+                  <CheckCircle2 size={24} />
+                </div>
+                <p className="text-sm font-bold text-white">No Pending Student Requests</p>
+                <p className="text-xs text-[#64748B]">All student applicants for your sections have been reviewed.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-[#1B2A44] text-[#64748B] uppercase tracking-wider text-[10px]">
+                      <th className="py-3 px-4">Student</th>
+                      <th className="py-3 px-4">Target Section &amp; Class</th>
+                      <th className="py-3 px-4">Department</th>
+                      <th className="py-3 px-4">Requested At</th>
+                      <th className="py-3 px-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#1B2A44]">
+                    {pendingEnrollments.map((e) => (
+                      <tr key={e.id} className="hover:bg-[#121E36]/40 transition-colors">
+                        <td className="py-3 px-4">
+                          <p className="font-bold text-white">{e.student_name}</p>
+                          <p className="text-[11px] text-[#64748B] font-mono">{e.student_email}</p>
+                          {e.roll_number && (
+                            <span className="text-[10px] text-[#38BDF8]">Roll: {e.roll_number}</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4">
+                          <p className="font-bold text-[#34D399]">{e.section_name}</p>
+                          <p className="text-[11px] text-[#94A3B8]">{e.class_name} ({e.academic_year_name})</p>
+                        </td>
+                        <td className="py-3 px-4 text-[#94A3B8]">{e.department_name}</td>
+                        <td className="py-3 px-4 text-[#64748B]">
+                          {new Date(e.enrolled_at).toLocaleDateString()}
+                        </td>
+                        <td className="py-3 px-4 text-right space-x-2">
+                          <button
+                            onClick={() => handleRejectEnrollment(e.id, e.student_name)}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold text-[#F43F5E] bg-[#F43F5E]/10 hover:bg-[#F43F5E]/20 border border-[#F43F5E]/30 transition-all"
+                          >
+                            Decline
+                          </button>
+                          <button
+                            onClick={() => handleApproveEnrollment(e.id, e.student_name)}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold text-[#10B981] bg-[#10B981]/15 hover:bg-[#10B981]/25 border border-[#10B981]/40 transition-all shadow-sm shadow-[#10B981]/10"
+                          >
+                            Approve Enrollment
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>

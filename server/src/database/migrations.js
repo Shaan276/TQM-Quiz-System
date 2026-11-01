@@ -694,6 +694,72 @@ const MIGRATIONS = [
       await dbRun('CREATE INDEX IF NOT EXISTS idx_quiz_attempts_quiz_status ON quiz_attempts(quiz_id, status);', [], db);
       await dbRun('CREATE INDEX IF NOT EXISTS idx_quiz_attempts_user_status ON quiz_attempts(user_id, status);', [], db);
     }
+  },
+  {
+    version: 10,
+    name: '010_notifications_and_approvals',
+    up: async (db) => {
+      // 1. Notifications Table
+      await dbRun(`
+        CREATE TABLE IF NOT EXISTS notifications (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          title TEXT NOT NULL,
+          message TEXT NOT NULL,
+          type TEXT NOT NULL DEFAULT 'INFO' CHECK(type IN ('INFO', 'SUCCESS', 'WARNING', 'ACTION_REQUIRED')),
+          link_url TEXT NULL,
+          is_read INTEGER NOT NULL DEFAULT 0,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+      `, [], db);
+      await dbRun(`CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON notifications(user_id, is_read, created_at DESC);`, [], db);
+
+      // 2. Add approval_status to users (for Teacher approval gate)
+      const userCols = await dbAll('PRAGMA table_info(users);', [], db);
+      if (!userCols.some(c => c.name === 'approval_status')) {
+        await dbRun("ALTER TABLE users ADD COLUMN approval_status TEXT NOT NULL DEFAULT 'APPROVED';", [], db);
+      }
+      await dbRun(`CREATE INDEX IF NOT EXISTS idx_users_approval ON users(role, approval_status);`, [], db);
+
+      // 3. Recreate student_enrollments to support PENDING and REJECTED statuses + approval audit
+      await dbRun(`PRAGMA foreign_keys = OFF;`, [], db);
+      await dbRun(`
+        CREATE TABLE IF NOT EXISTS student_enrollments_v10 (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+          academic_year_id TEXT NOT NULL REFERENCES academic_years(id) ON DELETE CASCADE,
+          department_id TEXT NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
+          class_id TEXT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+          section_id TEXT NOT NULL REFERENCES sections(id) ON DELETE CASCADE,
+          roll_number TEXT NULL,
+          status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK(status IN ('ACTIVE', 'TRANSFERRED', 'COMPLETED', 'ARCHIVED', 'PENDING', 'REJECTED')),
+          approved_by TEXT NULL REFERENCES users(id) ON DELETE SET NULL,
+          approved_at DATETIME NULL,
+          enrolled_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(user_id, academic_year_id)
+        );
+      `, [], db);
+
+      // Copy existing data if table exists
+      const tableCheck = await dbGet(`SELECT name FROM sqlite_master WHERE type='table' AND name='student_enrollments'`, [], db);
+      if (tableCheck) {
+        await dbRun(`
+          INSERT OR IGNORE INTO student_enrollments_v10 (id, user_id, organization_id, academic_year_id, department_id, class_id, section_id, roll_number, status, enrolled_at, updated_at)
+          SELECT id, user_id, organization_id, academic_year_id, department_id, class_id, section_id, roll_number, status, enrolled_at, updated_at
+          FROM student_enrollments;
+        `, [], db);
+        await dbRun(`DROP TABLE student_enrollments;`, [], db);
+      }
+      await dbRun(`ALTER TABLE student_enrollments_v10 RENAME TO student_enrollments;`, [], db);
+      await dbRun(`PRAGMA foreign_keys = ON;`, [], db);
+
+      // Recreate indexes
+      await dbRun('CREATE INDEX IF NOT EXISTS idx_enroll_user ON student_enrollments(user_id);', [], db);
+      await dbRun('CREATE INDEX IF NOT EXISTS idx_enroll_sec ON student_enrollments(section_id, status);', [], db);
+      await dbRun('CREATE INDEX IF NOT EXISTS idx_enroll_status ON student_enrollments(status);', [], db);
+    }
   }
 ];
 

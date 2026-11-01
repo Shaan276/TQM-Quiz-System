@@ -1,5 +1,6 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
+import NotificationBell from './NotificationBell';
 import { 
   Zap, 
   LayoutDashboard, 
@@ -84,6 +85,16 @@ export default function Sidebar({ activeRoute, setActiveRoute }) {
             <span title="Email Unverified" className="text-[#F59E0B]"><AlertCircle size={16} /></span>
           ) : null}
         </div>
+
+        {/* Quick Notification & Status Strip */}
+        {user && (
+          <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-[#0D1524] border border-[#1B2A44]">
+            <div className="flex items-center gap-2 text-xs font-semibold text-[#94A3B8]">
+              <span>Alerts & Activity</span>
+            </div>
+            <NotificationBell setActiveRoute={setActiveRoute} />
+          </div>
+        )}
 
         {/* Navigation Links Grouped Strictly by Role */}
         <div className="space-y-4">
