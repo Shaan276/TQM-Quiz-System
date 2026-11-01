@@ -165,6 +165,118 @@ router.get('/structure', authenticateToken, async (req, res, next) => {
 });
 
 // -------------------------------------------------------------
+// GET /api/v1/institutions/colleges (List all colleges / orgs)
+// -------------------------------------------------------------
+router.get('/colleges', authenticateToken, async (req, res, next) => {
+  try {
+    const colleges = await dbAll(`
+      SELECT o.*,
+        (SELECT COUNT(*) FROM departments d WHERE d.organization_id = o.id AND d.is_archived = 0) AS departments_count,
+        (SELECT COUNT(*) FROM classes c WHERE c.organization_id = o.id AND c.is_archived = 0) AS classes_count,
+        (SELECT COUNT(*) FROM sections s JOIN classes cl ON s.class_id = cl.id WHERE cl.organization_id = o.id AND s.is_archived = 0) AS sections_count,
+        (SELECT COUNT(*) FROM student_enrollments se WHERE se.organization_id = o.id AND se.status = 'ACTIVE') AS students_count,
+        (SELECT COUNT(DISTINCT ta.teacher_id) FROM teacher_assignments ta WHERE ta.organization_id = o.id AND ta.is_active = 1) AS teachers_count
+      FROM organizations o
+      WHERE o.is_archived = 0
+      ORDER BY o.name ASC
+    `);
+
+    res.json({
+      success: true,
+      data: { colleges }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// -------------------------------------------------------------
+// POST /api/v1/institutions/colleges (Superadmin creates college)
+// -------------------------------------------------------------
+router.post('/colleges', authenticateToken, requireRole(['SUPER_ADMIN', 'ADMIN']), async (req, res, next) => {
+  try {
+    const { name, code, type = 'COLLEGE', dept_term = 'Department', class_term = 'Program/Class' } = req.body;
+
+    if (!name || !code) {
+      return res.status(400).json({ success: false, error: { message: 'College name and institutional code are required' } });
+    }
+
+    const cleanCode = code.trim().toUpperCase();
+    const existing = await dbGet(`SELECT id FROM organizations WHERE code = ?`, [cleanCode]);
+    if (existing) {
+      return res.status(409).json({ success: false, error: { message: `A college with code "${cleanCode}" already exists.` } });
+    }
+
+    const orgId = generateUUID();
+    await dbRun(`
+      INSERT INTO organizations (id, name, code, type, dept_term, class_term, is_archived)
+      VALUES (?, ?, ?, ?, ?, ?, 0)
+    `, [orgId, name.trim(), cleanCode, type, dept_term, class_term]);
+
+    // Automatically seed an initial Academic Session (e.g. 2026-2027) so departments can be created immediately
+    const ayId = generateUUID();
+    await dbRun(`
+      INSERT INTO academic_years (id, organization_id, name, start_date, end_date, is_current, is_archived)
+      VALUES (?, ?, ?, ?, ?, 1, 0)
+    `, [ayId, orgId, '2026-2027', '2026-07-01', '2027-06-30']);
+
+    res.status(201).json({
+      success: true,
+      data: {
+        message: `College "${name}" registered successfully.`,
+        college: {
+          id: orgId,
+          name: name.trim(),
+          code: cleanCode,
+          type
+        }
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// -------------------------------------------------------------
+// GET /api/v1/institutions/colleges/:id/structure
+// -------------------------------------------------------------
+router.get('/colleges/:id/structure', authenticateToken, async (req, res, next) => {
+  try {
+    const orgId = req.params.id;
+    const organization = await dbGet(`SELECT * FROM organizations WHERE id = ?`, [orgId]);
+    if (!organization) {
+      return res.status(404).json({ success: false, error: { message: 'College not found' } });
+    }
+
+    const academicYears = await dbAll(`SELECT * FROM academic_years WHERE organization_id = ? AND is_archived = 0 ORDER BY is_current DESC, name DESC`, [orgId]);
+    const departments = await dbAll(`SELECT * FROM departments WHERE organization_id = ? AND is_archived = 0 ORDER BY name ASC`, [orgId]);
+    const classes = await dbAll(`SELECT * FROM classes WHERE organization_id = ? AND is_archived = 0 ORDER BY name ASC`, [orgId]);
+    const sections = await dbAll(`
+      SELECT s.*, c.department_id, c.name AS class_name 
+      FROM sections s 
+      JOIN classes c ON s.class_id = c.id 
+      WHERE c.organization_id = ? AND s.is_archived = 0 
+      ORDER BY s.name ASC
+    `, [orgId]);
+    const subjects = await dbAll(`SELECT * FROM subjects WHERE organization_id = ? AND is_archived = 0 ORDER BY name ASC`, [orgId]);
+
+    res.json({
+      success: true,
+      data: {
+        organization,
+        academicYears,
+        departments,
+        classes,
+        sections,
+        subjects
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// -------------------------------------------------------------
 // POST /api/v1/institutions/departments (Create Dept)
 // -------------------------------------------------------------
 router.post('/departments', authenticateToken, requireRole(['ORG_ADMIN', 'SUPER_ADMIN', 'ADMIN']), async (req, res, next) => {

@@ -94,7 +94,7 @@ export default function Sidebar({ activeRoute, setActiveRoute }) {
           {user && (
             <>
               {/* Student Role Exclusive Navigation */}
-              {(isStudent || isSuperAdmin) && (
+              {isStudent && (
                 <div className="space-y-1">
                   <p className="text-[10px] font-bold tracking-wider text-[#34D399] uppercase px-3 mb-1 flex items-center gap-1.5">
                     <GraduationCap size={13} />
@@ -103,17 +103,17 @@ export default function Sidebar({ activeRoute, setActiveRoute }) {
 
                   <button
                     onClick={() => setActiveRoute('learner-dashboard')}
-                    className={`w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
+                    className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
                       activeRoute === 'learner-dashboard' ? 'bg-[#10B981]/15 text-[#34D399] border border-[#10B981]/40' : 'text-[#94A3B8] hover:text-white hover:bg-[#0E1626]'
                     }`}
                   >
                     <GraduationCap size={15} />
-                    Take & Discover Quizzes
+                    Assessment Hub
                   </button>
 
                   <button
                     onClick={() => setActiveRoute('mistake-notebook')}
-                    className={`w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
+                    className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
                       activeRoute === 'mistake-notebook' ? 'bg-[#10B981]/15 text-[#34D399] border border-[#10B981]/40' : 'text-[#94A3B8] hover:text-white hover:bg-[#0E1626]'
                     }`}
                   >
@@ -123,7 +123,7 @@ export default function Sidebar({ activeRoute, setActiveRoute }) {
 
                   <button
                     onClick={() => setActiveRoute('attempt-history')}
-                    className={`w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
+                    className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
                       activeRoute === 'attempt-history' ? 'bg-[#10B981]/15 text-[#34D399] border border-[#10B981]/40' : 'text-[#94A3B8] hover:text-white hover:bg-[#0E1626]'
                     }`}
                   >
@@ -133,7 +133,7 @@ export default function Sidebar({ activeRoute, setActiveRoute }) {
 
                   <button
                     onClick={() => setActiveRoute('live-session')}
-                    className={`w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
+                    className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
                       activeRoute === 'live-session' ? 'bg-[#10B981]/20 text-[#34D399] border border-[#10B981]/50' : 'text-[#34D399] hover:text-white hover:bg-[#0E1626]'
                     }`}
                   >
@@ -144,7 +144,7 @@ export default function Sidebar({ activeRoute, setActiveRoute }) {
               )}
 
               {/* Teacher Role Exclusive Navigation */}
-              {(isTeacher || isSuperAdmin || isOrgAdmin) && (
+              {isTeacher && (
                 <div className="space-y-1">
                   <p className="text-[10px] font-bold tracking-wider text-[#A78BFA] uppercase px-3 mb-1 flex items-center gap-1.5">
                     <FolderKanban size={13} />
@@ -153,17 +153,17 @@ export default function Sidebar({ activeRoute, setActiveRoute }) {
 
                   <button
                     onClick={() => setActiveRoute('creator-dashboard')}
-                    className={`w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
+                    className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
                       activeRoute === 'creator-dashboard' || activeRoute === 'quiz-studio' ? 'bg-[#8B5CF6]/15 text-[#A78BFA] border border-[#8B5CF6]/40' : 'text-[#94A3B8] hover:text-white hover:bg-[#0E1626]'
                     }`}
                   >
                     <FolderKanban size={15} />
-                    Quiz Studio & Builder
+                    Quiz Studio & Center
                   </button>
 
                   <button
                     onClick={() => setActiveRoute('teacher-insights')}
-                    className={`w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
+                    className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
                       activeRoute === 'teacher-insights' ? 'bg-[#38BDF8]/15 text-[#38BDF8] border border-[#38BDF8]/40' : 'text-[#94A3B8] hover:text-white hover:bg-[#0E1626]'
                     }`}
                   >
@@ -173,7 +173,7 @@ export default function Sidebar({ activeRoute, setActiveRoute }) {
 
                   <button
                     onClick={() => setActiveRoute('question-bank')}
-                    className={`w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
+                    className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
                       activeRoute === 'question-bank' ? 'bg-[#8B5CF6]/15 text-[#A78BFA] border border-[#8B5CF6]/40' : 'text-[#94A3B8] hover:text-white hover:bg-[#0E1626]'
                     }`}
                   >
@@ -183,22 +183,22 @@ export default function Sidebar({ activeRoute, setActiveRoute }) {
                 </div>
               )}
 
-              {/* Super Admin & Org Admin Navigation */}
+              {/* Super Admin & Org Admin Exclusive Navigation */}
               {(isSuperAdmin || isOrgAdmin) && (
                 <div className="space-y-1">
                   <p className="text-[10px] font-bold tracking-wider text-[#FBBF24] uppercase px-3 mb-1 flex items-center gap-1.5">
                     <ShieldCheck size={13} />
-                    System Administration
+                    {isSuperAdmin ? 'Superadmin Console' : 'Institutional Admin'}
                   </p>
 
                   <button
                     onClick={() => setActiveRoute('admin-dashboard')}
-                    className={`w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
+                    className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all ${
                       activeRoute === 'admin-dashboard' ? 'bg-[#F59E0B]/15 text-[#FBBF24] border border-[#F59E0B]/40' : 'text-[#94A3B8] hover:text-white hover:bg-[#0E1626]'
                     }`}
                   >
                     <ShieldCheck size={15} className="text-[#FBBF24]" />
-                    User Directory & Roles
+                    Colleges &amp; User Control
                   </button>
                 </div>
               )}

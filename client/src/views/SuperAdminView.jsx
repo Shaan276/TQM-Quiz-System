@@ -56,6 +56,69 @@ export default function SuperAdminView({ setActiveRoute }) {
   // Quick entity creation modals
   const [showAddDept, setShowAddDept] = useState(false);
   const [deptForm, setDeptForm] = useState({ name: '', code: '', description: '' });
+  // Phase P8 College / University Management
+  const [colleges, setColleges] = useState([]);
+  const [collegesLoading, setCollegesLoading] = useState(false);
+  const [showAddCollegeModal, setShowAddCollegeModal] = useState(false);
+  const [collegeSearch, setCollegeSearch] = useState('');
+  const [collegeForm, setCollegeForm] = useState({
+    name: '',
+    code: '',
+    type: 'COLLEGE',
+    dept_term: 'Department',
+    class_term: 'Program / Branch'
+  });
+
+  const fetchColleges = async () => {
+    try {
+      setCollegesLoading(true);
+      const res = await fetch('/api/v1/institutions/colleges', {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setColleges(data.data.colleges || []);
+      }
+    } catch (e) {
+      console.error('Failed to load colleges', e);
+    } finally {
+      setCollegesLoading(false);
+    }
+  };
+
+  const handleCreateCollege = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/v1/institutions/colleges', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`
+        },
+        body: JSON.stringify(collegeForm)
+      });
+      const data = await res.json();
+      if (data.success) {
+        setActionMessage(`Institution "${collegeForm.name}" registered successfully!`);
+        setShowAddCollegeModal(false);
+        setCollegeForm({
+          name: '',
+          code: '',
+          type: 'COLLEGE',
+          dept_term: 'Department',
+          class_term: 'Program / Branch'
+        });
+        fetchColleges();
+        fetchInstitutionData();
+      } else {
+        alert(data.message || 'Failed to create college');
+      }
+    } catch (e) {
+      console.error('Error creating college', e);
+      alert('Error registering college');
+    }
+  };
+
 
   const [showAddClass, setShowAddClass] = useState(false);
   const [classForm, setClassForm] = useState({ department_id: '', name: '', code: '' });
@@ -458,6 +521,20 @@ export default function SuperAdminView({ setActiveRoute }) {
           <Users size={16} />
           User Accounts & Global Roles
         </button>
+                <button
+          onClick={() => {
+            setAdminTab('colleges');
+            fetchColleges();
+          }}
+          className={`px-4 py-2.5 text-xs font-bold rounded-t-xl transition-all border-b-2 flex items-center gap-2 ${
+            adminTab === 'colleges'
+              ? 'border-[#38BDF8] text-[#38BDF8] bg-[#38BDF8]/10'
+              : 'border-transparent text-[#94A3B8] hover:text-white'
+          }`}
+        >
+          <Building size={16} />
+          Colleges &amp; Universities ({colleges.length})
+        </button>
         <button
           onClick={() => setAdminTab('institution')}
           className={`px-4 py-2.5 text-xs font-bold rounded-t-xl transition-all border-b-2 flex items-center gap-2 ${
@@ -489,6 +566,164 @@ export default function SuperAdminView({ setActiveRoute }) {
           )}
         </button>
       </div>
+
+      
+      {/* COLLEGES & UNIVERSITIES MANAGEMENT TAB */}
+      {adminTab === 'colleges' && (
+        <div className="space-y-6 animate-fadeIn">
+          {/* Top Banner & Quick Metrics */}
+          <div className="dashboard-card p-6 bg-gradient-to-r from-[#0F172A] via-[#111F36] to-[#0D1B2A] border border-[#1E2E4A] flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <h2 className="text-lg font-bold text-white flex items-center gap-2.5">
+                <Building size={20} className="text-[#38BDF8]" />
+                Affiliated Colleges &amp; Universities Management
+              </h2>
+              <p className="text-xs text-[#94A3B8]">
+                Configure higher education institutions, engineering colleges, polytechnics, and multi-campus autonomous units.
+              </p>
+            </div>
+            <button
+              onClick={() => setShowAddCollegeModal(true)}
+              className="btn-emerald-primary text-xs py-2.5 px-4 font-bold flex items-center gap-2 shadow-lg shadow-[#10B981]/20 shrink-0"
+            >
+              <Plus size={15} />
+              Register New College
+            </button>
+          </div>
+
+          {/* Quick Metrics Bar */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="dashboard-card p-4 text-center">
+              <p className="text-[11px] font-mono uppercase text-[#94A3B8]">Total Institutions</p>
+              <p className="text-2xl font-bold text-white mt-1">{colleges.length}</p>
+            </div>
+            <div className="dashboard-card p-4 text-center">
+              <p className="text-[11px] font-mono uppercase text-[#94A3B8]">Departments Across Campuses</p>
+              <p className="text-2xl font-bold text-[#38BDF8] mt-1">
+                {colleges.reduce((acc, c) => acc + (c.dept_count || 0), 0)}
+              </p>
+            </div>
+            <div className="dashboard-card p-4 text-center">
+              <p className="text-[11px] font-mono uppercase text-[#94A3B8]">Classes &amp; Programs</p>
+              <p className="text-2xl font-bold text-[#F59E0B] mt-1">
+                {colleges.reduce((acc, c) => acc + (c.class_count || 0), 0)}
+              </p>
+            </div>
+            <div className="dashboard-card p-4 text-center">
+              <p className="text-[11px] font-mono uppercase text-[#94A3B8]">Total Students Enrolled</p>
+              <p className="text-2xl font-bold text-[#10B981] mt-1">
+                {colleges.reduce((acc, c) => acc + (c.student_count || 0), 0)}
+              </p>
+            </div>
+          </div>
+
+          {/* Filter Bar */}
+          <div className="dashboard-card p-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+            <div className="relative flex-1 max-w-md">
+              <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#38BDF8]" />
+              <input
+                type="text"
+                placeholder="Search colleges by name or code..."
+                value={collegeSearch}
+                onChange={(e) => setCollegeSearch(e.target.value)}
+                className="input-field pl-10 text-xs w-full py-2"
+              />
+              {collegeSearch && (
+                <button onClick={() => setCollegeSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[#94A3B8] hover:text-white">✕</button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={fetchColleges}
+                className="btn-secondary text-xs py-2 px-3 flex items-center gap-1.5"
+                title="Refresh list"
+              >
+                <RefreshCw size={13} className={collegesLoading ? 'animate-spin' : ''} />
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          {/* Colleges Grid */}
+          {collegesLoading ? (
+            <div className="p-12 text-center text-xs text-[#94A3B8] flex flex-col items-center gap-2">
+              <div className="w-6 h-6 border-2 border-[#38BDF8] border-t-transparent rounded-full animate-spin" />
+              <span>Loading registered institutions...</span>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {colleges
+                .filter(c => !collegeSearch || c.name.toLowerCase().includes(collegeSearch.toLowerCase()) || c.code.toLowerCase().includes(collegeSearch.toLowerCase()))
+                .map((college) => (
+                  <div
+                    key={college.id}
+                    className="dashboard-card p-5 border border-[#1E2E4A] hover:border-[#38BDF8]/60 transition-all flex flex-col justify-between space-y-4 shadow-lg group"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="w-10 h-10 rounded-xl bg-[#38BDF8]/15 border border-[#38BDF8]/30 flex items-center justify-center text-xl shrink-0">
+                          🏛️
+                        </div>
+                        <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-[#38BDF8]/15 text-[#38BDF8] border border-[#38BDF8]/30">
+                            {college.code}
+                          </span>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-[#F59E0B]/15 text-[#F59E0B] border border-[#F59E0B]/30">
+                            {college.type || 'COLLEGE'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <h3 className="text-base font-bold text-white group-hover:text-[#38BDF8] transition-colors line-clamp-1">
+                          {college.name}
+                        </h3>
+                        <p className="text-[11px] text-[#94A3B8] font-mono mt-0.5">
+                          ID: {college.id.substring(0, 8)}... &bull; Status: <span className="text-[#10B981] font-semibold">{college.status || 'ACTIVE'}</span>
+                        </p>
+                      </div>
+
+                      {/* Institution Metrics Matrix */}
+                      <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#1B2A44] text-center text-[11px]">
+                        <div className="p-2 rounded-lg bg-[#0F172A] border border-[#1E2E4A]">
+                          <span className="block text-[#64748B] text-[10px] uppercase font-mono">{college.dept_term || 'Dept'}s</span>
+                          <strong className="text-white text-xs">{college.dept_count || 0}</strong>
+                        </div>
+                        <div className="p-2 rounded-lg bg-[#0F172A] border border-[#1E2E4A]">
+                          <span className="block text-[#64748B] text-[10px] uppercase font-mono">{college.class_term || 'Class'}es</span>
+                          <strong className="text-white text-xs">{college.class_count || 0}</strong>
+                        </div>
+                        <div className="p-2 rounded-lg bg-[#0F172A] border border-[#1E2E4A]">
+                          <span className="block text-[#64748B] text-[10px] uppercase font-mono">Sections</span>
+                          <strong className="text-white text-xs">{college.section_count || 0}</strong>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between text-[11px] text-[#94A3B8] pt-1">
+                        <span>🎓 Enrolled Students: <strong className="text-[#38BDF8]">{college.student_count || 0}</strong></span>
+                        <span>👨‍🏫 Faculty: <strong className="text-[#10B981]">{college.teacher_count || 0}</strong></span>
+                      </div>
+                    </div>
+
+                    <div className="pt-3 border-t border-[#1B2A44]">
+                      <button
+                        onClick={() => {
+                          setAdminTab('institution');
+                          fetchInstitutionData();
+                        }}
+                        className="w-full btn-secondary text-xs py-2 font-bold justify-center gap-1.5 text-[#38BDF8] border-[#38BDF8]/40 hover:border-[#38BDF8]"
+                      >
+                        <FolderKanban size={13} />
+                        Manage Academic Units
+                      </button>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {adminTab === 'users' && (
         /* User Management Section */
@@ -1294,6 +1529,125 @@ export default function SuperAdminView({ setActiveRoute }) {
               <div className="flex justify-end gap-3 pt-2">
                 <button type="button" onClick={() => setShowAddSection(false)} className="btn-secondary text-xs py-2 px-4">Cancel</button>
                 <button type="submit" className="btn-primary text-xs py-2 px-5 font-bold">Create</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      
+      {/* Super Admin Register New College Modal */}
+      {showAddCollegeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-[#0E1626] border border-[#1B2A44] rounded-2xl w-full max-w-lg p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-[#1B2A44]">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Building size={18} className="text-[#38BDF8]" />
+                Register New College / University
+              </h3>
+              <button onClick={() => setShowAddCollegeModal(false)} className="text-[#64748B] hover:text-white">
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateCollege} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-[#94A3B8] mb-1 font-mono uppercase">
+                  College / Institution Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Indian Institute of Technology (IIT) Delhi"
+                  value={collegeForm.name}
+                  onChange={(e) => setCollegeForm({ ...collegeForm, name: e.target.value })}
+                  className="input-field text-xs py-2 w-full"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-[#94A3B8] mb-1 font-mono uppercase">
+                    Institution Code / Acronym *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. IITD"
+                    value={collegeForm.code}
+                    onChange={(e) => setCollegeForm({ ...collegeForm, code: e.target.value.toUpperCase() })}
+                    className="input-field text-xs py-2 w-full font-mono uppercase"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-[#94A3B8] mb-1 font-mono uppercase">
+                    Institution Type *
+                  </label>
+                  <select
+                    value={collegeForm.type}
+                    onChange={(e) => setCollegeForm({ ...collegeForm, type: e.target.value })}
+                    className="input-field text-xs py-2 w-full"
+                  >
+                    <option value="COLLEGE">College (Undergraduate/PG)</option>
+                    <option value="UNIVERSITY">University / Campus</option>
+                    <option value="INSTITUTE">Autonomous Institute</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-[#94A3B8] mb-1 font-mono uppercase">
+                    Department Naming Term
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Department / School"
+                    value={collegeForm.dept_term}
+                    onChange={(e) => setCollegeForm({ ...collegeForm, dept_term: e.target.value })}
+                    className="input-field text-xs py-2 w-full"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-[#94A3B8] mb-1 font-mono uppercase">
+                    Class / Branch Naming Term
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Degree / Program / Course"
+                    value={collegeForm.class_term}
+                    onChange={(e) => setCollegeForm({ ...collegeForm, class_term: e.target.value })}
+                    className="input-field text-xs py-2 w-full"
+                  />
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-[#38BDF8]/10 border border-[#38BDF8]/25 text-[11px] text-[#94A3B8] space-y-1">
+                <p className="font-semibold text-[#38BDF8] flex items-center gap-1">
+                  <CheckCircle2 size={13} />
+                  Automatic Multi-Campus Provisioning
+                </p>
+                <p>
+                  Registering this college will automatically provision academic year 2026-2027 and allow assigning department heads, faculty, and student cohorts.
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddCollegeModal(false)}
+                  className="btn-secondary text-xs py-2 px-4"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn-emerald-primary text-xs py-2 px-5 font-bold"
+                >
+                  Register College
+                </button>
               </div>
             </form>
           </div>

@@ -1305,4 +1305,52 @@ router.post('/:id/import-from-quiz', authenticateToken, requireRole('CREATOR', '
   }
 });
 
+// -------------------------------------------------------------
+// GET /api/v1/quizzes/:id/export-csv (Google Forms style CSV Export)
+// -------------------------------------------------------------
+router.get('/:id/export-csv', authenticateToken, async (req, res, next) => {
+  try {
+    const quizId = req.params.id;
+    const quiz = await dbGet(`SELECT * FROM quizzes WHERE id = ?`, [quizId]);
+    if (!quiz) {
+      return res.status(404).json({ success: false, error: { message: 'Quiz not found' } });
+    }
+
+    const attempts = await dbAll(`
+      SELECT qa.id, qa.score, qa.max_score AS total_marks, qa.score_percentage, qa.is_passed, 
+             qa.status, qa.started_at, qa.submitted_at AS finished_at, qa.time_taken_sec,
+             u.name AS student_name, u.email AS student_email
+      FROM quiz_attempts qa
+      JOIN users u ON qa.user_id = u.id
+      WHERE qa.quiz_id = ? AND qa.status = 'COMPLETED'
+      ORDER BY qa.submitted_at DESC
+    `, [quizId]);
+
+    // Build CSV
+    const headers = ['Attempt ID', 'Student Name', 'Student Email', 'Score', 'Total Marks', 'Score %', 'Result', 'Status', 'Started At', 'Finished At', 'Time Taken (sec)'];
+    const rows = attempts.map(a => [
+      `"${a.id}"`,
+      `"${(a.student_name || '').replace(/"/g, '""')}"`,
+      `"${(a.student_email || '').replace(/"/g, '""')}"`,
+      a.score ?? 0,
+      a.total_marks ?? 0,
+      `${a.score_percentage ?? 0}%`,
+      a.is_passed ? 'PASSED' : 'FAILED',
+      a.status,
+      `"${a.started_at || ''}"`,
+      `"${a.finished_at || ''}"`,
+      a.time_taken_sec ?? 0
+    ]);
+
+    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const safeTitle = (quiz.title || 'Quiz').replace(/[^a-zA-Z0-9_-]/g, '_');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeTitle}_Responses.csv"`);
+    res.status(200).send(csvContent);
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

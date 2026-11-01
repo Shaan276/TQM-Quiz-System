@@ -21,7 +21,12 @@ import {
   Star,
   Users,
   Layers,
-  Calendar
+  Calendar,
+  RotateCw,
+  Shuffle,
+  ChevronLeft,
+  ChevronRight,
+  X
 } from 'lucide-react';
 
 export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setActiveRoute }) {
@@ -45,6 +50,60 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
   const [enrollForm, setEnrollForm] = useState({ section_id: '', roll_number: '' });
   const [enrollSubmitting, setEnrollSubmitting] = useState(false);
   const [enrollSuccessMsg, setEnrollSuccessMsg] = useState('');
+
+  // Wayground / Kahoot Study Mode: Interactive Flashcards
+  const [showFlashcards, setShowFlashcards] = useState(false);
+  const [flashcardQuizTitle, setFlashcardQuizTitle] = useState('');
+  const [flashcardList, setFlashcardList] = useState([]);
+  const [currentCardIdx, setCurrentCardIdx] = useState(0);
+  const [isCardFlipped, setIsCardFlipped] = useState(false);
+  const [flashcardLoading, setFlashcardLoading] = useState(false);
+
+  const handleOpenFlashcards = async (quiz) => {
+    const targetQuiz = quiz || quizzes[0];
+    if (!targetQuiz) {
+      alert('Please select or wait for a quiz to load flashcards.');
+      return;
+    }
+    setFlashcardQuizTitle(targetQuiz.title || 'Assessment Practice');
+    setCurrentCardIdx(0);
+    setIsCardFlipped(false);
+    setShowFlashcards(true);
+    setFlashcardLoading(true);
+
+    try {
+      const res = await fetch(`/api/v1/quizzes/${targetQuiz.id}`, {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      const data = await res.json();
+      if (data.success && data.data?.quiz?.questions && data.data.quiz.questions.length > 0) {
+        setFlashcardList(data.data.quiz.questions);
+      } else {
+        setFlashcardList([
+          {
+            question_text: targetQuiz.title,
+            category: targetQuiz.category,
+            difficulty: targetQuiz.difficulty,
+            marks: targetQuiz.total_marks,
+            explanation: targetQuiz.description || 'Review the core topics of this assessment in your course materials.',
+            options: []
+          }
+        ]);
+      }
+    } catch (e) {
+      console.error('Failed to load flashcards', e);
+    } finally {
+      setFlashcardLoading(false);
+    }
+  };
+
+    const handleShuffleDeck = () => {
+    if (flashcardList.length <= 1) return;
+    const shuffled = [...flashcardList].sort(() => Math.random() - 0.5);
+    setFlashcardList(shuffled);
+    setCurrentCardIdx(0);
+    setIsCardFlipped(false);
+  };
 
   const handleOpenEnrollModal = async () => {
     setShowEnrollModal(true);
@@ -208,37 +267,6 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
           <p className="text-sm text-[#94A3B8] mt-1.5">
             Welcome back, <strong className="text-white font-semibold">{user?.name}</strong> &bull; Practice self-paced quizzes, review mistake corrections, and join live competitions.
           </p>
-
-          {/* Institutional Enrollment Status Badge (Integrated cleanly under header) */}
-          <div className="mt-3 flex items-center gap-2">
-            {enrollment && enrollment.status === 'ACTIVE' ? (
-              <div className="inline-flex items-center gap-2.5 py-1.5 px-3.5 rounded-full bg-[#121E36] border border-[#38BDF8]/40 text-xs">
-                <span className="w-2 h-2 rounded-full bg-[#10B981]" />
-                <span className="font-semibold text-white">{enrollment.organization_name}</span>
-                <span className="text-[#64748B]">&bull;</span>
-                <span className="text-[#38BDF8] font-bold">{enrollment.class_name} ({enrollment.section_name})</span>
-                {enrollment.roll_number && (
-                  <>
-                    <span className="text-[#64748B]">&bull;</span>
-                    <span className="font-mono text-[#A7F3D0]">Roll: {enrollment.roll_number}</span>
-                  </>
-                )}
-              </div>
-            ) : enrollment && enrollment.status === 'PENDING' ? (
-              <div className="inline-flex items-center gap-2 py-1.5 px-3.5 rounded-full bg-[#F59E0B]/15 border border-[#F59E0B]/40 text-xs text-[#FBBF24]">
-                <span className="w-2 h-2 rounded-full bg-[#F59E0B] animate-ping" />
-                <span>Section request for <strong>{enrollment.section_name}</strong> ({enrollment.class_name}) is awaiting teacher review.</span>
-              </div>
-            ) : (
-              <button
-                onClick={handleOpenEnrollModal}
-                className="inline-flex items-center gap-2 py-1.5 px-3.5 rounded-full bg-[#121E36] hover:bg-[#1A2C4E] border border-[#1E2E48] text-xs text-[#94A3B8] hover:text-white transition-colors"
-              >
-                <GraduationCap size={14} className="text-[#38BDF8]" />
-                <span>Not enrolled in a class section? <span className="text-[#34D399] font-semibold underline underline-offset-2">Join Section</span></span>
-              </button>
-            )}
-          </div>
         </div>
 
         <div className="flex items-center gap-3 shrink-0">
@@ -264,6 +292,58 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
           </button>
         </div>
       </div>
+
+      {/* Institutional Enrollment Status Banner (Full-Width - Fix for img1) */}
+      {enrollment && enrollment.status === 'ACTIVE' ? (
+        <div className="w-full dashboard-card p-4 px-6 bg-[#0E172A] border border-[#38BDF8]/40 flex flex-wrap items-center justify-between gap-4 text-xs shadow-md rounded-2xl">
+          <div className="flex items-center gap-3.5">
+            <span className="w-3 h-3 rounded-full bg-[#10B981] animate-pulse shrink-0" />
+            <div>
+              <span className="font-extrabold text-white text-sm tracking-wide">{enrollment.organization_name}</span>
+              <p className="text-[11px] text-[#94A3B8] font-medium mt-0.5">Enrolled Academic Institution</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3.5 flex-wrap">
+            <div className="px-3.5 py-1.5 rounded-xl bg-[#14233D] border border-[#233B66] text-[#38BDF8] font-bold text-xs flex items-center gap-2">
+              <GraduationCap size={15} />
+              <span>{enrollment.class_name} &bull; Section {enrollment.section_name}</span>
+            </div>
+            {enrollment.roll_number && (
+              <div className="px-3.5 py-1.5 rounded-xl bg-[#09111E] border border-[#1E2E4A] font-mono text-xs text-[#A7F3D0] font-bold">
+                Roll: <strong>{enrollment.roll_number}</strong>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : enrollment && enrollment.status === 'PENDING' ? (
+        <div className="w-full dashboard-card p-4 px-6 bg-[#F59E0B]/10 border border-[#F59E0B]/40 flex flex-wrap items-center justify-between gap-4 text-xs animate-in fade-in rounded-2xl">
+          <div className="flex items-center gap-3">
+            <span className="w-3 h-3 rounded-full bg-[#F59E0B] animate-ping shrink-0" />
+            <div>
+              <span className="font-bold text-[#FBBF24] text-sm">Enrollment Pending Instructor / Admin Approval</span>
+              <p className="text-[11px] text-[#CBD5E1] mt-0.5">
+                Your request to join section <strong className="text-white">{enrollment.section_name}</strong> ({enrollment.class_name}) is awaiting teacher verification.
+              </p>
+            </div>
+          </div>
+          <span className="px-3.5 py-1 text-xs font-bold rounded-full bg-[#F59E0B]/20 text-[#FBBF24] border border-[#F59E0B]/30">
+            Awaiting Verification
+          </span>
+        </div>
+      ) : (
+        <div className="w-full dashboard-card p-4 px-6 bg-[#0E172A] border border-[#1E2E4A] flex flex-wrap items-center justify-between gap-4 text-xs rounded-2xl">
+          <div className="flex items-center gap-3 text-[#94A3B8]">
+            <GraduationCap size={18} className="text-[#38BDF8] shrink-0" />
+            <span>Not currently enrolled in an academic section? Join your college section to access official assessments.</span>
+          </div>
+          <button
+            onClick={handleOpenEnrollModal}
+            className="btn-emerald-primary text-xs py-2 px-4 font-bold flex items-center gap-2"
+          >
+            Request Section Enrollment
+          </button>
+        </div>
+      )}
 
       {/* Balanced 2-Column Hero Section: Reward Points + Live Multiplayer PIN */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
@@ -458,44 +538,85 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
         </button>
       </div>
 
-      {/* Discovery Filters Toolbar (Shown for All, Self-Paced, and Assessments) */}
+      {/* Discovery Filters Toolbar (Modern, Full-Width - Fix for img2) */}
       {['all', 'self-paced', 'assessments'].includes(learnerTab) && (
-        <div className="dashboard-card p-4 space-y-3 animate-fadeIn">
-          <div className="flex flex-col md:flex-row items-center gap-3">
-            <div className="relative flex-1 w-full">
-              <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#64748B]" />
+        <div className="dashboard-card p-4 sm:p-5 border border-[#1E2D4A] bg-[#0E172A] shadow-md rounded-2xl animate-fadeIn space-y-3">
+          <div className="flex flex-col lg:flex-row items-stretch lg:items-center gap-3.5">
+            {/* Search Input Box */}
+            <div className="relative flex-1 min-w-0">
+              <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#38BDF8]" />
               <input
                 type="text"
-                placeholder="Search published quizzes by title, subject or author..."
+                placeholder="Search assessments by quiz title, subject or instructor..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="input-field pl-10 text-xs w-full"
+                className="w-full bg-[#0A111E] border border-[#233554] focus:border-[#38BDF8] rounded-xl pl-11 pr-10 py-2.5 text-xs text-white placeholder:text-[#64748B] outline-none transition-colors shadow-inner"
               />
+              {search && (
+                <button
+                  onClick={() => setSearch('')}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#64748B] hover:text-white text-xs p-1"
+                  title="Clear search"
+                >
+                  ✕
+                </button>
+              )}
             </div>
 
-            {/* Subject Filter */}
-            <select
-              value={selectedSubject}
-              onChange={(e) => setSelectedSubject(e.target.value)}
-              className="input-field text-xs py-2 px-3 shrink-0 max-w-xs"
-            >
-              <option value="">All Subjects</option>
-              {subjects.map(s => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
+            {/* Filter Dropdowns & Quick Flashcards Mode Button */}
+            <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap shrink-0">
+              {/* Subject Filter */}
+              <div className="relative w-full sm:w-48">
+                <select
+                  value={selectedSubject}
+                  onChange={(e) => setSelectedSubject(e.target.value)}
+                  className="w-full bg-[#0A111E] border border-[#233554] focus:border-[#38BDF8] rounded-xl px-3.5 py-2.5 text-xs text-white outline-none cursor-pointer transition-colors"
+                >
+                  <option value="">All Subjects</option>
+                  {subjects.map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
 
-            {/* Difficulty Filter */}
-            <select
-              value={selectedDifficulty}
-              onChange={(e) => setSelectedDifficulty(e.target.value)}
-              className="input-field text-xs py-2 px-3 shrink-0"
-            >
-              <option value="">All Difficulties</option>
-              <option value="EASY">Easy</option>
-              <option value="MEDIUM">Medium</option>
-              <option value="HARD">Hard</option>
-            </select>
+              {/* Difficulty Filter */}
+              <div className="relative w-full sm:w-36">
+                <select
+                  value={selectedDifficulty}
+                  onChange={(e) => setSelectedDifficulty(e.target.value)}
+                  className="w-full bg-[#0A111E] border border-[#233554] focus:border-[#38BDF8] rounded-xl px-3.5 py-2.5 text-xs text-white outline-none cursor-pointer transition-colors"
+                >
+                  <option value="">All Levels</option>
+                  <option value="EASY">Easy</option>
+                  <option value="MEDIUM">Medium</option>
+                  <option value="HARD">Hard</option>
+                </select>
+              </div>
+
+              {/* Wayground / Quizlet Style Interactive Flashcard Mode CTA */}
+              <button
+                onClick={() => handleOpenFlashcards(quizzes[0])}
+                disabled={quizzes.length === 0}
+                className="btn-secondary text-xs py-2.5 px-4 font-bold flex items-center gap-2 text-[#38BDF8] border-[#38BDF8]/40 hover:border-[#38BDF8] shrink-0"
+                title="Practice terms and questions with interactive flip cards"
+              >
+                <span>🗂️ Flashcards</span>
+              </button>
+
+              {(search || selectedSubject || selectedDifficulty) && (
+                <button
+                  onClick={() => {
+                    setSearch('');
+                    setSelectedSubject('');
+                    setSelectedDifficulty('');
+                  }}
+                  className="text-xs text-[#FB7185] hover:text-white px-2 py-2 font-semibold transition-colors shrink-0"
+                  title="Reset all filters"
+                >
+                  Reset
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -595,13 +716,22 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
                           Attempted ({quiz.user_attempt_count}/{quiz.max_attempts})
                         </button>
                       ) : (
-                        <button
-                          onClick={() => onStartAttempt(quiz.id)}
-                          className="w-full btn-emerald-primary text-xs py-2.5 font-bold gap-2 justify-center shadow-lg shadow-[#10B981]/20"
-                        >
-                          <Play size={14} className="fill-current" />
-                          Start Quiz
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleOpenFlashcards(quiz)}
+                            className="btn-secondary text-xs py-2.5 px-3 font-semibold text-[#38BDF8] border-[#38BDF8]/40 hover:border-[#38BDF8] hover:bg-[#38BDF8]/10 shrink-0 transition-colors"
+                            title="Study as Flashcards"
+                          >
+                            🗂️ Cards
+                          </button>
+                          <button
+                            onClick={() => onStartAttempt(quiz.id)}
+                            className="flex-1 btn-emerald-primary text-xs py-2.5 font-bold gap-2 justify-center shadow-lg shadow-[#10B981]/20"
+                          >
+                            <Play size={14} className="fill-current" />
+                            Start Quiz
+                          </button>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -706,13 +836,22 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
                           Attempted ({quiz.user_attempt_count}/{quiz.max_attempts})
                         </button>
                       ) : (
-                        <button
-                          onClick={() => onStartAttempt(quiz.id)}
-                          className="w-full btn-emerald-primary text-xs py-2.5 font-bold gap-2 justify-center shadow-lg shadow-[#10B981]/20"
-                        >
-                          <Play size={14} className="fill-current" />
-                          Take Self-Paced
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleOpenFlashcards(quiz)}
+                            className="btn-secondary text-xs py-2.5 px-3 font-semibold text-[#38BDF8] border-[#38BDF8]/40 hover:border-[#38BDF8] hover:bg-[#38BDF8]/10 shrink-0 transition-colors"
+                            title="Study as Flashcards"
+                          >
+                            🗂️ Cards
+                          </button>
+                          <button
+                            onClick={() => onStartAttempt(quiz.id)}
+                            className="flex-1 btn-emerald-primary text-xs py-2.5 font-bold gap-2 justify-center shadow-lg shadow-[#10B981]/20"
+                          >
+                            <Play size={14} className="fill-current" />
+                            Take Self-Paced
+                          </button>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -995,6 +1134,203 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
               })}
             </div>
           )}
+        </div>
+      )}
+
+            {/* Wayground / Quizlet Style Interactive Study Flashcards Modal */}
+      {showFlashcards && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
+          <div className="bg-[#0B132B] border border-[#1E293B] rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+            
+            {/* Modal Header */}
+            <div className="px-6 py-4 border-b border-[#1E293B] flex items-center justify-between bg-[#0F172A]/80">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-[#38BDF8]/15 border border-[#38BDF8]/30 flex items-center justify-center text-lg">
+                  🗂️
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white line-clamp-1">
+                    Interactive Study Flashcards
+                  </h3>
+                  <p className="text-[11px] text-[#38BDF8] font-mono line-clamp-1">
+                    {flashcardQuizTitle}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowFlashcards(false)}
+                className="w-8 h-8 rounded-lg bg-[#1E293B]/60 hover:bg-[#1E293B] text-[#94A3B8] hover:text-white flex items-center justify-center transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Deck Progress Bar */}
+            {flashcardList.length > 0 && (
+              <div className="w-full bg-[#1E293B] h-1.5">
+                <div 
+                  className="bg-gradient-to-r from-[#38BDF8] to-[#10B981] h-1.5 transition-all duration-300"
+                  style={{ width: `${((currentCardIdx + 1) / flashcardList.length) * 100}%` }}
+                />
+              </div>
+            )}
+
+            {/* Content Area */}
+            <div className="p-6 flex-1 overflow-y-auto flex flex-col items-center justify-center min-h-[380px]">
+              {flashcardLoading ? (
+                <div className="flex flex-col items-center gap-3 py-12 text-[#94A3B8]">
+                  <div className="w-8 h-8 border-2 border-[#38BDF8] border-t-transparent rounded-full animate-spin" />
+                  <p className="text-xs font-medium">Loading flashcards deck...</p>
+                </div>
+              ) : flashcardList.length === 0 ? (
+                <div className="text-center py-12 space-y-2">
+                  <p className="text-sm font-semibold text-white">No flashcard questions available for this quiz yet.</p>
+                  <p className="text-xs text-[#94A3B8]">Questions will appear as soon as the instructor adds them.</p>
+                </div>
+              ) : (
+                <div className="w-full max-w-lg space-y-4">
+                  {/* Card Flip Container */}
+                  <div 
+                    onClick={() => setIsCardFlipped(!isCardFlipped)}
+                    className="cursor-pointer transition-all duration-300 transform active:scale-[0.99] group"
+                  >
+                    <div className={`p-7 rounded-2xl border min-h-[260px] flex flex-col justify-between transition-all duration-300 shadow-xl ${
+                      isCardFlipped 
+                        ? 'bg-gradient-to-br from-[#064E3B]/40 via-[#0B1E2E] to-[#0A1628] border-[#10B981]/50 shadow-[#10B981]/10' 
+                        : 'bg-gradient-to-br from-[#1E293B]/70 via-[#0F172A] to-[#0A111E] border-[#38BDF8]/40 hover:border-[#38BDF8] shadow-[#38BDF8]/10'
+                    }`}>
+                      
+                      {/* Card Top Tag */}
+                      <div className="flex items-center justify-between text-[11px] pb-3 border-b border-white/10">
+                        <span className={`font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                          isCardFlipped ? 'bg-[#10B981]/20 text-[#34D399]' : 'bg-[#38BDF8]/20 text-[#38BDF8]'
+                        }`}>
+                          {isCardFlipped ? '✓ Answer & Solution' : `Card ${currentCardIdx + 1} of ${flashcardList.length}`}
+                        </span>
+                        <span className="text-[11px] text-[#94A3B8] flex items-center gap-1 font-mono">
+                          <RotateCw size={12} className="text-[#38BDF8] group-hover:rotate-180 transition-transform duration-500" />
+                          Click to {isCardFlipped ? 'view question' : 'flip answer'}
+                        </span>
+                      </div>
+
+                      {/* Card Center Content */}
+                      <div className="py-4 flex-1 flex flex-col justify-center">
+                        {!isCardFlipped ? (
+                          <div className="space-y-4">
+                            <h4 className="text-base font-bold text-white leading-relaxed">
+                              {flashcardList[currentCardIdx]?.question_text}
+                            </h4>
+                            {flashcardList[currentCardIdx]?.options && flashcardList[currentCardIdx].options.length > 0 && (
+                              <div className="space-y-1.5 pt-2">
+                                {flashcardList[currentCardIdx].options.map((opt, oIdx) => (
+                                  <div key={oIdx} className="text-xs py-1.5 px-3 rounded-lg bg-[#0F172A]/70 border border-[#1E293B] text-[#94A3B8]">
+                                    <span className="font-bold text-white mr-2">{String.fromCharCode(65 + oIdx)}.</span>
+                                    {opt.option_text || opt}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="space-y-3 animate-fadeIn">
+                            <div className="p-3 rounded-xl bg-[#10B981]/15 border border-[#10B981]/30">
+                              <p className="text-xs font-bold text-[#34D399] uppercase tracking-wide">Correct Answer</p>
+                              <p className="text-sm font-semibold text-white mt-1">
+                                {(() => {
+                                  const card = flashcardList[currentCardIdx];
+                                  if (card?.options && card.options.length > 0) {
+                                    const correct = card.options.find(o => o.is_correct || o.isCorrect);
+                                    if (correct) return correct.option_text || correct;
+                                  }
+                                  return card?.correct_answer || 'Refer to explanation below';
+                                })()}
+                              </p>
+                            </div>
+                            {flashcardList[currentCardIdx]?.explanation && (
+                              <div className="pt-2">
+                                <p className="text-[11px] font-bold text-[#94A3B8] uppercase">Pedagogical Explanation:</p>
+                                <p className="text-xs text-[#CBD5E1] mt-1 leading-relaxed bg-[#0A111E]/60 p-3 rounded-xl border border-white/5">
+                                  {flashcardList[currentCardIdx].explanation}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Card Bottom Meta */}
+                      <div className="pt-3 border-t border-white/10 flex items-center justify-between text-[11px] text-[#64748B]">
+                        <span>Category: <strong className="text-[#94A3B8]">{flashcardList[currentCardIdx]?.category || 'General'}</strong></span>
+                        <span>Marks: <strong className="text-[#10B981]">{flashcardList[currentCardIdx]?.marks || 1} pt</strong></span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card Navigation Controls */}
+                  <div className="flex items-center justify-between gap-2 pt-2">
+                    <button
+                      onClick={() => {
+                        if (currentCardIdx > 0) {
+                          setCurrentCardIdx(currentCardIdx - 1);
+                          setIsCardFlipped(false);
+                        }
+                      }}
+                      disabled={currentCardIdx === 0}
+                      className="btn-secondary text-xs py-2 px-3.5 flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <ChevronLeft size={14} />
+                      <span>Prev</span>
+                    </button>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setIsCardFlipped(!isCardFlipped)}
+                        className="btn-secondary text-xs py-2 px-3.5 flex items-center gap-1.5 text-[#38BDF8] border-[#38BDF8]/40 hover:border-[#38BDF8]"
+                      >
+                        <RotateCw size={13} />
+                        <span>Flip Card</span>
+                      </button>
+
+                      <button
+                        onClick={handleShuffleDeck}
+                        className="btn-secondary text-xs py-2 px-3 flex items-center gap-1 text-[#F59E0B] border-[#F59E0B]/30 hover:border-[#F59E0B]"
+                        title="Randomize card order"
+                      >
+                        <Shuffle size={13} />
+                        <span className="hidden sm:inline">Shuffle</span>
+                      </button>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        if (currentCardIdx < flashcardList.length - 1) {
+                          setCurrentCardIdx(currentCardIdx + 1);
+                          setIsCardFlipped(false);
+                        }
+                      }}
+                      disabled={currentCardIdx >= flashcardList.length - 1}
+                      className="btn-emerald-primary text-xs py-2 px-3.5 flex items-center gap-1.5 font-bold disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <span>Next</span>
+                      <ChevronRight size={14} />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-3 border-t border-[#1E293B] bg-[#0A111E] flex items-center justify-between text-xs text-[#94A3B8]">
+              <span>Wayground / Quizlet Style Practice</span>
+              <button
+                onClick={() => setShowFlashcards(false)}
+                className="btn-secondary text-xs py-1.5 px-3"
+              >
+                Done Practicing
+              </button>
+            </div>
+
+          </div>
         </div>
       )}
 

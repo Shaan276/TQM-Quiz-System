@@ -33,11 +33,51 @@ import {
   GraduationCap,
   RefreshCw,
   ChevronDown,
-  Check
+  Check,
+  Share2,
+  Download,
+  FileSpreadsheet
 } from 'lucide-react';
 import TeacherInsightsView from './TeacherInsightsView';
 
 export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onOpenPreview, onHostLive, initialTab }) {
+  // Google Forms Style Share Link & CSV Export
+  const [shareModalQuiz, setShareModalQuiz] = useState(null);
+  const [copySuccess, setCopySuccess] = useState(false);
+  const [exportingCsvId, setExportingCsvId] = useState(null);
+
+  const handleCopyLink = (text) => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text);
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2500);
+    }
+  };
+
+  const handleExportCsv = async (quizId, quizTitle) => {
+    try {
+      setExportingCsvId(quizId);
+      const res = await fetch(`/api/v1/quizzes/${quizId}/export-csv`, {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      if (!res.ok) throw new Error('Export failed');
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${(quizTitle || 'Quiz').replace(/[^a-zA-Z0-9_-]/g, '_')}_grades.csv`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      console.error('Failed to export CSV', err);
+      alert('Could not export CSV spreadsheet. Please verify completed attempts exist.');
+    } finally {
+      setExportingCsvId(null);
+    }
+  };
+
   const { user, accessToken, setSession } = useAuth();
   const [metrics, setMetrics] = useState({
     totalQuizzes: 0,
@@ -959,6 +999,29 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
                       </button>
                     )}
 
+                                        {/* Google Forms Style Share Direct Link */}
+                    {quiz.status === 'PUBLISHED' && (
+                      <button
+                        onClick={() => setShareModalQuiz(quiz)}
+                        className="p-1.5 rounded-lg bg-[#132238] hover:bg-[#1A2D4A] text-[#94A3B8] hover:text-[#38BDF8] transition-colors"
+                        title="Share Quiz Link & QR Code (Google Forms Style)"
+                      >
+                        <Share2 size={14} />
+                      </button>
+                    )}
+
+                    {/* Google Forms Style CSV Responses Export */}
+                    {quiz.status === 'PUBLISHED' && (
+                      <button
+                        onClick={() => handleExportCsv(quiz.id, quiz.title)}
+                        disabled={exportingCsvId === quiz.id}
+                        className="p-1.5 rounded-lg bg-[#132238] hover:bg-[#1A2D4A] text-[#94A3B8] hover:text-[#10B981] transition-colors disabled:opacity-50"
+                        title="Export Responses to CSV Spreadsheet"
+                      >
+                        <Download size={14} className={exportingCsvId === quiz.id ? 'animate-bounce' : ''} />
+                      </button>
+                    )}
+
                     {/* Duplicate */}
                     <button
                       onClick={() => handleDuplicate(quiz.id)}
@@ -1739,6 +1802,110 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
       {/* TAB 4: ADVANCED ASSESSMENT INSIGHTS (PHASE P8) */}
       {dashboardTab === 'insights' && (
         <TeacherInsightsView onNavigateToQuizStudio={(qId) => onOpenStudio(qId)} />
+      )}
+
+            {/* Google Forms Style Share Modal with Direct Link, Live QR Code, and CSV Gradebook Export */}
+      {shareModalQuiz && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-[#0E1626] border border-[#1E2E4A] rounded-3xl max-w-lg w-full p-6 space-y-5 shadow-2xl">
+            
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-[#1E2E4A]">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-[#38BDF8]/15 border border-[#38BDF8]/30 flex items-center justify-center text-lg">
+                  🔗
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white line-clamp-1">Share Assessment Access</h3>
+                  <p className="text-[11px] text-[#38BDF8] font-mono line-clamp-1">{shareModalQuiz.title}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShareModalQuiz(null)}
+                className="w-8 h-8 rounded-lg bg-[#1E293B]/60 hover:bg-[#1E293B] text-[#94A3B8] hover:text-white flex items-center justify-center transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Direct Link Section (Google Forms Style) */}
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-[#94A3B8] uppercase font-mono">
+                Direct Student Participation Link
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  readOnly
+                  value={`${window.location.origin}/#take-quiz/${shareModalQuiz.id}`}
+                  className="input-field text-xs py-2.5 px-3.5 flex-1 font-mono text-[#38BDF8] bg-[#0A111E] select-all cursor-text"
+                />
+                <button
+                  onClick={() => handleCopyLink(`${window.location.origin}/#take-quiz/${shareModalQuiz.id}`)}
+                  className="btn-emerald-primary text-xs py-2.5 px-4 font-bold shrink-0 flex items-center gap-1.5 shadow-md shadow-[#10B981]/20"
+                >
+                  {copySuccess ? <Check size={14} /> : <Copy size={14} />}
+                  <span>{copySuccess ? 'Copied!' : 'Copy Link'}</span>
+                </button>
+              </div>
+              <p className="text-[11px] text-[#64748B]">
+                Students can directly open this link on laptop, tablet, or phone to take the quiz.
+              </p>
+            </div>
+
+            {/* QR Code Section (Scan on Mobile) */}
+            <div className="p-4 rounded-2xl bg-[#0A111E] border border-[#1E2E4A] flex flex-col sm:flex-row items-center gap-4">
+              <div className="bg-white p-2.5 rounded-xl shrink-0 shadow-md">
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=130x130&data=${encodeURIComponent(`${window.location.origin}/#take-quiz/${shareModalQuiz.id}`)}`}
+                  alt="Quiz QR Code"
+                  className="w-28 h-28 object-contain"
+                />
+              </div>
+              <div className="space-y-1.5 text-center sm:text-left">
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-[#10B981]/15 text-[#34D399] border border-[#10B981]/30">
+                  Instant Mobile Scan
+                </span>
+                <h4 className="text-xs font-bold text-white">Scan with Camera or QR Scanner</h4>
+                <p className="text-[11px] text-[#94A3B8] leading-relaxed">
+                  Display this QR code in classroom projectors or print it on paper test sheets for fast student entry.
+                </p>
+              </div>
+            </div>
+
+            {/* Google Forms Style CSV Responses Export Action */}
+            <div className="p-3.5 rounded-2xl bg-[#1E293B]/40 border border-[#1E2E4A] flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-[#10B981]/15 text-[#10B981] flex items-center justify-center">
+                  <FileSpreadsheet size={16} />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-white">Download Student Responses</p>
+                  <p className="text-[11px] text-[#94A3B8]">Export complete gradebook spreadsheet to CSV</p>
+                </div>
+              </div>
+              <button
+                onClick={() => handleExportCsv(shareModalQuiz.id, shareModalQuiz.title)}
+                disabled={exportingCsvId === shareModalQuiz.id}
+                className="btn-secondary text-xs py-2 px-3 font-semibold text-[#10B981] border-[#10B981]/40 hover:border-[#10B981] flex items-center gap-1.5 shrink-0"
+              >
+                <Download size={13} className={exportingCsvId === shareModalQuiz.id ? 'animate-bounce' : ''} />
+                <span>Export CSV</span>
+              </button>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-end pt-2">
+              <button
+                onClick={() => setShareModalQuiz(null)}
+                className="btn-secondary text-xs py-2 px-5"
+              >
+                Close
+              </button>
+            </div>
+
+          </div>
+        </div>
       )}
 
       {/* Delete Confirmation Modal */}
