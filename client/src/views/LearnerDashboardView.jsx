@@ -28,6 +28,7 @@ import {
   ChevronRight,
   X
 } from 'lucide-react';
+import SearchableSelect from '../components/SearchableSelect';
 
 export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setActiveRoute }) {
   const [joinPinInput, setJoinPinInput] = useState('');
@@ -156,11 +157,42 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
     setSelectedCollegeId(collegeId);
     setSelectedDeptId('');
     setSelectedClassId('');
-    setDeptSearch('');
     setEnrollForm(prev => ({ ...prev, section_id: '' }));
     if (enrollErrors.college) setEnrollErrors(prev => ({ ...prev, college: null }));
-    await loadCollegeStructure(collegeId);
+    if (collegeId) {
+      await loadCollegeStructure(collegeId);
+    } else {
+      setCollegeStructure({ departments: [], classes: [], sections: [] });
+    }
   };
+
+  const collegeOptions = collegesList.map(col => ({
+    value: col.id,
+    label: `${col.name} (${col.code})`,
+    sublabel: col.website || ''
+  }));
+
+  const departmentOptions = (collegeStructure.departments || []).map(dept => ({
+    value: dept.id,
+    label: `${dept.name} (${dept.code})`
+  }));
+
+  const classOptions = [
+    { value: '', label: '-- All Classes / Years --' },
+    ...(collegeStructure.classes || [])
+      .filter(c => c.department_id === selectedDeptId)
+      .map(cls => ({
+        value: cls.id,
+        label: `${cls.name} (${cls.code})`
+      }))
+  ];
+
+  const sectionOptions = (collegeStructure.sections || [])
+    .filter(s => !selectedClassId || s.class_id === selectedClassId)
+    .map(sec => ({
+      value: sec.id,
+      label: `Section ${sec.name} (${sec.class_name || 'Cohort'})`
+    }));
 
   const validateEnrollment = () => {
     const errs = {};
@@ -1466,48 +1498,19 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
                   </div>
                 )}
 
-                {/* 1. College Selection & Search */}
+                {/* 1. College Selection with embedded search dropdown */}
                 <div className="space-y-1.5">
                   <label className="block text-xs font-bold text-[#94A3B8] uppercase font-mono">
                     1. Select College / University *
                   </label>
-
-                  <div className="relative">
-                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B]" />
-                    <input
-                      type="text"
-                      placeholder="Search college by name or code..."
-                      value={collegeSearch}
-                      onChange={(e) => setCollegeSearch(e.target.value)}
-                      className="input-field text-xs py-2 pl-9 w-full bg-[#090F1A]"
-                    />
-                  </div>
-
-                  <select
+                  <SearchableSelect
+                    options={collegeOptions}
                     value={selectedCollegeId}
-                    onChange={(e) => handleCollegeChange(e.target.value)}
-                    className={`input-field text-xs py-2 w-full ${enrollErrors.college ? 'border-[#F43F5E]' : ''}`}
-                  >
-                    <option value="" disabled>-- Select College / University --</option>
-                    {collegesList
-                      .filter(col => {
-                        if (!collegeSearch.trim()) return true;
-                        const q = collegeSearch.toLowerCase();
-                        return (col.name || '').toLowerCase().includes(q) || (col.code || '').toLowerCase().includes(q);
-                      })
-                      .map((col) => (
-                        <option key={col.id} value={col.id}>
-                          {col.name} ({col.code})
-                        </option>
-                      ))}
-                  </select>
-
-                  {enrollErrors.college && (
-                    <p className="text-xs text-[#F43F5E] mt-1 flex items-center gap-1 font-semibold">
-                      <AlertCircle size={13} className="shrink-0" />
-                      {enrollErrors.college}
-                    </p>
-                  )}
+                    onChange={handleCollegeChange}
+                    placeholder="-- Select College / University --"
+                    searchPlaceholder="Search college by name or code..."
+                    error={enrollErrors.college}
+                  />
                 </div>
 
                 {/* 2. Department Selection (ONLY shown when College is selected) */}
@@ -1516,48 +1519,19 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
                     <label className="block text-xs font-bold text-[#94A3B8] uppercase font-mono">
                       2. Department / Program *
                     </label>
-
-                    <div className="relative">
-                      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B]" />
-                      <input
-                        type="text"
-                        placeholder="Search department..."
-                        value={deptSearch}
-                        onChange={(e) => setDeptSearch(e.target.value)}
-                        className="input-field text-xs py-2 pl-9 w-full bg-[#090F1A]"
-                      />
-                    </div>
-
-                    <select
+                    <SearchableSelect
+                      options={departmentOptions}
                       value={selectedDeptId}
-                      onChange={(e) => {
-                        setSelectedDeptId(e.target.value);
+                      onChange={(deptId) => {
+                        setSelectedDeptId(deptId);
                         setSelectedClassId('');
                         setEnrollForm(prev => ({ ...prev, section_id: '' }));
                         if (enrollErrors.dept) setEnrollErrors(prev => ({ ...prev, dept: null }));
                       }}
-                      className={`input-field text-xs py-2 w-full ${enrollErrors.dept ? 'border-[#F43F5E]' : ''}`}
-                    >
-                      <option value="" disabled>-- Select Department --</option>
-                      {(collegeStructure.departments || [])
-                        .filter(dept => {
-                          if (!deptSearch.trim()) return true;
-                          const q = deptSearch.toLowerCase();
-                          return (dept.name || '').toLowerCase().includes(q) || (dept.code || '').toLowerCase().includes(q);
-                        })
-                        .map((dept) => (
-                          <option key={dept.id} value={dept.id}>
-                            {dept.name} ({dept.code})
-                          </option>
-                        ))}
-                    </select>
-
-                    {enrollErrors.dept && (
-                      <p className="text-xs text-[#F43F5E] mt-1 flex items-center gap-1 font-semibold">
-                        <AlertCircle size={13} className="shrink-0" />
-                        {enrollErrors.dept}
-                      </p>
-                    )}
+                      placeholder="-- Select Department --"
+                      searchPlaceholder="Search department by name or code..."
+                      error={enrollErrors.dept}
+                    />
                   </div>
                 ) : (
                   <div className="p-3 rounded-xl bg-[#090F1A] border border-[#1A2740] text-[11px] text-[#64748B] flex items-center gap-2">
@@ -1572,23 +1546,16 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
                     <label className="block text-xs font-bold text-[#94A3B8] uppercase font-mono">
                       3. Course / Class / Year
                     </label>
-                    <select
+                    <SearchableSelect
+                      options={classOptions}
                       value={selectedClassId}
-                      onChange={(e) => {
-                        setSelectedClassId(e.target.value);
+                      onChange={(clsId) => {
+                        setSelectedClassId(clsId);
                         setEnrollForm(prev => ({ ...prev, section_id: '' }));
                       }}
-                      className="input-field text-xs py-2 w-full"
-                    >
-                      <option value="">-- All Classes / Years --</option>
-                      {collegeStructure.classes
-                        .filter(c => c.department_id === selectedDeptId)
-                        .map((cls) => (
-                          <option key={cls.id} value={cls.id}>
-                            {cls.name} ({cls.code})
-                          </option>
-                        ))}
-                    </select>
+                      placeholder="-- All Classes / Years --"
+                      searchPlaceholder="Search course / class..."
+                    />
                   </div>
                 )}
 
@@ -1598,30 +1565,17 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
                     <label className="block text-xs font-bold text-[#94A3B8] uppercase font-mono">
                       4. Section / Cohort *
                     </label>
-                    <select
+                    <SearchableSelect
+                      options={sectionOptions}
                       value={enrollForm.section_id}
-                      onChange={(e) => {
-                        setEnrollForm({ ...enrollForm, section_id: e.target.value });
+                      onChange={(secId) => {
+                        setEnrollForm({ ...enrollForm, section_id: secId });
                         if (enrollErrors.section) setEnrollErrors(prev => ({ ...prev, section: null }));
                       }}
-                      className={`input-field text-xs py-2 w-full ${enrollErrors.section ? 'border-[#F43F5E]' : ''}`}
-                    >
-                      <option value="" disabled>-- Select Section --</option>
-                      {collegeStructure.sections
-                        .filter(s => !selectedClassId || s.class_id === selectedClassId)
-                        .map((sec) => (
-                          <option key={sec.id} value={sec.id}>
-                            Section {sec.name} ({sec.class_name || 'Cohort'})
-                          </option>
-                        ))}
-                    </select>
-
-                    {enrollErrors.section && (
-                      <p className="text-xs text-[#F43F5E] mt-1 flex items-center gap-1 font-semibold">
-                        <AlertCircle size={13} className="shrink-0" />
-                        {enrollErrors.section}
-                      </p>
-                    )}
+                      placeholder="-- Select Section --"
+                      searchPlaceholder="Search section..."
+                      error={enrollErrors.section}
+                    />
                   </div>
                 )}
 

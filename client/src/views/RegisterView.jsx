@@ -15,6 +15,7 @@ import {
   FolderKanban
 } from 'lucide-react';
 import PasswordStrengthMeter from '../components/PasswordStrengthMeter';
+import SearchableSelect from '../components/SearchableSelect';
 
 export default function RegisterView({ setActiveRoute }) {
   // Mode: 'INDIVIDUAL' or 'INSTITUTIONAL'
@@ -85,24 +86,41 @@ export default function RegisterView({ setActiveRoute }) {
     setSelectedDeptId('');
     setSelectedClassId('');
     setSelectedSectionId('');
-    setDeptSearch('');
     if (fieldErrors.college) setFieldErrors(prev => ({ ...prev, college: null }));
-    loadStructure(id);
+    if (id) {
+      loadStructure(id);
+    } else {
+      setCollegeStructure({ departments: [], classes: [], sections: [] });
+    }
   };
 
-  // Filtered colleges by search query
-  const filteredColleges = collegesList.filter(col => {
-    if (!collegeSearch.trim()) return true;
-    const query = collegeSearch.toLowerCase();
-    return (col.name || '').toLowerCase().includes(query) || (col.code || '').toLowerCase().includes(query);
-  });
+  const collegeOptions = collegesList.map(col => ({
+    value: col.id,
+    label: `${col.name} (${col.code})`,
+    sublabel: col.website || ''
+  }));
 
-  // Filtered departments by search query
-  const filteredDepartments = (collegeStructure.departments || []).filter(dept => {
-    if (!deptSearch.trim()) return true;
-    const query = deptSearch.toLowerCase();
-    return (dept.name || '').toLowerCase().includes(query) || (dept.code || '').toLowerCase().includes(query);
-  });
+  const departmentOptions = (collegeStructure.departments || []).map(dept => ({
+    value: dept.id,
+    label: `${dept.name} (${dept.code})`
+  }));
+
+  const classOptions = [
+    { value: '', label: '-- All Classes / Years --' },
+    ...(collegeStructure.classes || [])
+      .filter(c => c.department_id === selectedDeptId)
+      .map(cls => ({
+        value: cls.id,
+        label: `${cls.name} (${cls.code})`
+      }))
+  ];
+
+  const sectionOptions = (collegeStructure.sections || [])
+    .filter(s => !selectedClassId || s.class_id === selectedClassId)
+    .map(sec => ({
+      value: sec.id,
+      label: `Section ${sec.name}`
+    }));
 
   const validate = () => {
     const errs = {};
@@ -362,43 +380,19 @@ export default function RegisterView({ setActiveRoute }) {
                   </div>
                 </div>
 
-                {/* 1. College / University Search & Dropdown */}
+                {/* 1. College / University Searchable Dropdown */}
                 <div className="space-y-1.5">
                   <label className="block text-xs font-semibold text-[#94A3B8]">
                     1. Select College / University *
                   </label>
-                  
-                  {/* Search box for university */}
-                  <div className="relative">
-                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B]" />
-                    <input
-                      type="text"
-                      placeholder="Search university by name or code..."
-                      value={collegeSearch}
-                      onChange={(e) => setCollegeSearch(e.target.value)}
-                      className="input-field text-xs py-2 pl-9 w-full bg-[#0E1626]"
-                    />
-                  </div>
-
-                  <select
+                  <SearchableSelect
+                    options={collegeOptions}
                     value={selectedCollegeId}
-                    onChange={(e) => handleCollegeChange(e.target.value)}
-                    className={`input-field text-xs py-2 w-full ${fieldErrors.college ? 'border-[#F43F5E]' : ''}`}
-                  >
-                    <option value="" disabled>-- Select College / University --</option>
-                    {filteredColleges.map((col) => (
-                      <option key={col.id} value={col.id}>
-                        {col.name} ({col.code})
-                      </option>
-                    ))}
-                  </select>
-
-                  {fieldErrors.college && (
-                    <p className="text-xs text-[#F43F5E] mt-1 flex items-center gap-1 font-semibold">
-                      <AlertCircle size={13} className="shrink-0" />
-                      {fieldErrors.college}
-                    </p>
-                  )}
+                    onChange={handleCollegeChange}
+                    placeholder="-- Select College / University --"
+                    searchPlaceholder="Search university by name or code..."
+                    error={fieldErrors.college}
+                  />
                 </div>
 
                 {/* 2. Department / Program (ONLY shown when university is selected) */}
@@ -407,43 +401,19 @@ export default function RegisterView({ setActiveRoute }) {
                     <label className="block text-xs font-semibold text-[#94A3B8]">
                       2. Department / Program *
                     </label>
-
-                    {/* Search box for department */}
-                    <div className="relative">
-                      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B]" />
-                      <input
-                        type="text"
-                        placeholder="Search department..."
-                        value={deptSearch}
-                        onChange={(e) => setDeptSearch(e.target.value)}
-                        className="input-field text-xs py-2 pl-9 w-full bg-[#0E1626]"
-                      />
-                    </div>
-
-                    <select
+                    <SearchableSelect
+                      options={departmentOptions}
                       value={selectedDeptId}
-                      onChange={(e) => {
-                        setSelectedDeptId(e.target.value);
+                      onChange={(deptId) => {
+                        setSelectedDeptId(deptId);
                         setSelectedClassId('');
                         setSelectedSectionId('');
                         if (fieldErrors.department) setFieldErrors(prev => ({ ...prev, department: null }));
                       }}
-                      className={`input-field text-xs py-2 w-full ${fieldErrors.department ? 'border-[#F43F5E]' : ''}`}
-                    >
-                      <option value="" disabled>-- Select Department --</option>
-                      {filteredDepartments.map((dept) => (
-                        <option key={dept.id} value={dept.id}>
-                          {dept.name} ({dept.code})
-                        </option>
-                      ))}
-                    </select>
-
-                    {fieldErrors.department && (
-                      <p className="text-xs text-[#F43F5E] mt-1 flex items-center gap-1 font-semibold">
-                        <AlertCircle size={13} className="shrink-0" />
-                        {fieldErrors.department}
-                      </p>
-                    )}
+                      placeholder="-- Select Department --"
+                      searchPlaceholder="Search department by name or code..."
+                      error={fieldErrors.department}
+                    />
                   </div>
                 ) : (
                   <div className="p-3 rounded-xl bg-[#0B1322] border border-[#1A2740] text-[11px] text-[#64748B] flex items-center gap-2">
@@ -459,52 +429,33 @@ export default function RegisterView({ setActiveRoute }) {
                       <label className="block text-xs font-semibold text-[#94A3B8] mb-1">
                         3. Course / Year
                       </label>
-                      <select
+                      <SearchableSelect
+                        options={classOptions}
                         value={selectedClassId}
-                        onChange={(e) => {
-                          setSelectedClassId(e.target.value);
+                        onChange={(clsId) => {
+                          setSelectedClassId(clsId);
                           setSelectedSectionId('');
                         }}
-                        className="input-field text-xs py-2 w-full"
-                      >
-                        <option value="">-- All Classes --</option>
-                        {collegeStructure.classes
-                          .filter(c => c.department_id === selectedDeptId)
-                          .map((cls) => (
-                            <option key={cls.id} value={cls.id}>
-                              {cls.name} ({cls.code})
-                            </option>
-                          ))}
-                      </select>
+                        placeholder="-- All Classes / Years --"
+                        searchPlaceholder="Search course / class..."
+                      />
                     </div>
 
                     <div>
                       <label className="block text-xs font-semibold text-[#94A3B8] mb-1">
                         4. Section / Cohort *
                       </label>
-                      <select
+                      <SearchableSelect
+                        options={sectionOptions}
                         value={selectedSectionId}
-                        onChange={(e) => {
-                          setSelectedSectionId(e.target.value);
+                        onChange={(secId) => {
+                          setSelectedSectionId(secId);
                           if (fieldErrors.section) setFieldErrors(prev => ({ ...prev, section: null }));
                         }}
-                        className={`input-field text-xs py-2 w-full ${fieldErrors.section ? 'border-[#F43F5E]' : ''}`}
-                      >
-                        <option value="" disabled>-- Select Section --</option>
-                        {collegeStructure.sections
-                          .filter(s => !selectedClassId || s.class_id === selectedClassId)
-                          .map((sec) => (
-                            <option key={sec.id} value={sec.id}>
-                              Section {sec.name}
-                            </option>
-                          ))}
-                      </select>
-                      {fieldErrors.section && (
-                        <p className="text-xs text-[#F43F5E] mt-1 flex items-center gap-1 font-semibold">
-                          <AlertCircle size={13} className="shrink-0" />
-                          {fieldErrors.section}
-                        </p>
-                      )}
+                        placeholder="-- Select Section --"
+                        searchPlaceholder="Search section..."
+                        error={fieldErrors.section}
+                      />
                     </div>
                   </div>
                 )}
