@@ -1,6 +1,5 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
-import NotificationBell from './NotificationBell';
 import { 
   Zap, 
   LayoutDashboard, 
@@ -90,35 +89,8 @@ export default function Sidebar({ activeRoute, setActiveRoute }) {
           ) : null}
         </div>
 
-        {/* Quick Notification & Status Strip */}
-        {user && (
-          <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-[#0D1524] border border-[#1B2A44]">
-            <div className="flex items-center gap-2 text-xs font-semibold text-[#94A3B8]">
-              <span>Alerts & Activity</span>
-            </div>
-            <NotificationBell setActiveRoute={setActiveRoute} />
-          </div>
-        )}
-
         {/* Navigation Links Grouped Strictly by Role */}
         <div className="space-y-4">
-          
-          {/* Common Section: Core Platform */}
-          <div className="space-y-1">
-            <p className="text-[10px] font-bold tracking-wider text-[#64748B] uppercase px-3 mb-1">
-              PLATFORM
-            </p>
-            <button
-              onClick={() => setActiveRoute('landing')}
-              className={`w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
-                activeRoute === 'landing' ? 'bg-[#132238] text-[#34D399] border border-[#34D399]/30' : 'text-[#94A3B8] hover:text-white hover:bg-[#0E1626]'
-              }`}
-            >
-              <LayoutDashboard size={15} />
-              Overview & Architecture
-            </button>
-          </div>
-
           {user && (
             <>
               {/* Student Role Exclusive Navigation */}

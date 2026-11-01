@@ -17,6 +17,7 @@ import {
   FolderPlus,
   ArrowRightLeft,
   Plus,
+  FolderKanban,
   X
 } from 'lucide-react';
 

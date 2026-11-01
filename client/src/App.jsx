@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from './context/AuthContext';
 import Sidebar from './components/Sidebar';
+import NotificationBell from './components/NotificationBell';
 import ErrorBoundary from './components/ErrorBoundary';
 import LandingView from './views/LandingView';
 import RegisterView from './views/RegisterView';
@@ -186,18 +187,51 @@ export default function App() {
     );
   }
 
+  const showSidebar = activeRoute !== 'landing';
+
   return (
     <div className="min-h-screen flex bg-[#080D14] text-white selection:bg-[#10B981] selection:text-[#042F2E]">
       
-      {/* Sidebar Navigation */}
-      <Sidebar
-        activeRoute={activeRoute}
-        setActiveRoute={setActiveRoute}
-      />
+      {/* Sidebar Navigation (Hidden on Landing Page) */}
+      {showSidebar && (
+        <Sidebar
+          activeRoute={activeRoute}
+          setActiveRoute={setActiveRoute}
+        />
+      )}
 
-      {/* Main Content Viewport protected by ErrorBoundary */}
-      <main className="flex-1 min-w-0 p-6 lg:p-8">
-        <ErrorBoundary onReset={() => setActiveRoute('landing')}>
+      {/* Main Content Area */}
+      <div className="flex-1 min-w-0 flex flex-col">
+        {/* Top-Right Notification & Status Bar (Logged-in Pages) */}
+        {user && activeRoute !== 'landing' && (
+          <header className="h-14 border-b border-[#1B2A44] bg-[#0A101D]/90 backdrop-blur-md px-6 lg:px-8 flex items-center justify-between sticky top-0 z-30">
+            <div className="flex items-center gap-2 text-xs font-semibold text-[#64748B]">
+              <span className="text-[#38BDF8] font-bold uppercase tracking-wider">{user.role}</span>
+              <span>/</span>
+              <span className="text-white capitalize">{activeRoute.replace(/-/g, ' ')}</span>
+            </div>
+            <div className="flex items-center gap-3.5">
+              {/* Notification Bell positioned in top right */}
+              <NotificationBell setActiveRoute={setActiveRoute} />
+              
+              {/* Quick Profile Link */}
+              <div 
+                onClick={() => setActiveRoute('profile')}
+                className="flex items-center gap-2 py-1 px-2.5 rounded-lg bg-[#121D32] border border-[#1F304E] hover:border-[#38BDF8]/40 cursor-pointer transition-all"
+                title="View Profile & Security"
+              >
+                <div className="w-6 h-6 rounded-md bg-[#38BDF8]/20 text-[#38BDF8] flex items-center justify-center font-bold text-xs">
+                  {user.name ? user.name[0].toUpperCase() : 'U'}
+                </div>
+                <span className="text-xs font-bold text-white max-w-[130px] truncate hidden sm:inline">{user.name}</span>
+              </div>
+            </div>
+          </header>
+        )}
+
+        {/* Viewport protected by Isolated ErrorBoundary per Route */}
+        <main className={`flex-1 min-w-0 ${activeRoute === 'landing' ? 'p-0' : 'p-6 lg:p-8'}`}>
+          <ErrorBoundary key={activeRoute} route={activeRoute} onReset={() => window.location.reload()}>
           {activeRoute === 'landing' && <LandingView setActiveRoute={setActiveRoute} />}
           {activeRoute === 'register' && <RegisterView setActiveRoute={setActiveRoute} />}
           {activeRoute === 'login' && <LoginView setActiveRoute={setActiveRoute} />}
@@ -326,6 +360,7 @@ export default function App() {
           )}
         </ErrorBoundary>
       </main>
+      </div>
 
       {/* Global Interactive Quiz Preview Modal */}
       {previewQuizId && (

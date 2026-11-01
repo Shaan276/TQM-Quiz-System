@@ -118,6 +118,68 @@ router.delete('/:id', authenticateToken, async (req, res, next) => {
 });
 
 // -------------------------------------------------------------
+// POST /api/v1/notifications/report-error - Report page error to admins (Aggregated)
+// -------------------------------------------------------------
+const errorReportTracker = new Map();
+
+router.post('/report-error', async (req, res, next) => {
+  try {
+    const { route = 'unknown', errorMessage = 'Rendering error', errorStack } = req.body || {};
+    const reporter = req.headers.authorization ? 'Authenticated User' : 'Visitor/Student';
+    
+    const cleanRoute = String(route).replace(/[^a-zA-Z0-9_-]/g, '').trim() || 'unknown';
+    const cleanMsg = String(errorMessage).slice(0, 200).trim();
+    const aggregateKey = `${cleanRoute}::${cleanMsg}`;
+    
+    const count = (errorReportTracker.get(aggregateKey) || 0) + 1;
+    errorReportTracker.set(aggregateKey, count);
+
+    // Fetch all platform & institutional admins
+    const admins = await dbAll(`SELECT id FROM users WHERE role IN ('SUPER_ADMIN', 'ORG_ADMIN', 'ADMIN')`);
+    
+    if (admins.length > 0) {
+      const crypto = require('crypto');
+      const title = `⚠️ Page Error: #${cleanRoute}`;
+      const msg = `"${cleanMsg}" encountered on #${cleanRoute}. (Reported ${count} time${count > 1 ? 's' : ''} by users)`;
+      const linkUrl = `/#${cleanRoute}`;
+
+      for (const admin of admins) {
+        // Check for existing unread error notification for this route
+        const existing = await dbGet(
+          `SELECT id FROM notifications WHERE user_id = ? AND title = ? AND is_read = 0`,
+          [admin.id, title]
+        );
+
+        if (existing) {
+          // Update the existing notification message with incremented count (avoids spamming admins)
+          await dbRun(
+            `UPDATE notifications SET message = ?, created_at = CURRENT_TIMESTAMP WHERE id = ?`,
+            [msg, existing.id]
+          );
+        } else {
+          // Insert a fresh notification
+          await dbRun(
+            `INSERT INTO notifications (id, user_id, title, message, type, link_url, is_read) VALUES (?, ?, ?, ?, 'ACTION_REQUIRED', ?, 0)`,
+            [crypto.randomUUID(), admin.id, title, msg, linkUrl]
+          );
+        }
+      }
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        count,
+        message: 'Error reported to admin successfully. Thank you for reporting this issue.'
+      }
+    });
+  } catch (err) {
+    console.error('[ErrorReport] Failed to record error report:', err);
+    return res.status(500).json({ success: false, error: { message: 'Failed to process error report' } });
+  }
+});
+
+// -------------------------------------------------------------
 // DELETE /api/v1/notifications - Clear all read notifications
 // -------------------------------------------------------------
 router.delete('/', authenticateToken, async (req, res, next) => {

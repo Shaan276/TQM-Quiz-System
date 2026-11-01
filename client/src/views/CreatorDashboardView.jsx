@@ -30,7 +30,10 @@ import {
   X,
   Rocket,
   BarChart3,
-  GraduationCap
+  GraduationCap,
+  RefreshCw,
+  ChevronDown,
+  Check
 } from 'lucide-react';
 import TeacherInsightsView from './TeacherInsightsView';
 
@@ -155,6 +158,12 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
     maxAttempts: 1,
     allowLate: false
   });
+
+  // College Course & Student Searchable Dropdown States
+  const [courseDropdownOpen, setCourseDropdownOpen] = useState(false);
+  const [courseSearch, setCourseSearch] = useState('');
+  const [studentDropdownOpen, setStudentDropdownOpen] = useState(false);
+  const [studentSearch, setStudentSearch] = useState('');
 
   // Start Test / Launch Mode Modal state
   const [launchModalQuiz, setLaunchModalQuiz] = useState(null);
@@ -754,26 +763,27 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
             >
               
               {/* Header Info */}
-              <div className="space-y-2.5">
-                <div className="flex items-center justify-between gap-2">
-                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
-                    quiz.status === 'PUBLISHED'
-                      ? 'bg-[#10B981]/20 text-[#34D399] border border-[#10B981]/30'
-                      : 'bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/30'
-                  }`}>
-                    {quiz.status} &bull; v{quiz.version}
-                  </span>
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
+                      quiz.status === 'PUBLISHED'
+                        ? 'bg-[#10B981]/20 text-[#34D399] border border-[#10B981]/30'
+                        : 'bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/30'
+                    }`}>
+                      {quiz.status} &bull; v{quiz.version}
+                    </span>
 
-                  <div className="flex items-center gap-2">
                     {quiz.status === 'PUBLISHED' && (
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#38BDF8]/15 text-[#38BDF8] border border-[#38BDF8]/30">
                         Self-Paced Ready
                       </span>
                     )}
-                    <span className="text-[10px] font-mono text-[#34D399]">
-                      Subject: {quiz.category || 'General'}
-                    </span>
                   </div>
+
+                  <span className="text-[11px] font-mono font-medium text-[#34D399] truncate max-w-[140px]" title={quiz.category || 'General'}>
+                    {quiz.category || 'General'}
+                  </span>
                 </div>
 
                 <div>
@@ -802,74 +812,24 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
                 </div>
               </div>
 
-              {/* Action Buttons */}
-              <div className="pt-3 border-t border-[#1B2A44] flex items-center justify-between gap-2">
-                
-                <div className="flex items-center gap-1">
-                  {/* Edit Studio */}
-                  <button
-                    onClick={() => onOpenStudio(quiz.id)}
-                    className="p-2 rounded-lg bg-[#132238] hover:bg-[#1A2D4A] text-white hover:text-[#34D399] transition-colors"
-                    title="Edit in Quiz Studio"
-                  >
-                    <Edit3 size={15} />
-                  </button>
-
-                  {/* Preview */}
-                  <button
-                    onClick={() => onOpenPreview(quiz.id)}
-                    className="p-2 rounded-lg bg-[#132238] hover:bg-[#1A2D4A] text-white hover:text-[#06B6D4] transition-colors"
-                    title="Preview Quiz"
-                  >
-                    <Eye size={15} />
-                  </button>
-
-                  {/* Student Attempts (Phase P3) */}
-                  {quiz.status === 'PUBLISHED' && (
-                    <button
-                      onClick={() => handleOpenAttempts(quiz)}
-                      className="p-2 rounded-lg bg-[#132238] hover:bg-[#1A2D4A] text-white hover:text-[#38BDF8] transition-colors"
-                      title="View Student Assessment Attempts"
-                    >
-                      <Award size={15} />
-                    </button>
-                  )}
-
-                  {/* Duplicate */}
-                  <button
-                    onClick={() => handleDuplicate(quiz.id)}
-                    className="p-2 rounded-lg bg-[#132238] hover:bg-[#1A2D4A] text-white hover:text-[#F59E0B] transition-colors"
-                    title="Duplicate Quiz"
-                  >
-                    <Copy size={15} />
-                  </button>
-
-                  {/* Delete */}
-                  <button
-                    onClick={() => setQuizToDelete(quiz)}
-                    className="p-2 rounded-lg bg-[#132238] hover:bg-[#F43F5E]/20 text-[#64748B] hover:text-[#F43F5E] transition-colors"
-                    title="Delete Quiz"
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                </div>
-
+              {/* Action Buttons: Spacious Two-Tier Layout */}
+              <div className="pt-3 border-t border-[#1B2A44] space-y-2.5">
+                {/* Primary Launch & Publish Row */}
                 <div className="flex items-center gap-2">
-                  {/* Start / Launch Test (Single Primary Action with Modal Options) */}
                   {quiz.status === 'PUBLISHED' ? (
                     <>
                       <button
                         onClick={() => setLaunchModalQuiz(quiz)}
-                        className="btn-emerald-primary text-xs py-1.5 px-3 font-bold flex items-center gap-1.5 shadow-md shadow-[#10B981]/25 hover:scale-105 transition-all"
-                        title="Launch test in Live Multiplayer, Self-Paced, Assignment, or Proctored Mode"
+                        className="flex-1 btn-emerald-primary text-xs py-2 px-3 font-bold flex items-center justify-center gap-2 shadow-md shadow-[#10B981]/20 hover:scale-[1.01] transition-all"
+                        title="Start test: Live Multiplayer, Self-Paced, or Official Assignment"
                       >
-                        <Play size={12} className="fill-current" />
+                        <Play size={13} className="fill-current" />
                         <span>Start Test</span>
                       </button>
 
                       <button
                         onClick={() => handleTogglePublish(quiz)}
-                        className="text-[10px] font-semibold px-2 py-1.5 rounded-lg bg-[#1F293D] text-[#94A3B8] hover:bg-[#F43F5E]/15 hover:text-[#F43F5E] transition-all"
+                        className="text-xs font-semibold px-3 py-2 rounded-xl bg-[#132238] border border-[#1F304E] text-[#94A3B8] hover:bg-[#F43F5E]/15 hover:border-[#F43F5E]/30 hover:text-[#F43F5E] transition-all shrink-0"
                         title="Revert to draft"
                       >
                         Unpublish
@@ -878,14 +838,65 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
                   ) : (
                     <button
                       onClick={() => handleTogglePublish(quiz)}
-                      className="text-[11px] font-bold px-3 py-1.5 rounded-lg bg-[#10B981]/20 text-[#34D399] hover:bg-[#10B981]/30 border border-[#10B981]/40 flex items-center gap-1.5 transition-all"
+                      className="w-full text-xs font-bold py-2 px-3 rounded-xl bg-[#10B981]/15 text-[#34D399] hover:bg-[#10B981]/25 border border-[#10B981]/30 flex items-center justify-center gap-2 transition-all"
                     >
-                      <Rocket size={12} />
+                      <Rocket size={13} />
                       <span>Publish to Launch</span>
                     </button>
                   )}
                 </div>
 
+                {/* Secondary Utility Toolbar */}
+                <div className="flex items-center justify-between gap-1 pt-1.5 border-t border-[#1B2A44]/40">
+                  <div className="flex items-center gap-1.5">
+                    {/* Edit Studio */}
+                    <button
+                      onClick={() => onOpenStudio(quiz.id)}
+                      className="p-1.5 rounded-lg bg-[#132238] hover:bg-[#1A2D4A] text-[#94A3B8] hover:text-[#34D399] transition-colors"
+                      title="Edit in Quiz Studio"
+                    >
+                      <Edit3 size={14} />
+                    </button>
+
+                    {/* Preview */}
+                    <button
+                      onClick={() => onOpenPreview(quiz.id)}
+                      className="p-1.5 rounded-lg bg-[#132238] hover:bg-[#1A2D4A] text-[#94A3B8] hover:text-[#06B6D4] transition-colors"
+                      title="Preview Quiz"
+                    >
+                      <Eye size={14} />
+                    </button>
+
+                    {/* Student Attempts (Phase P3) */}
+                    {quiz.status === 'PUBLISHED' && (
+                      <button
+                        onClick={() => handleOpenAttempts(quiz)}
+                        className="p-1.5 rounded-lg bg-[#132238] hover:bg-[#1A2D4A] text-[#94A3B8] hover:text-[#38BDF8] transition-colors"
+                        title="View Student Assessment Attempts"
+                      >
+                        <Award size={14} />
+                      </button>
+                    )}
+
+                    {/* Duplicate */}
+                    <button
+                      onClick={() => handleDuplicate(quiz.id)}
+                      className="p-1.5 rounded-lg bg-[#132238] hover:bg-[#1A2D4A] text-[#94A3B8] hover:text-[#F59E0B] transition-colors"
+                      title="Duplicate Quiz"
+                    >
+                      <Copy size={14} />
+                    </button>
+                  </div>
+
+                  {/* Delete */}
+                  <button
+                    onClick={() => setQuizToDelete(quiz)}
+                    className="p-1.5 rounded-lg bg-[#132238] hover:bg-[#F43F5E]/20 text-[#64748B] hover:text-[#F43F5E] transition-colors"
+                    title="Delete Quiz"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               </div>
 
             </div>
@@ -1725,97 +1736,249 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
                   </span>
                 </h4>
 
-                {/* Section selection */}
-                <div className="space-y-1.5">
-                  <p className="text-[11px] text-[#94A3B8]">Assign to whole Teaching Section(s):</p>
+                {/* College Course & Section Searchable Dropdown */}
+                <div className="space-y-1.5 relative">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-bold text-[#94A3B8] uppercase tracking-wider">
+                      College Course(s) &amp; Section(s) (e.g. B.Tech, MBA):
+                    </label>
+                    <span className="text-[11px] font-mono text-[#38BDF8]">
+                      {assignmentForm.selectedSections.length} section(s) selected
+                    </span>
+                  </div>
+
                   {teacherAllocations.length === 0 ? (
                     <div className="p-3 rounded-lg bg-[#0E1626] border border-[#1F304E] text-[#64748B] text-xs">
-                      No teaching sections allocated to your account yet. You can still select individual students below.
+                      No college teaching sections allocated to your account yet. You can still select individual students below.
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {teacherAllocations.map(alloc => {
-                        const isChecked = assignmentForm.selectedSections.includes(alloc.section_id);
-                        return (
-                          <label
-                            key={alloc.id}
-                            className={`p-2.5 rounded-lg border text-xs flex items-center gap-2 cursor-pointer transition-colors ${
-                              isChecked ? 'bg-[#10B981]/15 border-[#10B981] text-white' : 'bg-[#0E1626] border-[#1B2A44] text-[#94A3B8] hover:text-white'
-                            }`}
-                          >
+                    <div>
+                      {/* Dropdown Trigger */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCourseDropdownOpen(!courseDropdownOpen);
+                          setStudentDropdownOpen(false);
+                        }}
+                        className="w-full p-2.5 rounded-xl bg-[#0E1626] border border-[#1B2A44] hover:border-[#38BDF8]/50 text-left flex items-center justify-between text-xs transition-all"
+                      >
+                        <div className="flex items-center gap-2 overflow-hidden">
+                          <Search size={14} className="text-[#38BDF8] shrink-0" />
+                          <span className="truncate text-white font-medium">
+                            {assignmentForm.selectedSections.length === 0
+                              ? 'Search & Select Course (e.g. B.Tech, MBA) and Sections...'
+                              : `${assignmentForm.selectedSections.length} Section(s) Chosen (${
+                                  teacherAllocations
+                                    .filter(a => assignmentForm.selectedSections.includes(a.section_id))
+                                    .map(a => `${a.class_name} ${a.section_name}`)
+                                    .slice(0, 2)
+                                    .join(', ')
+                                }${assignmentForm.selectedSections.length > 2 ? '...' : ''})`}
+                          </span>
+                        </div>
+                        <ChevronDown size={14} className={`text-[#64748B] transition-transform ${courseDropdownOpen ? 'rotate-180' : ''}`} />
+                      </button>
+
+                      {/* Dropdown Menu */}
+                      {courseDropdownOpen && (
+                        <div className="absolute z-50 left-0 right-0 mt-1 rounded-xl bg-[#0D1524] border border-[#1F304E] shadow-2xl p-2.5 space-y-2 max-h-64 overflow-hidden flex flex-col">
+                          {/* Search Input inside Dropdown */}
+                          <div className="relative shrink-0">
+                            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B]" />
                             <input
-                              type="checkbox"
-                              checked={isChecked}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  setAssignmentForm({
-                                    ...assignmentForm,
-                                    selectedSections: [...assignmentForm.selectedSections, alloc.section_id]
-                                  });
-                                } else {
-                                  setAssignmentForm({
-                                    ...assignmentForm,
-                                    selectedSections: assignmentForm.selectedSections.filter(sid => sid !== alloc.section_id)
-                                  });
-                                }
-                              }}
-                              className="rounded border-[#1B2A44] bg-[#0E1626]"
+                              type="text"
+                              value={courseSearch}
+                              onChange={(e) => setCourseSearch(e.target.value)}
+                              placeholder="Search Course (B.Tech, MBA...) or Section..."
+                              className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-[#080D14] border border-[#1B2A44] text-xs text-white placeholder-[#64748B] focus:outline-none focus:border-[#38BDF8]"
+                              autoFocus
                             />
-                            <div>
-                              <p className="font-bold text-white">{alloc.class_name} &bull; {alloc.section_name}</p>
-                              <p className="text-[10px] text-[#64748B]">{alloc.subject_name} ({alloc.academic_year_name})</p>
-                            </div>
-                          </label>
-                        );
-                      })}
+                          </div>
+
+                          {/* Quick Actions */}
+                          <div className="flex items-center justify-between px-1 text-[10px] text-[#64748B] border-b border-[#1B2A44] pb-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => setAssignmentForm({
+                                ...assignmentForm,
+                                selectedSections: teacherAllocations.map(a => a.section_id)
+                              })}
+                              className="text-[#38BDF8] hover:underline font-semibold"
+                            >
+                              Select All Courses &amp; Sections
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setAssignmentForm({ ...assignmentForm, selectedSections: [] })}
+                              className="hover:underline"
+                            >
+                              Clear
+                            </button>
+                          </div>
+
+                          {/* Filtered Allocations List */}
+                          <div className="overflow-y-auto space-y-1 max-h-44 pr-1">
+                            {teacherAllocations
+                              .filter(a => `${a.class_name} ${a.section_name} ${a.subject_name}`.toLowerCase().includes(courseSearch.toLowerCase()))
+                              .map(alloc => {
+                                const isChecked = assignmentForm.selectedSections.includes(alloc.section_id);
+                                return (
+                                  <label
+                                    key={alloc.id}
+                                    className={`p-2 rounded-lg border text-xs flex items-center justify-between cursor-pointer transition-colors ${
+                                      isChecked
+                                        ? 'bg-[#10B981]/15 border-[#10B981]/50 text-white'
+                                        : 'bg-[#0E1626] border-[#1B2A44] text-[#94A3B8] hover:bg-[#121D32]'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <input
+                                        type="checkbox"
+                                        checked={isChecked}
+                                        onChange={(e) => {
+                                          if (e.target.checked) {
+                                            setAssignmentForm({
+                                              ...assignmentForm,
+                                              selectedSections: [...assignmentForm.selectedSections, alloc.section_id]
+                                            });
+                                          } else {
+                                            setAssignmentForm({
+                                              ...assignmentForm,
+                                              selectedSections: assignmentForm.selectedSections.filter(sid => sid !== alloc.section_id)
+                                            });
+                                          }
+                                        }}
+                                        className="rounded border-[#1B2A44] bg-[#0E1626]"
+                                      />
+                                      <div>
+                                        <p className="font-bold text-white text-xs">{alloc.class_name} &bull; {alloc.section_name}</p>
+                                        <p className="text-[10px] text-[#64748B]">{alloc.subject_name} ({alloc.academic_year_name})</p>
+                                      </div>
+                                    </div>
+                                    {isChecked && <Check size={14} className="text-[#34D399]" />}
+                                  </label>
+                                );
+                              })}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
 
-                {/* Individual students selection */}
+                {/* Individual Students Searchable Dropdown */}
                 {eligibleStudents.length > 0 && (
-                  <div className="space-y-1.5 pt-2">
-                    <p className="text-[11px] text-[#94A3B8]">Or Select Specific Individual Students:</p>
-                    <div className="max-h-36 overflow-y-auto space-y-1.5 p-2 rounded-lg bg-[#0E1626] border border-[#1B2A44]">
-                      {eligibleStudents.map(st => {
-                        const isChecked = assignmentForm.selectedStudents.includes(st.id);
-                        const isCoveredBySection = assignmentForm.selectedSections.includes(st.section_id);
-                        return (
-                          <label
-                            key={st.id}
-                            className={`p-2 rounded flex items-center justify-between text-xs cursor-pointer ${
-                              isCoveredBySection ? 'opacity-70 bg-[#121D32]' : isChecked ? 'bg-[#38BDF8]/15 text-white' : 'hover:bg-[#121D32]'
-                            }`}
-                          >
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="checkbox"
-                                disabled={isCoveredBySection}
-                                checked={isChecked || isCoveredBySection}
-                                onChange={(e) => {
-                                  if (e.target.checked) {
-                                    setAssignmentForm({
-                                      ...assignmentForm,
-                                      selectedStudents: [...assignmentForm.selectedStudents, st.id]
-                                    });
-                                  } else {
-                                    setAssignmentForm({
-                                      ...assignmentForm,
-                                      selectedStudents: assignmentForm.selectedStudents.filter(uid => uid !== st.id)
-                                    });
-                                  }
-                                }}
-                              />
-                              <span className="font-semibold text-white">{st.name}</span>
-                              <span className="text-[#64748B] text-[10px]">{st.email}</span>
-                            </div>
-                            <span className="text-[10px] text-[#38BDF8] font-mono">
-                              {isCoveredBySection ? '(Included via Section)' : `${st.section_name} ${st.roll_number ? `(${st.roll_number})` : ''}`}
-                            </span>
-                          </label>
-                        );
-                      })}
+                  <div className="space-y-1.5 pt-2 relative">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-bold text-[#94A3B8] uppercase tracking-wider">
+                        Select Specific Individual Student(s):
+                      </label>
+                      <span className="text-[11px] font-mono text-[#A78BFA]">
+                        {assignmentForm.selectedStudents.length} student(s) selected
+                      </span>
                     </div>
+
+                    {/* Student Dropdown Trigger */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStudentDropdownOpen(!studentDropdownOpen);
+                        setCourseDropdownOpen(false);
+                      }}
+                      className="w-full p-2.5 rounded-xl bg-[#0E1626] border border-[#1B2A44] hover:border-[#A78BFA]/50 text-left flex items-center justify-between text-xs transition-all"
+                    >
+                      <div className="flex items-center gap-2 overflow-hidden">
+                        <Search size={14} className="text-[#A78BFA] shrink-0" />
+                        <span className="truncate text-white font-medium">
+                          {assignmentForm.selectedStudents.length === 0
+                            ? 'Search & Select Specific Students by Name or Roll No...'
+                            : `${assignmentForm.selectedStudents.length} Individual Student(s) Selected`}
+                        </span>
+                      </div>
+                      <ChevronDown size={14} className={`text-[#64748B] transition-transform ${studentDropdownOpen ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {/* Student Dropdown Menu */}
+                    {studentDropdownOpen && (
+                      <div className="absolute z-50 left-0 right-0 mt-1 rounded-xl bg-[#0D1524] border border-[#1F304E] shadow-2xl p-2.5 space-y-2 max-h-64 overflow-hidden flex flex-col">
+                        {/* Search Input inside Dropdown */}
+                        <div className="relative shrink-0">
+                          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B]" />
+                          <input
+                            type="text"
+                            value={studentSearch}
+                            onChange={(e) => setStudentSearch(e.target.value)}
+                            placeholder="Search by student name, roll no, or section..."
+                            className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-[#080D14] border border-[#1B2A44] text-xs text-white placeholder-[#64748B] focus:outline-none focus:border-[#A78BFA]"
+                            autoFocus
+                          />
+                        </div>
+
+                        {/* Quick Actions */}
+                        <div className="flex items-center justify-between px-1 text-[10px] text-[#64748B] border-b border-[#1B2A44] pb-1.5 shrink-0">
+                          <span className="text-[10px] text-[#94A3B8]">
+                            Showing {eligibleStudents.filter(st => `${st.name} ${st.email} ${st.roll_number || ''} ${st.section_name || ''}`.toLowerCase().includes(studentSearch.toLowerCase())).length} student(s)
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setAssignmentForm({ ...assignmentForm, selectedStudents: [] })}
+                            className="text-[#FB7185] hover:underline"
+                          >
+                            Clear Selected
+                          </button>
+                        </div>
+
+                        {/* Filtered Students List */}
+                        <div className="overflow-y-auto space-y-1 max-h-44 pr-1">
+                          {eligibleStudents
+                            .filter(st => `${st.name} ${st.email} ${st.roll_number || ''} ${st.section_name || ''}`.toLowerCase().includes(studentSearch.toLowerCase()))
+                            .map(st => {
+                              const isChecked = assignmentForm.selectedStudents.includes(st.id);
+                              const isCoveredBySection = assignmentForm.selectedSections.includes(st.section_id);
+                              return (
+                                <label
+                                  key={st.id}
+                                  className={`p-2 rounded-lg flex items-center justify-between text-xs cursor-pointer transition-colors ${
+                                    isCoveredBySection
+                                      ? 'opacity-65 bg-[#121D32] border border-[#1B2A44]'
+                                      : isChecked
+                                      ? 'bg-[#A78BFA]/15 border border-[#A78BFA]/40 text-white'
+                                      : 'hover:bg-[#121D32] border border-transparent'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <input
+                                      type="checkbox"
+                                      disabled={isCoveredBySection}
+                                      checked={isChecked || isCoveredBySection}
+                                      onChange={(e) => {
+                                        if (e.target.checked) {
+                                          setAssignmentForm({
+                                            ...assignmentForm,
+                                            selectedStudents: [...assignmentForm.selectedStudents, st.id]
+                                          });
+                                        } else {
+                                          setAssignmentForm({
+                                            ...assignmentForm,
+                                            selectedStudents: assignmentForm.selectedStudents.filter(uid => uid !== st.id)
+                                          });
+                                        }
+                                      }}
+                                    />
+                                    <div>
+                                      <p className="font-semibold text-white">{st.name}</p>
+                                      <p className="text-[#64748B] text-[10px]">{st.email}</p>
+                                    </div>
+                                  </div>
+                                  <span className="text-[10px] text-[#38BDF8] font-mono">
+                                    {isCoveredBySection ? '(Included via Section)' : `${st.section_name || 'Section'} ${st.roll_number ? `(${st.roll_number})` : ''}`}
+                                  </span>
+                                </label>
+                              );
+                            })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
