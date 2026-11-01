@@ -104,9 +104,14 @@ export default function App() {
       setActiveRoute('learner-dashboard');
     }
 
-    // Teacher blocked from Admin Console
-    if (isTeacher && !isSuperAdmin && !isOrgAdmin && activeRoute === 'admin-dashboard') {
+    // Teacher blocked from Admin Console and Student platform
+    if (isTeacher && !isSuperAdmin && !isOrgAdmin && ['admin-dashboard', 'learner-dashboard'].includes(activeRoute)) {
       setActiveRoute('creator-dashboard');
+    }
+
+    // Org Admin blocked from Student platform
+    if (isOrgAdmin && !isSuperAdmin && ['learner-dashboard'].includes(activeRoute)) {
+      setActiveRoute('admin-dashboard');
     }
   }, [user, activeRoute, setActiveRoute]);
 

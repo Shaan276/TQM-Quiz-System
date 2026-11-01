@@ -187,22 +187,6 @@ export default function LearnerDashboardView({ onOpenPreview, onStartAttempt, on
     }
   }, [accessToken, search, selectedSubject, selectedDifficulty]);
 
-  const handleUpgradeToTeacher = async () => {
-    try {
-      const res = await fetch('/api/v1/users/upgrade-to-teacher', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${accessToken}` }
-      });
-      const data = await res.json();
-      if (data.success) {
-        setSession(data.data.accessToken, data.data.refreshToken, data.data.profile);
-        setActiveRoute('creator-dashboard');
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
   const isStudent = user?.role === 'STUDENT' || user?.role === 'LEARNER';
 
   return (
@@ -241,17 +225,6 @@ export default function LearnerDashboardView({ onOpenPreview, onStartAttempt, on
               </span>
             )}
           </button>
-
-          {isStudent && (
-            <button
-              onClick={handleUpgradeToTeacher}
-              className="btn-secondary text-xs py-2 px-3 font-semibold gap-1.5 text-[#8B5CF6] border-[#8B5CF6]/30"
-              title="Upgrade role to author quizzes"
-            >
-              <Zap size={14} />
-              Switch to Teacher
-            </button>
-          )}
         </div>
       </div>
 

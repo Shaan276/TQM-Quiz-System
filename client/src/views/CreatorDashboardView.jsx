@@ -29,7 +29,8 @@ import {
   Calendar,
   X,
   Rocket,
-  BarChart3
+  BarChart3,
+  GraduationCap
 } from 'lucide-react';
 import TeacherInsightsView from './TeacherInsightsView';
 
@@ -159,22 +160,6 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
   const [launchModalQuiz, setLaunchModalQuiz] = useState(null);
 
   const isCreatorOrAdmin = ['CREATOR', 'TEACHER', 'ADMIN', 'SUPER_ADMIN'].includes((user?.role || '').toUpperCase());
-
-  // Role upgrade handler for testing/learners
-  const handleUpgradeToCreator = async () => {
-    try {
-      const res = await fetch('/api/v1/users/upgrade-to-teacher', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${accessToken}` }
-      });
-      const data = await res.json();
-      if (data.success) {
-        setSession(data.data.accessToken, data.data.refreshToken, data.data.profile);
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
 
   const handleOpenAttempts = async (quiz) => {
     setViewingAttemptsQuiz(quiz);
@@ -481,21 +466,20 @@ export default function CreatorDashboardView({ setActiveRoute, onOpenStudio, onO
   if (!isCreatorOrAdmin) {
     return (
       <div className="max-w-2xl mx-auto py-16 text-center space-y-5">
-        <div className="w-16 h-16 rounded-2xl bg-[#F59E0B]/15 border border-[#F59E0B]/30 flex items-center justify-center text-[#F59E0B] mx-auto">
+        <div className="w-16 h-16 rounded-2xl bg-[#F43F5E]/15 border border-[#F43F5E]/30 flex items-center justify-center text-[#FB7185] mx-auto">
           <ShieldCheck size={32} />
         </div>
         <div className="space-y-2">
-          <h2 className="text-xl font-bold text-white">Creator Studio Requires Creator Privileges</h2>
+          <h2 className="text-xl font-bold text-white">Teacher Privileges Required</h2>
           <p className="text-xs text-[#94A3B8] max-w-md mx-auto leading-relaxed">
-            Your current account role is <span className="text-white font-bold">LEARNER</span>. You can upgrade to a <span className="text-[#34D399] font-bold">CREATOR</span> account with a single click to begin authoring quizzes and managing question banks.
+            This workspace is reserved for authorized Instructors and Administrators. Roles are separated to ensure institutional security and assessment integrity.
           </p>
         </div>
         <button
-          onClick={handleUpgradeToCreator}
-          className="btn-emerald-primary text-xs py-2.5 px-6 font-bold shadow-lg shadow-[#10B981]/20 gap-2 inline-flex"
+          onClick={() => setActiveRoute('learner-dashboard')}
+          className="btn-secondary text-xs py-2.5 px-6 font-bold gap-2 inline-flex"
         >
-          <Sparkles size={16} />
-          Upgrade to Creator Role (Instant)
+          Return to Learner Portal
         </button>
       </div>
     );
