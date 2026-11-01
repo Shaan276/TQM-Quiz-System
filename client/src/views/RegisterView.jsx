@@ -1,6 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { UserPlus, CheckCircle2, AlertCircle, ArrowRight, Eye, EyeOff, Building2, User, GraduationCap, ShieldAlert } from 'lucide-react';
+import { 
+  UserPlus, 
+  CheckCircle2, 
+  AlertCircle, 
+  ArrowRight, 
+  Eye, 
+  EyeOff, 
+  Building2, 
+  User, 
+  GraduationCap, 
+  ShieldAlert,
+  Search,
+  FolderKanban
+} from 'lucide-react';
 import PasswordStrengthMeter from '../components/PasswordStrengthMeter';
 
 export default function RegisterView({ setActiveRoute }) {
@@ -17,12 +30,18 @@ export default function RegisterView({ setActiveRoute }) {
   // Institutional Specific Fields
   const [instRole, setInstRole] = useState('STUDENT'); // 'STUDENT' or 'TEACHER'
   const [collegesList, setCollegesList] = useState([]);
+  const [collegeSearch, setCollegeSearch] = useState('');
   const [selectedCollegeId, setSelectedCollegeId] = useState('');
+
   const [collegeStructure, setCollegeStructure] = useState({ departments: [], classes: [], sections: [] });
+  const [deptSearch, setDeptSearch] = useState('');
   const [selectedDeptId, setSelectedDeptId] = useState('');
   const [selectedClassId, setSelectedClassId] = useState('');
   const [selectedSectionId, setSelectedSectionId] = useState('');
-  const [rollNumber, setRollNumber] = useState('');
+  
+  // Role Identifiers
+  const [studentId, setStudentId] = useState('');
+  const [teacherId, setTeacherId] = useState('');
 
   const [fieldErrors, setFieldErrors] = useState({});
   const [loading, setLoading] = useState(false);
@@ -38,11 +57,6 @@ export default function RegisterView({ setActiveRoute }) {
         const data = await res.json();
         if (data.success && data.data?.colleges) {
           setCollegesList(data.data.colleges);
-          if (data.data.colleges.length > 0 && !selectedCollegeId) {
-            const firstId = data.data.colleges[0].id;
-            setSelectedCollegeId(firstId);
-            loadStructure(firstId);
-          }
         }
       } catch (err) {
         console.error('Error fetching colleges:', err);
@@ -71,8 +85,24 @@ export default function RegisterView({ setActiveRoute }) {
     setSelectedDeptId('');
     setSelectedClassId('');
     setSelectedSectionId('');
+    setDeptSearch('');
+    if (fieldErrors.college) setFieldErrors(prev => ({ ...prev, college: null }));
     loadStructure(id);
   };
+
+  // Filtered colleges by search query
+  const filteredColleges = collegesList.filter(col => {
+    if (!collegeSearch.trim()) return true;
+    const query = collegeSearch.toLowerCase();
+    return (col.name || '').toLowerCase().includes(query) || (col.code || '').toLowerCase().includes(query);
+  });
+
+  // Filtered departments by search query
+  const filteredDepartments = (collegeStructure.departments || []).filter(dept => {
+    if (!deptSearch.trim()) return true;
+    const query = deptSearch.toLowerCase();
+    return (dept.name || '').toLowerCase().includes(query) || (dept.code || '').toLowerCase().includes(query);
+  });
 
   const validate = () => {
     const errs = {};
@@ -102,18 +132,34 @@ export default function RegisterView({ setActiveRoute }) {
 
     if (accountType === 'INSTITUTIONAL') {
       if (!selectedCollegeId) {
-        errs.college = 'Please select your College / University.';
+        errs.college = 'Please select your College / University from the list.';
       }
-      if (instRole === 'STUDENT' && !selectedSectionId) {
-        errs.section = 'Please select your Cohort Section.';
+      if (!selectedDeptId) {
+        errs.department = 'Please select your Department / Program.';
       }
-      if (instRole === 'STUDENT' && !rollNumber.trim()) {
-        errs.rollNumber = 'Student Roll Number / University ID is required.';
+
+      if (instRole === 'STUDENT') {
+        if (!selectedSectionId) {
+          errs.section = 'Please select your Cohort Section.';
+        }
+        if (!studentId.trim()) {
+          errs.studentId = 'Student ID is required.';
+        }
+      }
+
+      if (instRole === 'TEACHER') {
+        if (!teacherId.trim()) {
+          errs.teacherId = 'Teacher ID / Faculty ID is required.';
+        }
       }
     }
 
     setFieldErrors(errs);
-    return Object.keys(errs).length === 0;
+    if (Object.keys(errs).length > 0) {
+      setErrorMsg('Please complete all highlighted mandatory fields before submitting.');
+      return false;
+    }
+    return true;
   };
 
   const handleRegister = async (e) => {
@@ -137,7 +183,8 @@ export default function RegisterView({ setActiveRoute }) {
         role: accountType === 'INSTITUTIONAL' ? instRole : 'STUDENT',
         organizationId: accountType === 'INSTITUTIONAL' ? selectedCollegeId : null,
         sectionId: (accountType === 'INSTITUTIONAL' && instRole === 'STUDENT') ? selectedSectionId : null,
-        rollNumber: (accountType === 'INSTITUTIONAL' && instRole === 'STUDENT') ? rollNumber.trim() : null
+        studentId: (accountType === 'INSTITUTIONAL' && instRole === 'STUDENT') ? studentId.trim() : null,
+        teacherId: (accountType === 'INSTITUTIONAL' && instRole === 'TEACHER') ? teacherId.trim() : null
       };
 
       const res = await fetch('/api/v1/auth/register', {
@@ -172,22 +219,22 @@ export default function RegisterView({ setActiveRoute }) {
       
       {/* Header */}
       <div className="text-center space-y-1">
-        <h2 className="text-2xl font-bold text-white tracking-wide">
+        <h2 className="text-2xl font-black text-white tracking-wide">
           Create Your Qubix Account
         </h2>
         <p className="text-xs text-[#94A3B8]">
-          Choose how you will be using the Qubix Assessment Platform.
+          Choose between Individual self-paced access or an official Institutional profile.
         </p>
       </div>
 
-      {/* Account Type Selector Tabs */}
-      <div className="grid grid-cols-2 gap-3 p-1.5 bg-[#0D1524] border border-[#1E2D4A] rounded-2xl">
+      {/* Account Type Selector Tabs (Glassmorphism) */}
+      <div className="grid grid-cols-2 gap-3 p-1.5 bg-[#0D1524]/80 border border-white/[0.08] backdrop-blur-md rounded-2xl shadow-sm">
         <button
           type="button"
-          onClick={() => { setAccountType('INDIVIDUAL'); setFieldErrors({}); }}
+          onClick={() => { setAccountType('INDIVIDUAL'); setFieldErrors({}); setErrorMsg(''); }}
           className={`py-3 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
             accountType === 'INDIVIDUAL'
-              ? 'bg-[#10B981]/20 text-[#34D399] border border-[#10B981]/40 shadow-lg shadow-[#10B981]/10'
+              ? 'bg-[#10B981]/20 text-[#34D399] border border-[#10B981]/40 shadow-sm'
               : 'text-[#94A3B8] hover:text-white'
           }`}
         >
@@ -197,10 +244,10 @@ export default function RegisterView({ setActiveRoute }) {
 
         <button
           type="button"
-          onClick={() => { setAccountType('INSTITUTIONAL'); setFieldErrors({}); }}
+          onClick={() => { setAccountType('INSTITUTIONAL'); setFieldErrors({}); setErrorMsg(''); }}
           className={`py-3 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
             accountType === 'INSTITUTIONAL'
-              ? 'bg-[#38BDF8]/20 text-[#38BDF8] border border-[#38BDF8]/40 shadow-lg shadow-[#38BDF8]/10'
+              ? 'bg-[#38BDF8]/20 text-[#38BDF8] border border-[#38BDF8]/40 shadow-sm'
               : 'text-[#94A3B8] hover:text-white'
           }`}
         >
@@ -210,7 +257,7 @@ export default function RegisterView({ setActiveRoute }) {
       </div>
 
       {/* Type Explainer Card */}
-      <div className={`p-4 rounded-2xl border text-xs flex items-start gap-3 ${
+      <div className={`p-4 rounded-2xl border text-xs flex items-start gap-3 backdrop-blur-md ${
         accountType === 'INDIVIDUAL'
           ? 'bg-[#10B981]/5 border-[#10B981]/30 text-[#A7F3D0]'
           : 'bg-[#38BDF8]/5 border-[#38BDF8]/30 text-[#BAE6FD]'
@@ -221,7 +268,7 @@ export default function RegisterView({ setActiveRoute }) {
             <div>
               <p className="font-bold text-white">Self-Paced Individual Access</p>
               <p className="text-[11px] text-[#94A3B8] mt-0.5">
-                Anyone can register freely! Immediate access to quizzes, study flashcards, and mistake notebook. Not bound to any college (you can affiliate later).
+                Immediate access to quizzes, study flashcards, and personal mistake revision. Free and open to everyone.
               </p>
             </div>
           </>
@@ -229,25 +276,26 @@ export default function RegisterView({ setActiveRoute }) {
           <>
             <ShieldAlert size={18} className="text-[#38BDF8] shrink-0 mt-0.5" />
             <div>
-              <p className="font-bold text-white">Institutional Security & Verification</p>
+              <p className="font-bold text-white">Institutional Security Verification</p>
               <p className="text-[11px] text-[#94A3B8] mt-0.5">
-                For College Students & Teachers. For security reasons, institutional accounts require approval by your Organization Admin or Instructor before access is granted.
+                For College Students &amp; Faculty. To ensure academic integrity, institutional accounts require verification by your college administrator or teacher before access.
               </p>
             </div>
           </>
         )}
       </div>
 
-      {/* Notification Banners */}
+      {/* Global Error Banner */}
       {errorMsg && (
-        <div className="dashboard-card p-3.5 border-l-4 border-l-[#F43F5E] flex items-center gap-2.5 text-xs text-[#F43F5E]">
-          <AlertCircle size={16} className="shrink-0" />
-          <span>{errorMsg}</span>
+        <div className="p-4 rounded-2xl bg-[#F43F5E]/10 border border-[#F43F5E]/40 flex items-center gap-3 text-xs text-[#F43F5E] animate-in fade-in">
+          <AlertCircle size={18} className="shrink-0" />
+          <span className="font-semibold">{errorMsg}</span>
         </div>
       )}
 
+      {/* Success Banner */}
       {successMsg && (
-        <div className="dashboard-card p-5 border-l-4 border-l-[#10B981] space-y-4">
+        <div className="p-5 rounded-2xl bg-[#10B981]/15 border border-[#10B981]/40 space-y-4 animate-in fade-in">
           <div className="flex items-start gap-3 text-xs text-[#34D399]">
             <CheckCircle2 size={22} className="shrink-0 mt-0.5" />
             <div>
@@ -256,7 +304,7 @@ export default function RegisterView({ setActiveRoute }) {
               {accountType === 'INSTITUTIONAL' && (
                 <div className="mt-2.5 p-3 rounded-xl bg-[#09111E] border border-[#1E2E4A] text-[11px] text-[#94A3B8]">
                   Registered Institution: <strong className="text-white">{registeredOrgName}</strong><br />
-                  Status: <strong className="text-[#FBBF24]">PENDING APPROVAL</strong>
+                  Approval Gate: <strong className="text-[#FBBF24]">PENDING REVIEW</strong>
                 </div>
               )}
             </div>
@@ -272,26 +320,26 @@ export default function RegisterView({ setActiveRoute }) {
 
       {/* Form Card */}
       {!successMsg && (
-        <div className="dashboard-card p-6 space-y-4">
+        <div className="p-6 md:p-8 rounded-2xl bg-[#0D1524]/80 border border-white/[0.08] backdrop-blur-md shadow-sm space-y-5">
           <form onSubmit={handleRegister} noValidate className="space-y-4">
 
             {/* Institutional Hierarchy Selectors */}
             {accountType === 'INSTITUTIONAL' && (
-              <div className="p-4 rounded-xl bg-[#0B1322] border border-[#1E2D4A] space-y-3.5">
-                <p className="text-xs font-bold text-[#38BDF8] uppercase tracking-wider flex items-center gap-1.5">
+              <div className="p-4 rounded-xl bg-[#090F1A] border border-[#1F2F4D] space-y-4">
+                <p className="text-xs font-bold text-[#38BDF8] uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b border-[#1A2740]">
                   <Building2 size={14} />
                   Institutional Affiliation Details
                 </p>
 
                 {/* Role in Institution */}
                 <div>
-                  <label className="block text-xs font-semibold text-[#94A3B8] mb-1">
+                  <label className="block text-xs font-semibold text-[#94A3B8] mb-1.5">
                     Your Institutional Role *
                   </label>
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
-                      onClick={() => setInstRole('STUDENT')}
+                      onClick={() => { setInstRole('STUDENT'); setFieldErrors({}); }}
                       className={`py-2 px-3 rounded-xl text-xs font-semibold border text-center transition-all ${
                         instRole === 'STUDENT'
                           ? 'bg-[#10B981]/20 border-[#10B981] text-[#34D399]'
@@ -302,7 +350,7 @@ export default function RegisterView({ setActiveRoute }) {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setInstRole('TEACHER')}
+                      onClick={() => { setInstRole('TEACHER'); setFieldErrors({}); }}
                       className={`py-2 px-3 rounded-xl text-xs font-semibold border text-center transition-all ${
                         instRole === 'TEACHER'
                           ? 'bg-[#8B5CF6]/20 border-[#8B5CF6] text-[#A78BFA]'
@@ -314,59 +362,102 @@ export default function RegisterView({ setActiveRoute }) {
                   </div>
                 </div>
 
-                {/* College Selector */}
-                <div>
-                  <label className="block text-xs font-semibold text-[#94A3B8] mb-1">
-                    Select College / University *
+                {/* 1. College / University Search & Dropdown */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold text-[#94A3B8]">
+                    1. Select College / University *
                   </label>
+                  
+                  {/* Search box for university */}
+                  <div className="relative">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B]" />
+                    <input
+                      type="text"
+                      placeholder="Search university by name or code..."
+                      value={collegeSearch}
+                      onChange={(e) => setCollegeSearch(e.target.value)}
+                      className="input-field text-xs py-2 pl-9 w-full bg-[#0E1626]"
+                    />
+                  </div>
+
                   <select
                     value={selectedCollegeId}
                     onChange={(e) => handleCollegeChange(e.target.value)}
-                    className="input-field text-xs py-2 w-full"
+                    className={`input-field text-xs py-2 w-full ${fieldErrors.college ? 'border-[#F43F5E]' : ''}`}
                   >
-                    <option value="">-- Choose Registered College --</option>
-                    {collegesList.map((col) => (
+                    <option value="" disabled>-- Select College / University --</option>
+                    {filteredColleges.map((col) => (
                       <option key={col.id} value={col.id}>
                         {col.name} ({col.code})
                       </option>
                     ))}
                   </select>
+
                   {fieldErrors.college && (
-                    <p className="text-xs text-[#F43F5E] mt-1">{fieldErrors.college}</p>
+                    <p className="text-xs text-[#F43F5E] mt-1 flex items-center gap-1 font-semibold">
+                      <AlertCircle size={13} className="shrink-0" />
+                      {fieldErrors.college}
+                    </p>
                   )}
                 </div>
 
-                {/* Department */}
-                {selectedCollegeId && (
-                  <div>
-                    <label className="block text-xs font-semibold text-[#94A3B8] mb-1">
-                      Department / Program *
+                {/* 2. Department / Program (ONLY shown when university is selected) */}
+                {selectedCollegeId ? (
+                  <div className="space-y-1.5 animate-in fade-in">
+                    <label className="block text-xs font-semibold text-[#94A3B8]">
+                      2. Department / Program *
                     </label>
+
+                    {/* Search box for department */}
+                    <div className="relative">
+                      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B]" />
+                      <input
+                        type="text"
+                        placeholder="Search department..."
+                        value={deptSearch}
+                        onChange={(e) => setDeptSearch(e.target.value)}
+                        className="input-field text-xs py-2 pl-9 w-full bg-[#0E1626]"
+                      />
+                    </div>
+
                     <select
                       value={selectedDeptId}
                       onChange={(e) => {
                         setSelectedDeptId(e.target.value);
                         setSelectedClassId('');
                         setSelectedSectionId('');
+                        if (fieldErrors.department) setFieldErrors(prev => ({ ...prev, department: null }));
                       }}
-                      className="input-field text-xs py-2 w-full"
+                      className={`input-field text-xs py-2 w-full ${fieldErrors.department ? 'border-[#F43F5E]' : ''}`}
                     >
-                      <option value="">-- Choose Department (e.g. Computer Science) --</option>
-                      {collegeStructure.departments.map((dept) => (
+                      <option value="" disabled>-- Select Department --</option>
+                      {filteredDepartments.map((dept) => (
                         <option key={dept.id} value={dept.id}>
                           {dept.name} ({dept.code})
                         </option>
                       ))}
                     </select>
+
+                    {fieldErrors.department && (
+                      <p className="text-xs text-[#F43F5E] mt-1 flex items-center gap-1 font-semibold">
+                        <AlertCircle size={13} className="shrink-0" />
+                        {fieldErrors.department}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="p-3 rounded-xl bg-[#0B1322] border border-[#1A2740] text-[11px] text-[#64748B] flex items-center gap-2">
+                    <AlertCircle size={14} className="text-[#38BDF8]" />
+                    <span>Select a College / University above to view available departments.</span>
                   </div>
                 )}
 
                 {/* If Student: Class & Section */}
                 {instRole === 'STUDENT' && selectedDeptId && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 animate-in fade-in">
                     <div>
                       <label className="block text-xs font-semibold text-[#94A3B8] mb-1">
-                        Course / Year *
+                        3. Course / Year
                       </label>
                       <select
                         value={selectedClassId}
@@ -376,7 +467,7 @@ export default function RegisterView({ setActiveRoute }) {
                         }}
                         className="input-field text-xs py-2 w-full"
                       >
-                        <option value="">-- Choose Class --</option>
+                        <option value="">-- All Classes --</option>
                         {collegeStructure.classes
                           .filter(c => c.department_id === selectedDeptId)
                           .map((cls) => (
@@ -389,16 +480,19 @@ export default function RegisterView({ setActiveRoute }) {
 
                     <div>
                       <label className="block text-xs font-semibold text-[#94A3B8] mb-1">
-                        Section / Cohort *
+                        4. Section / Cohort *
                       </label>
                       <select
                         value={selectedSectionId}
-                        onChange={(e) => setSelectedSectionId(e.target.value)}
-                        className="input-field text-xs py-2 w-full"
+                        onChange={(e) => {
+                          setSelectedSectionId(e.target.value);
+                          if (fieldErrors.section) setFieldErrors(prev => ({ ...prev, section: null }));
+                        }}
+                        className={`input-field text-xs py-2 w-full ${fieldErrors.section ? 'border-[#F43F5E]' : ''}`}
                       >
-                        <option value="">-- Choose Section --</option>
+                        <option value="" disabled>-- Select Section --</option>
                         {collegeStructure.sections
-                          .filter(s => s.class_id === selectedClassId)
+                          .filter(s => !selectedClassId || s.class_id === selectedClassId)
                           .map((sec) => (
                             <option key={sec.id} value={sec.id}>
                               Section {sec.name}
@@ -406,27 +500,61 @@ export default function RegisterView({ setActiveRoute }) {
                           ))}
                       </select>
                       {fieldErrors.section && (
-                        <p className="text-xs text-[#F43F5E] mt-1">{fieldErrors.section}</p>
+                        <p className="text-xs text-[#F43F5E] mt-1 flex items-center gap-1 font-semibold">
+                          <AlertCircle size={13} className="shrink-0" />
+                          {fieldErrors.section}
+                        </p>
                       )}
                     </div>
                   </div>
                 )}
 
-                {/* If Student: Roll Number */}
+                {/* If Student: Student ID */}
                 {instRole === 'STUDENT' && (
-                  <div>
+                  <div className="animate-in fade-in">
                     <label className="block text-xs font-semibold text-[#94A3B8] mb-1">
-                      Student Roll Number / University ID *
+                      Student ID *
                     </label>
                     <input
                       type="text"
-                      placeholder="e.g. 2024-CSE-042"
-                      value={rollNumber}
-                      onChange={(e) => setRollNumber(e.target.value)}
-                      className="input-field text-xs py-2 w-full"
+                      placeholder="e.g. STU-2024-042"
+                      value={studentId}
+                      onChange={(e) => {
+                        setStudentId(e.target.value);
+                        if (fieldErrors.studentId) setFieldErrors(prev => ({ ...prev, studentId: null }));
+                      }}
+                      className={`input-field text-xs py-2 w-full font-mono ${fieldErrors.studentId ? 'border-[#F43F5E]' : ''}`}
                     />
-                    {fieldErrors.rollNumber && (
-                      <p className="text-xs text-[#F43F5E] mt-1">{fieldErrors.rollNumber}</p>
+                    {fieldErrors.studentId && (
+                      <p className="text-xs text-[#F43F5E] mt-1 flex items-center gap-1 font-semibold">
+                        <AlertCircle size={13} className="shrink-0" />
+                        {fieldErrors.studentId}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* If Teacher: Teacher ID */}
+                {instRole === 'TEACHER' && (
+                  <div className="animate-in fade-in">
+                    <label className="block text-xs font-semibold text-[#94A3B8] mb-1">
+                      Teacher ID / Faculty ID *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. FAC-2024-019"
+                      value={teacherId}
+                      onChange={(e) => {
+                        setTeacherId(e.target.value);
+                        if (fieldErrors.teacherId) setFieldErrors(prev => ({ ...prev, teacherId: null }));
+                      }}
+                      className={`input-field text-xs py-2 w-full font-mono ${fieldErrors.teacherId ? 'border-[#F43F5E]' : ''}`}
+                    />
+                    {fieldErrors.teacherId && (
+                      <p className="text-xs text-[#F43F5E] mt-1 flex items-center gap-1 font-semibold">
+                        <AlertCircle size={13} className="shrink-0" />
+                        {fieldErrors.teacherId}
+                      </p>
                     )}
                   </div>
                 )}
@@ -436,7 +564,7 @@ export default function RegisterView({ setActiveRoute }) {
             {/* Full Name */}
             <div>
               <label htmlFor="reg-name" className="block text-xs font-semibold text-[#94A3B8] mb-1">
-                Full Name
+                Full Name *
               </label>
               <input
                 id="reg-name"
@@ -449,10 +577,10 @@ export default function RegisterView({ setActiveRoute }) {
                   setName(e.target.value);
                   if (fieldErrors.name) setFieldErrors(prev => ({ ...prev, name: null }));
                 }}
-                className={`input-field ${fieldErrors.name ? 'border-[#F43F5E]' : ''}`}
+                className={`input-field text-xs py-2 w-full ${fieldErrors.name ? 'border-[#F43F5E]' : ''}`}
               />
               {fieldErrors.name && (
-                <p className="text-xs text-[#F43F5E] mt-1.5 flex items-center gap-1">
+                <p className="text-xs text-[#F43F5E] mt-1 flex items-center gap-1 font-semibold">
                   <AlertCircle size={13} className="shrink-0" />
                   {fieldErrors.name}
                 </p>
@@ -462,7 +590,7 @@ export default function RegisterView({ setActiveRoute }) {
             {/* Email Address */}
             <div>
               <label htmlFor="reg-email" className="block text-xs font-semibold text-[#94A3B8] mb-1">
-                {accountType === 'INSTITUTIONAL' ? 'Official / College Email Address' : 'Email Address'}
+                {accountType === 'INSTITUTIONAL' ? 'Official / College Email Address *' : 'Email Address *'}
               </label>
               <input
                 id="reg-email"
@@ -476,10 +604,10 @@ export default function RegisterView({ setActiveRoute }) {
                   setEmail(e.target.value);
                   if (fieldErrors.email) setFieldErrors(prev => ({ ...prev, email: null }));
                 }}
-                className={`input-field ${fieldErrors.email ? 'border-[#F43F5E]' : ''}`}
+                className={`input-field text-xs py-2 w-full ${fieldErrors.email ? 'border-[#F43F5E]' : ''}`}
               />
               {fieldErrors.email && (
-                <p className="text-xs text-[#F43F5E] mt-1.5 flex items-center gap-1">
+                <p className="text-xs text-[#F43F5E] mt-1 flex items-center gap-1 font-semibold">
                   <AlertCircle size={13} className="shrink-0" />
                   {fieldErrors.email}
                 </p>
@@ -489,7 +617,7 @@ export default function RegisterView({ setActiveRoute }) {
             {/* Password */}
             <div>
               <label htmlFor="reg-password" className="block text-xs font-semibold text-[#94A3B8] mb-1">
-                Password
+                Password *
               </label>
               <div className="relative">
                 <input
@@ -503,7 +631,7 @@ export default function RegisterView({ setActiveRoute }) {
                     setPassword(e.target.value);
                     if (fieldErrors.password) setFieldErrors(prev => ({ ...prev, password: null }));
                   }}
-                  className={`input-field pr-10 ${fieldErrors.password ? 'border-[#F43F5E]' : ''}`}
+                  className={`input-field pr-10 text-xs py-2 w-full ${fieldErrors.password ? 'border-[#F43F5E]' : ''}`}
                 />
                 <button
                   type="button"
@@ -518,7 +646,7 @@ export default function RegisterView({ setActiveRoute }) {
               <PasswordStrengthMeter password={password} />
 
               {fieldErrors.password && (
-                <p className="text-xs text-[#F43F5E] mt-1.5 flex items-center gap-1">
+                <p className="text-xs text-[#F43F5E] mt-1 flex items-center gap-1 font-semibold">
                   <AlertCircle size={13} className="shrink-0" />
                   {fieldErrors.password}
                 </p>
@@ -528,7 +656,7 @@ export default function RegisterView({ setActiveRoute }) {
             {/* Password Confirmation */}
             <div>
               <label htmlFor="reg-passwordConfirmation" className="block text-xs font-semibold text-[#94A3B8] mb-1">
-                Confirm Password
+                Confirm Password *
               </label>
               <input
                 id="reg-passwordConfirmation"
@@ -541,10 +669,10 @@ export default function RegisterView({ setActiveRoute }) {
                   setPasswordConfirmation(e.target.value);
                   if (fieldErrors.passwordConfirmation) setFieldErrors(prev => ({ ...prev, passwordConfirmation: null }));
                 }}
-                className={`input-field ${fieldErrors.passwordConfirmation ? 'border-[#F43F5E]' : ''}`}
+                className={`input-field text-xs py-2 w-full ${fieldErrors.passwordConfirmation ? 'border-[#F43F5E]' : ''}`}
               />
               {fieldErrors.passwordConfirmation && (
-                <p className="text-xs text-[#F43F5E] mt-1.5 flex items-center gap-1">
+                <p className="text-xs text-[#F43F5E] mt-1 flex items-center gap-1 font-semibold">
                   <AlertCircle size={13} className="shrink-0" />
                   {fieldErrors.passwordConfirmation}
                 </p>
@@ -554,7 +682,7 @@ export default function RegisterView({ setActiveRoute }) {
             <button
               type="submit"
               disabled={loading}
-              className="btn-emerald-primary w-full py-2.5 text-xs font-bold gap-2 mt-2"
+              className="btn-emerald-primary w-full py-2.5 text-xs font-bold gap-2 mt-2 shadow-lg shadow-[#10B981]/15"
             >
               {loading ? (
                 <div className="flex items-center gap-2">
@@ -570,7 +698,7 @@ export default function RegisterView({ setActiveRoute }) {
             </button>
           </form>
 
-          <div className="pt-3 border-t border-[#1B2A44] text-center">
+          <div className="pt-3 border-t border-[#1E2A44] text-center">
             <p className="text-xs text-[#94A3B8]">
               Already have an account?{' '}
               <button

@@ -65,7 +65,7 @@ export default function Sidebar({ activeRoute, setActiveRoute }) {
         {/* User Role Status Pill */}
         <div className="p-3 rounded-xl bg-[#121D32] border border-[#1F304E] flex items-center justify-between">
           <div className="flex items-center gap-2 overflow-hidden">
-            <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${
+            <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 overflow-hidden ${
               isSuperAdmin 
                 ? 'bg-[#F59E0B]/20 text-[#F59E0B] border border-[#F59E0B]/30' 
                 : isOrgAdmin
@@ -74,7 +74,9 @@ export default function Sidebar({ activeRoute, setActiveRoute }) {
                 ? 'bg-[#8B5CF6]/20 text-[#8B5CF6] border border-[#8B5CF6]/30'
                 : 'bg-[#10B981]/20 text-[#34D399] border border-[#10B981]/30'
             }`}>
-              {isSuperAdmin ? <ShieldCheck size={14} /> : isOrgAdmin ? <ShieldCheck size={14} /> : isTeacher ? <FolderKanban size={14} /> : <GraduationCap size={14} />}
+              {user?.avatarUrl ? (
+                <img src={user.avatarUrl} alt={user.name} className="w-full h-full object-cover" />
+              ) : isSuperAdmin ? <ShieldCheck size={14} /> : isOrgAdmin ? <ShieldCheck size={14} /> : isTeacher ? <FolderKanban size={14} /> : <GraduationCap size={14} />}
             </div>
             <div className="overflow-hidden">
               <p className="text-xs font-bold text-white truncate">{user?.name || 'Guest User'}</p>

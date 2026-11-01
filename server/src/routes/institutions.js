@@ -238,6 +238,56 @@ router.post('/colleges', authenticateToken, requireRole(['SUPER_ADMIN', 'ADMIN']
 });
 
 // -------------------------------------------------------------
+// POST /api/v1/institutions/request-college-registration (Public submission)
+// -------------------------------------------------------------
+router.post('/request-college-registration', async (req, res, next) => {
+  try {
+    const { collegeName, city, website, requesterName, requesterEmail, requesterRole = 'STUDENT', notes = '' } = req.body;
+
+    if (!collegeName || !collegeName.trim()) {
+      return res.status(400).json({ success: false, error: { message: 'College or University name is required' } });
+    }
+    if (!requesterName || !requesterName.trim()) {
+      return res.status(400).json({ success: false, error: { message: 'Your full name is required' } });
+    }
+    if (!requesterEmail || !requesterEmail.trim()) {
+      return res.status(400).json({ success: false, error: { message: 'Your email address is required' } });
+    }
+
+    const id = generateUUID();
+    await dbRun(`
+      INSERT INTO college_registration_requests (id, college_name, city, website, requester_name, requester_email, requester_role, notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `, [id, collegeName.trim(), city ? city.trim() : null, website ? website.trim() : null, requesterName.trim(), requesterEmail.trim().toLowerCase(), requesterRole, notes.trim()]);
+
+    // Send notification to Super Admins
+    try {
+      const admins = await dbAll(`SELECT id FROM users WHERE role IN ('SUPER_ADMIN', 'ADMIN')`);
+      if (admins.length > 0) {
+        await notifyUsers(admins.map(a => a.id), {
+          title: 'New College Registration Request',
+          message: `'${requesterName}' requested onboarding for '${collegeName.trim()}'.`,
+          type: 'INFO',
+          linkUrl: '/admin-dashboard'
+        });
+      }
+    } catch (notifErr) {
+      console.error('Error notifying admins of college request:', notifErr);
+    }
+
+    return res.status(201).json({
+      success: true,
+      data: {
+        message: 'College registration request submitted successfully! Our administrative team will review and onboard your institution.',
+        requestId: id
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// -------------------------------------------------------------
 // GET /api/v1/institutions/colleges/:id/structure (Public hierarchy lookup)
 // -------------------------------------------------------------
 router.get('/colleges/:id/structure', async (req, res, next) => {

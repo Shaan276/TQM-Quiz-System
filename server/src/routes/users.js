@@ -11,7 +11,7 @@ const router = express.Router();
 router.get('/profile', authenticateToken, async (req, res, next) => {
   try {
     const user = await dbGet(
-      `SELECT id, email, name, role, is_verified, approval_status, organization_id, created_at, updated_at FROM users WHERE id = ?`,
+      `SELECT id, email, name, role, is_verified, approval_status, organization_id, avatar_url, teacher_id, student_id, created_at, updated_at FROM users WHERE id = ?`,
       [req.user.id]
     );
 
@@ -30,6 +30,9 @@ router.get('/profile', authenticateToken, async (req, res, next) => {
           email: user.email,
           name: user.name,
           role: user.role,
+          avatarUrl: user.avatar_url || null,
+          teacherId: user.teacher_id || null,
+          studentId: user.student_id || null,
           isVerified: user.is_verified === 1,
           approvalStatus: user.approval_status || 'APPROVED',
           organizationId: user.organization_id || null,
@@ -48,7 +51,7 @@ router.get('/profile', authenticateToken, async (req, res, next) => {
 // -------------------------------------------------------------
 router.put('/profile', authenticateToken, async (req, res, next) => {
   try {
-    const { name } = req.body;
+    const { name, avatarUrl, teacherId, studentId } = req.body;
 
     if (!name || !name.trim()) {
       return res.status(400).json({
@@ -58,19 +61,28 @@ router.put('/profile', authenticateToken, async (req, res, next) => {
     }
 
     const cleanName = name.trim();
+    const cleanAvatar = avatarUrl !== undefined ? avatarUrl : null;
+    const cleanTeacherId = teacherId !== undefined ? (teacherId ? teacherId.trim() : null) : null;
+    const cleanStudentId = studentId !== undefined ? (studentId ? studentId.trim() : null) : null;
+
+    // Fetch existing profile to retain values if not provided
+    const existing = await dbGet(`SELECT * FROM users WHERE id = ?`, [req.user.id]);
+    const finalAvatar = cleanAvatar !== null ? cleanAvatar : existing.avatar_url;
+    const finalTeacherId = cleanTeacherId !== null ? cleanTeacherId : existing.teacher_id;
+    const finalStudentId = cleanStudentId !== null ? cleanStudentId : existing.student_id;
 
     await dbRun(
-      `UPDATE users SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-      [cleanName, req.user.id]
+      `UPDATE users SET name = ?, avatar_url = ?, teacher_id = ?, student_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      [cleanName, finalAvatar, finalTeacherId, finalStudentId, req.user.id]
     );
 
     await dbRun(
       `INSERT INTO audit_logs (user_id, action, details) VALUES (?, 'PROFILE_UPDATED', ?)`,
-      [req.user.id, `User updated profile name to '${cleanName}'`]
+      [req.user.id, `User updated profile information`]
     );
 
     const updated = await dbGet(
-      `SELECT id, email, name, role, is_verified, created_at, updated_at FROM users WHERE id = ?`,
+      `SELECT id, email, name, role, is_verified, approval_status, organization_id, avatar_url, teacher_id, student_id, created_at, updated_at FROM users WHERE id = ?`,
       [req.user.id]
     );
 
@@ -82,7 +94,12 @@ router.put('/profile', authenticateToken, async (req, res, next) => {
           email: updated.email,
           name: updated.name,
           role: updated.role,
+          avatarUrl: updated.avatar_url || null,
+          teacherId: updated.teacher_id || null,
+          studentId: updated.student_id || null,
           isVerified: updated.is_verified === 1,
+          approvalStatus: updated.approval_status || 'APPROVED',
+          organizationId: updated.organization_id || null,
           createdAt: updated.created_at,
           updatedAt: updated.updated_at
         },

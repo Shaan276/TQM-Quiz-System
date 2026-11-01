@@ -48,11 +48,15 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
   const [isBannerDismissed, setIsBannerDismissed] = useState(() => localStorage.getItem('qubix_dismiss_enroll_banner') === 'true');
   const [showEnrollModal, setShowEnrollModal] = useState(false);
   const [collegesList, setCollegesList] = useState([]);
+  const [collegeSearch, setCollegeSearch] = useState('');
   const [selectedCollegeId, setSelectedCollegeId] = useState('');
   const [collegeStructure, setCollegeStructure] = useState({ departments: [], classes: [], sections: [] });
+  const [deptSearch, setDeptSearch] = useState('');
   const [selectedDeptId, setSelectedDeptId] = useState('');
   const [selectedClassId, setSelectedClassId] = useState('');
-  const [enrollForm, setEnrollForm] = useState({ section_id: '', roll_number: '', semester: '' });
+  const [enrollForm, setEnrollForm] = useState({ section_id: '', student_id: '' });
+  const [enrollErrors, setEnrollErrors] = useState({});
+  const [enrollErrorMsg, setEnrollErrorMsg] = useState('');
   const [enrollSubmitting, setEnrollSubmitting] = useState(false);
   const [enrollSuccessMsg, setEnrollSuccessMsg] = useState('');
 
@@ -128,16 +132,20 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
   const handleOpenEnrollModal = async () => {
     setShowEnrollModal(true);
     setEnrollSuccessMsg('');
+    setEnrollErrorMsg('');
+    setEnrollErrors({});
+    setSelectedCollegeId('');
+    setSelectedDeptId('');
+    setSelectedClassId('');
+    setCollegeSearch('');
+    setDeptSearch('');
+    setEnrollForm({ section_id: '', student_id: user?.studentId || '' });
+
     try {
       const res = await fetch('/api/v1/institutions/colleges');
       const data = await res.json();
       if (data.success && data.data?.colleges) {
         setCollegesList(data.data.colleges);
-        if (data.data.colleges.length > 0) {
-          const firstId = data.data.colleges[0].id;
-          setSelectedCollegeId(firstId);
-          await loadCollegeStructure(firstId);
-        }
       }
     } catch (e) {
       console.error('Failed to fetch colleges', e);
@@ -148,16 +156,43 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
     setSelectedCollegeId(collegeId);
     setSelectedDeptId('');
     setSelectedClassId('');
+    setDeptSearch('');
     setEnrollForm(prev => ({ ...prev, section_id: '' }));
+    if (enrollErrors.college) setEnrollErrors(prev => ({ ...prev, college: null }));
     await loadCollegeStructure(collegeId);
+  };
+
+  const validateEnrollment = () => {
+    const errs = {};
+    if (!selectedCollegeId) {
+      errs.college = 'Please select a College / University from the list.';
+    }
+    if (!selectedDeptId) {
+      errs.dept = 'Please select your Department / Program.';
+    }
+    if (!enrollForm.section_id) {
+      errs.section = 'Please select your Cohort Section.';
+    }
+    if (!enrollForm.student_id || !enrollForm.student_id.trim()) {
+      errs.studentId = 'Student ID is required.';
+    }
+
+    setEnrollErrors(errs);
+    if (Object.keys(errs).length > 0) {
+      setEnrollErrorMsg('Please fill in all mandatory fields highlighted below.');
+      return false;
+    }
+    return true;
   };
 
   const handleRequestEnrollment = async (e) => {
     e.preventDefault();
-    if (!enrollForm.section_id) {
-      alert('Please select your section / cohort.');
+    setEnrollErrorMsg('');
+    
+    if (!validateEnrollment()) {
       return;
     }
+
     try {
       setEnrollSubmitting(true);
       const res = await fetch('/api/v1/institutions/students/request-enrollment', {
@@ -168,7 +203,7 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
         },
         body: JSON.stringify({
           section_id: enrollForm.section_id,
-          roll_number: enrollForm.roll_number
+          roll_number: enrollForm.student_id.trim()
         })
       });
       const data = await res.json();
@@ -180,10 +215,11 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
           fetchData();
         }, 1800);
       } else {
-        alert(data.error?.message || 'Error submitting enrollment request');
+        setEnrollErrorMsg(data.error?.message || 'Error submitting enrollment request');
       }
     } catch (err) {
       console.error(err);
+      setEnrollErrorMsg('Network error submitting enrollment request');
     } finally {
       setEnrollSubmitting(false);
     }
@@ -1423,60 +1459,120 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
                   Select your College, Department, and Cohort Section. Your enrollment will be submitted for teacher / admin verification.
                 </p>
 
-                {/* 1. College Selection */}
-                <div>
-                  <label className="block text-xs font-bold text-[#94A3B8] mb-1.5 uppercase font-mono">
+                {enrollErrorMsg && (
+                  <div className="p-3.5 rounded-xl bg-[#F43F5E]/15 border border-[#F43F5E]/40 flex items-center gap-2.5 text-xs text-[#F43F5E]">
+                    <AlertCircle size={16} className="shrink-0" />
+                    <span className="font-semibold">{enrollErrorMsg}</span>
+                  </div>
+                )}
+
+                {/* 1. College Selection & Search */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-[#94A3B8] uppercase font-mono">
                     1. Select College / University *
                   </label>
+
+                  <div className="relative">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B]" />
+                    <input
+                      type="text"
+                      placeholder="Search college by name or code..."
+                      value={collegeSearch}
+                      onChange={(e) => setCollegeSearch(e.target.value)}
+                      className="input-field text-xs py-2 pl-9 w-full bg-[#090F1A]"
+                    />
+                  </div>
+
                   <select
-                    required
                     value={selectedCollegeId}
                     onChange={(e) => handleCollegeChange(e.target.value)}
-                    className="input-field text-xs py-2 w-full"
+                    className={`input-field text-xs py-2 w-full ${enrollErrors.college ? 'border-[#F43F5E]' : ''}`}
                   >
-                    <option value="">-- Choose Registered College --</option>
-                    {collegesList.map((col) => (
-                      <option key={col.id} value={col.id}>
-                        {col.name} ({col.code})
-                      </option>
-                    ))}
+                    <option value="" disabled>-- Select College / University --</option>
+                    {collegesList
+                      .filter(col => {
+                        if (!collegeSearch.trim()) return true;
+                        const q = collegeSearch.toLowerCase();
+                        return (col.name || '').toLowerCase().includes(q) || (col.code || '').toLowerCase().includes(q);
+                      })
+                      .map((col) => (
+                        <option key={col.id} value={col.id}>
+                          {col.name} ({col.code})
+                        </option>
+                      ))}
                   </select>
+
+                  {enrollErrors.college && (
+                    <p className="text-xs text-[#F43F5E] mt-1 flex items-center gap-1 font-semibold">
+                      <AlertCircle size={13} className="shrink-0" />
+                      {enrollErrors.college}
+                    </p>
+                  )}
                 </div>
 
-                {/* 2. Department Selection */}
-                {selectedCollegeId && (
-                  <div>
-                    <label className="block text-xs font-bold text-[#94A3B8] mb-1.5 uppercase font-mono">
+                {/* 2. Department Selection (ONLY shown when College is selected) */}
+                {selectedCollegeId ? (
+                  <div className="space-y-1.5 animate-in fade-in">
+                    <label className="block text-xs font-bold text-[#94A3B8] uppercase font-mono">
                       2. Department / Program *
                     </label>
+
+                    <div className="relative">
+                      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B]" />
+                      <input
+                        type="text"
+                        placeholder="Search department..."
+                        value={deptSearch}
+                        onChange={(e) => setDeptSearch(e.target.value)}
+                        className="input-field text-xs py-2 pl-9 w-full bg-[#090F1A]"
+                      />
+                    </div>
+
                     <select
-                      required
                       value={selectedDeptId}
                       onChange={(e) => {
                         setSelectedDeptId(e.target.value);
                         setSelectedClassId('');
                         setEnrollForm(prev => ({ ...prev, section_id: '' }));
+                        if (enrollErrors.dept) setEnrollErrors(prev => ({ ...prev, dept: null }));
                       }}
-                      className="input-field text-xs py-2 w-full"
+                      className={`input-field text-xs py-2 w-full ${enrollErrors.dept ? 'border-[#F43F5E]' : ''}`}
                     >
-                      <option value="">-- Choose Department (e.g. Computer Science) --</option>
-                      {collegeStructure.departments.map((dept) => (
-                        <option key={dept.id} value={dept.id}>
-                          {dept.name} ({dept.code})
-                        </option>
-                      ))}
+                      <option value="" disabled>-- Select Department --</option>
+                      {(collegeStructure.departments || [])
+                        .filter(dept => {
+                          if (!deptSearch.trim()) return true;
+                          const q = deptSearch.toLowerCase();
+                          return (dept.name || '').toLowerCase().includes(q) || (dept.code || '').toLowerCase().includes(q);
+                        })
+                        .map((dept) => (
+                          <option key={dept.id} value={dept.id}>
+                            {dept.name} ({dept.code})
+                          </option>
+                        ))}
                     </select>
+
+                    {enrollErrors.dept && (
+                      <p className="text-xs text-[#F43F5E] mt-1 flex items-center gap-1 font-semibold">
+                        <AlertCircle size={13} className="shrink-0" />
+                        {enrollErrors.dept}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="p-3 rounded-xl bg-[#090F1A] border border-[#1A2740] text-[11px] text-[#64748B] flex items-center gap-2">
+                    <AlertCircle size={14} className="text-[#38BDF8]" />
+                    <span>Select a College / University above to view departments.</span>
                   </div>
                 )}
 
                 {/* 3. Class / Degree / Year Selection */}
                 {selectedDeptId && (
-                  <div>
-                    <label className="block text-xs font-bold text-[#94A3B8] mb-1.5 uppercase font-mono">
-                      3. Course / Class / Year *
+                  <div className="space-y-1.5 animate-in fade-in">
+                    <label className="block text-xs font-bold text-[#94A3B8] uppercase font-mono">
+                      3. Course / Class / Year
                     </label>
                     <select
-                      required
                       value={selectedClassId}
                       onChange={(e) => {
                         setSelectedClassId(e.target.value);
@@ -1484,7 +1580,7 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
                       }}
                       className="input-field text-xs py-2 w-full"
                     >
-                      <option value="">-- Choose Class / Year (e.g. B.Tech Year 3) --</option>
+                      <option value="">-- All Classes / Years --</option>
                       {collegeStructure.classes
                         .filter(c => c.department_id === selectedDeptId)
                         .map((cls) => (
@@ -1497,26 +1593,35 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
                 )}
 
                 {/* 4. Section Selection */}
-                {selectedClassId && (
-                  <div>
-                    <label className="block text-xs font-bold text-[#94A3B8] mb-1.5 uppercase font-mono">
+                {selectedDeptId && (
+                  <div className="space-y-1.5 animate-in fade-in">
+                    <label className="block text-xs font-bold text-[#94A3B8] uppercase font-mono">
                       4. Section / Cohort *
                     </label>
                     <select
-                      required
                       value={enrollForm.section_id}
-                      onChange={(e) => setEnrollForm({ ...enrollForm, section_id: e.target.value })}
-                      className="input-field text-xs py-2 w-full"
+                      onChange={(e) => {
+                        setEnrollForm({ ...enrollForm, section_id: e.target.value });
+                        if (enrollErrors.section) setEnrollErrors(prev => ({ ...prev, section: null }));
+                      }}
+                      className={`input-field text-xs py-2 w-full ${enrollErrors.section ? 'border-[#F43F5E]' : ''}`}
                     >
-                      <option value="">-- Choose Section --</option>
+                      <option value="" disabled>-- Select Section --</option>
                       {collegeStructure.sections
-                        .filter(s => s.class_id === selectedClassId)
+                        .filter(s => !selectedClassId || s.class_id === selectedClassId)
                         .map((sec) => (
                           <option key={sec.id} value={sec.id}>
-                            Section {sec.name} ({sec.class_name || 'Active Cohort'})
+                            Section {sec.name} ({sec.class_name || 'Cohort'})
                           </option>
                         ))}
                     </select>
+
+                    {enrollErrors.section && (
+                      <p className="text-xs text-[#F43F5E] mt-1 flex items-center gap-1 font-semibold">
+                        <AlertCircle size={13} className="shrink-0" />
+                        {enrollErrors.section}
+                      </p>
+                    )}
                   </div>
                 )}
 
@@ -1535,16 +1640,24 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-[#94A3B8] mb-1.5 uppercase font-mono">
-                      University Roll / Student ID *
+                      Student ID *
                     </label>
                     <input
                       type="text"
-                      required
-                      value={enrollForm.roll_number}
-                      onChange={(e) => setEnrollForm({ ...enrollForm, roll_number: e.target.value })}
-                      placeholder="e.g. 2024-CSE-042"
-                      className="input-field text-xs py-2 w-full"
+                      placeholder="e.g. STU-2024-042"
+                      value={enrollForm.student_id}
+                      onChange={(e) => {
+                        setEnrollForm({ ...enrollForm, student_id: e.target.value });
+                        if (enrollErrors.studentId) setEnrollErrors(prev => ({ ...prev, studentId: null }));
+                      }}
+                      className={`input-field text-xs py-2 w-full font-mono ${enrollErrors.studentId ? 'border-[#F43F5E]' : ''}`}
                     />
+                    {enrollErrors.studentId && (
+                      <p className="text-xs text-[#F43F5E] mt-1 flex items-center gap-1 font-semibold">
+                        <AlertCircle size={13} className="shrink-0" />
+                        {enrollErrors.studentId}
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -1558,8 +1671,8 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
                   </button>
                   <button
                     type="submit"
-                    disabled={enrollSubmitting || !enrollForm.section_id || !enrollForm.roll_number}
-                    className="btn-emerald-primary text-xs py-2 px-5 font-bold disabled:opacity-40 disabled:cursor-not-allowed"
+                    disabled={enrollSubmitting}
+                    className="btn-emerald-primary text-xs py-2 px-5 font-bold shadow-lg shadow-[#10B981]/15"
                   >
                     {enrollSubmitting ? 'Submitting Request...' : 'Submit Enrollment Request'}
                   </button>

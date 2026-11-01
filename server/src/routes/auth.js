@@ -111,9 +111,13 @@ router.post(
         || process.env.AUTO_VERIFY === 'true';
       const isVerifiedVal = isAutoVerify ? 1 : 0;
 
+      const teacherIdVal = assignedRole === 'TEACHER' ? (req.body.teacherId ? req.body.teacherId.trim() : null) : null;
+      const studentIdVal = assignedRole === 'STUDENT' ? ((req.body.studentId || req.body.rollNumber) ? (req.body.studentId || req.body.rollNumber).trim() : null) : null;
+      const avatarUrlVal = req.body.avatarUrl || null;
+
       await dbRun(
-        `INSERT INTO users (id, email, password_hash, name, role, organization_id, is_verified, approval_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [userId, cleanEmail, passwordHash, cleanName, assignedRole, targetOrgId, isVerifiedVal, initialApproval]
+        `INSERT INTO users (id, email, password_hash, name, role, organization_id, is_verified, approval_status, avatar_url, teacher_id, student_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [userId, cleanEmail, passwordHash, cleanName, assignedRole, targetOrgId, isVerifiedVal, initialApproval, avatarUrlVal, teacherIdVal, studentIdVal]
       );
 
       // If registered under an academic section in institutional mode, record pending student enrollment
@@ -307,6 +311,9 @@ router.post(
             name: user.name,
             email: user.email,
             role: user.role,
+            avatarUrl: user.avatar_url || null,
+            teacherId: user.teacher_id || null,
+            studentId: user.student_id || null,
             isVerified: user.is_verified === 1,
             approvalStatus: user.approval_status || 'APPROVED',
             organizationId: user.organization_id || null,

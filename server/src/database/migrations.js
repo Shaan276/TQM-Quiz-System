@@ -797,6 +797,40 @@ const MIGRATIONS = [
       await dbRun('CREATE INDEX IF NOT EXISTS idx_challenges_student ON question_challenges(student_id);', [], db);
       await dbRun('CREATE INDEX IF NOT EXISTS idx_challenges_status ON question_challenges(status);', [], db);
     }
+  },
+  {
+    version: 12,
+    name: '012_profile_photo_teacher_id_and_college_requests',
+    up: async (db) => {
+      const cols = await dbAll('PRAGMA table_info(users);', [], db);
+      const colNames = cols.map(c => c.name);
+      if (!colNames.includes('avatar_url')) {
+        await dbRun('ALTER TABLE users ADD COLUMN avatar_url TEXT NULL;', [], db);
+      }
+      if (!colNames.includes('teacher_id')) {
+        await dbRun('ALTER TABLE users ADD COLUMN teacher_id TEXT NULL;', [], db);
+      }
+      if (!colNames.includes('student_id')) {
+        await dbRun('ALTER TABLE users ADD COLUMN student_id TEXT NULL;', [], db);
+      }
+
+      await dbRun(`
+        CREATE TABLE IF NOT EXISTS college_registration_requests (
+          id TEXT PRIMARY KEY,
+          college_name TEXT NOT NULL,
+          city TEXT NULL,
+          website TEXT NULL,
+          requester_name TEXT NOT NULL,
+          requester_email TEXT NOT NULL,
+          requester_role TEXT NOT NULL DEFAULT 'STUDENT',
+          notes TEXT NULL,
+          status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED')),
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+      `, [], db);
+
+      await dbRun('CREATE INDEX IF NOT EXISTS idx_college_req_status ON college_registration_requests(status);', [], db);
+    }
   }
 ];
 

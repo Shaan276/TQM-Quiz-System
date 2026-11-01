@@ -268,8 +268,12 @@ export default function App() {
                 className="flex items-center gap-2.5 py-1.5 px-3 rounded-xl bg-[#121D32] border border-[#1F304E] hover:border-[#38BDF8]/40 cursor-pointer transition-all"
                 title="View Profile & Security"
               >
-                <div className="w-7 h-7 rounded-lg bg-[#38BDF8]/20 text-[#38BDF8] flex items-center justify-center font-bold text-xs">
-                  {user.name ? user.name[0].toUpperCase() : 'U'}
+                <div className="w-7 h-7 rounded-lg bg-[#38BDF8]/20 text-[#38BDF8] flex items-center justify-center font-bold text-xs overflow-hidden">
+                  {user.avatarUrl ? (
+                    <img src={user.avatarUrl} alt={user.name} className="w-full h-full object-cover" />
+                  ) : (
+                    user.name ? user.name[0].toUpperCase() : 'U'
+                  )}
                 </div>
                 <span className="text-xs font-bold text-white max-w-[140px] truncate hidden sm:inline">{user.name}</span>
               </div>
