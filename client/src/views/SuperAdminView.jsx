@@ -124,7 +124,7 @@ export default function SuperAdminView({ setActiveRoute }) {
   const [classForm, setClassForm] = useState({ department_id: '', name: '', code: '' });
 
   const [showAddSection, setShowAddSection] = useState(false);
-  const [sectionForm, setSectionForm] = useState({ class_id: '', academic_year_id: '', name: '', capacity: 60 });
+  const [sectionForm, setSectionForm] = useState({ class_id: '', academic_year_id: '', semester: 1, name: '', capacity: 60 });
 
   const [showAddSubject, setShowAddSubject] = useState(false);
   const [subjectForm, setSubjectForm] = useState({ name: '', code: '', department_id: '', description: '' });
@@ -1512,6 +1512,19 @@ export default function SuperAdminView({ setActiveRoute }) {
                   <option value="">-- Select Academic Year --</option>
                   {instStructure.academicYears.map(y => (
                     <option key={y.id} value={y.id}>{y.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-[#94A3B8] mb-1">Semester</label>
+                <select
+                  required
+                  value={sectionForm.semester}
+                  onChange={e => setSectionForm({ ...sectionForm, semester: parseInt(e.target.value, 10) })}
+                  className="input-field text-xs py-2 w-full"
+                >
+                  {[1, 2, 3, 4, 5, 6, 7, 8].map(s => (
+                    <option key={s} value={s}>Semester {s}</option>
                   ))}
                 </select>
               </div>

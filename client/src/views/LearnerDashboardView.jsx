@@ -55,6 +55,7 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
   const [deptSearch, setDeptSearch] = useState('');
   const [selectedDeptId, setSelectedDeptId] = useState('');
   const [selectedClassId, setSelectedClassId] = useState('');
+  const [selectedSemester, setSelectedSemester] = useState('');
   const [enrollForm, setEnrollForm] = useState({ section_id: '', student_id: '' });
   const [enrollErrors, setEnrollErrors] = useState({});
   const [enrollErrorMsg, setEnrollErrorMsg] = useState('');
@@ -138,6 +139,7 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
     setSelectedCollegeId('');
     setSelectedDeptId('');
     setSelectedClassId('');
+    setSelectedSemester('');
     setCollegeSearch('');
     setDeptSearch('');
     setEnrollForm({ section_id: '', student_id: user?.studentId || '' });
@@ -157,6 +159,7 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
     setSelectedCollegeId(collegeId);
     setSelectedDeptId('');
     setSelectedClassId('');
+    setSelectedSemester('');
     setEnrollForm(prev => ({ ...prev, section_id: '' }));
     if (enrollErrors.college) setEnrollErrors(prev => ({ ...prev, college: null }));
     if (collegeId) {
@@ -177,21 +180,38 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
     label: `${dept.name} (${dept.code})`
   }));
 
-  const classOptions = [
-    { value: '', label: '-- All Classes / Years --' },
-    ...(collegeStructure.classes || [])
-      .filter(c => c.department_id === selectedDeptId)
-      .map(cls => ({
-        value: cls.id,
-        label: `${cls.name} (${cls.code})`
-      }))
-  ];
+  // 1. Course Options
+  const courseOptions = (collegeStructure.classes || [])
+    .filter(c => c.department_id === selectedDeptId)
+    .map(cls => ({
+      value: cls.id,
+      label: `${cls.name} (${cls.code})`
+    }));
 
-  const sectionOptions = (collegeStructure.sections || [])
-    .filter(s => !selectedClassId || s.class_id === selectedClassId)
+  // 2. Semester Options
+  const selectedClass = (collegeStructure.classes || []).find(c => String(c.id) === String(selectedClassId));
+  const totalSemesters = selectedClass?.total_semesters || 8;
+  const semesterOptions = Array.from({ length: totalSemesters }, (_, i) => ({
+    value: String(i + 1),
+    label: `Semester ${i + 1}`,
+    sublabel: `Academic Term ${i + 1} of ${totalSemesters}`
+  }));
+
+  // 3. Section Options (Filtered by Course and Semester)
+  const matchedSections = (collegeStructure.sections || [])
+    .filter(s => {
+      if (s.class_id !== selectedClassId) return false;
+      if (selectedSemester && s.semester) {
+        return String(s.semester) === String(selectedSemester);
+      }
+      return true;
+    });
+
+  const sectionOptions = (matchedSections.length > 0 ? matchedSections : (collegeStructure.sections || []).filter(s => s.class_id === selectedClassId))
     .map(sec => ({
       value: sec.id,
-      label: `Section ${sec.name} (${sec.class_name || 'Cohort'})`
+      label: `Section ${sec.name} (${sec.class_name || 'Cohort'})`,
+      sublabel: sec.semester ? `Semester ${sec.semester}` : `Cohort Section`
     }));
 
   const validateEnrollment = () => {
@@ -201,6 +221,12 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
     }
     if (!selectedDeptId) {
       errs.dept = 'Please select your Department / Program.';
+    }
+    if (!selectedClassId) {
+      errs.course = 'Please select your Course (Program).';
+    }
+    if (!selectedSemester) {
+      errs.semester = 'Please select your current Semester.';
     }
     if (!enrollForm.section_id) {
       errs.section = 'Please select your Cohort Section.';
@@ -235,6 +261,7 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
         },
         body: JSON.stringify({
           section_id: enrollForm.section_id,
+          semester: parseInt(selectedSemester, 10),
           roll_number: enrollForm.student_id.trim()
         })
       });
@@ -412,7 +439,7 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
           <div className="flex items-center gap-3.5 flex-wrap">
             <div className="px-3.5 py-1.5 rounded-xl bg-[#14233D] border border-[#233B66] text-[#38BDF8] font-bold text-xs flex items-center gap-2">
               <GraduationCap size={15} />
-              <span>{enrollment.class_name} &bull; Section {enrollment.section_name}</span>
+              <span>{enrollment.class_name} &bull; {enrollment.semester ? `Semester ${enrollment.semester} • ` : ''}Section {enrollment.section_name}</span>
             </div>
             {enrollment.roll_number && (
               <div className="px-3.5 py-1.5 rounded-xl bg-[#09111E] border border-[#1E2E4A] font-mono text-xs text-[#A7F3D0] font-bold">
@@ -428,7 +455,7 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
             <div>
               <span className="font-bold text-[#FBBF24] text-sm">Enrollment Pending Instructor / Admin Approval</span>
               <p className="text-[11px] text-[#CBD5E1] mt-0.5">
-                Your request to join section <strong className="text-white">{enrollment.section_name}</strong> ({enrollment.class_name}) is awaiting teacher verification.
+                Your request to join section <strong className="text-white">{enrollment.section_name}</strong> ({enrollment.class_name}{enrollment.semester ? ` • Semester ${enrollment.semester}` : ''}) is awaiting teacher verification.
               </p>
             </div>
           </div>
@@ -1540,42 +1567,76 @@ export default function LearnerDashboardView({ onStartAttempt, onJoinLive, setAc
                   </div>
                 )}
 
-                {/* 3. Class / Degree / Year Selection */}
+                {/* 3. Course, Semester & Section Hierarchical Tier (Distinctly separated) */}
                 {selectedDeptId && (
-                  <div className="space-y-1.5 animate-in fade-in">
-                    <label className="block text-xs font-bold text-[#94A3B8] uppercase font-mono">
-                      3. Course / Class / Year
-                    </label>
-                    <SearchableSelect
-                      options={classOptions}
-                      value={selectedClassId}
-                      onChange={(clsId) => {
-                        setSelectedClassId(clsId);
-                        setEnrollForm(prev => ({ ...prev, section_id: '' }));
-                      }}
-                      placeholder="-- All Classes / Years --"
-                      searchPlaceholder="Search course / class..."
-                    />
-                  </div>
-                )}
+                  <div className="space-y-3 p-3.5 rounded-xl bg-[#070D18] border border-[#16243C] animate-in fade-in">
+                    <p className="text-[11px] font-bold text-[#38BDF8] uppercase tracking-wider flex items-center gap-1.5 pb-1 border-b border-[#142035]">
+                      <GraduationCap size={13} />
+                      Academic Level (Course &rarr; Semester &rarr; Section)
+                    </p>
 
-                {/* 4. Section Selection */}
-                {selectedDeptId && (
-                  <div className="space-y-1.5 animate-in fade-in">
-                    <label className="block text-xs font-bold text-[#94A3B8] uppercase font-mono">
-                      4. Section / Cohort *
-                    </label>
-                    <SearchableSelect
-                      options={sectionOptions}
-                      value={enrollForm.section_id}
-                      onChange={(secId) => {
-                        setEnrollForm({ ...enrollForm, section_id: secId });
-                        if (enrollErrors.section) setEnrollErrors(prev => ({ ...prev, section: null }));
-                      }}
-                      placeholder="-- Select Section --"
-                      searchPlaceholder="Search section..."
-                      error={enrollErrors.section}
-                    />
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {/* Step 1: Course */}
+                      <div>
+                        <label className="block text-xs font-bold text-[#94A3B8] uppercase font-mono mb-1">
+                          1. Course (Program) *
+                        </label>
+                        <SearchableSelect
+                          options={courseOptions}
+                          value={selectedClassId}
+                          onChange={(clsId) => {
+                            setSelectedClassId(clsId);
+                            setSelectedSemester('');
+                            setEnrollForm(prev => ({ ...prev, section_id: '' }));
+                            if (enrollErrors.course) setEnrollErrors(prev => ({ ...prev, course: null }));
+                          }}
+                          placeholder="-- Select Course --"
+                          searchPlaceholder="Search course..."
+                          error={enrollErrors.course}
+                        />
+                      </div>
+
+                      {/* Step 2: Semester */}
+                      <div>
+                        <label className="block text-xs font-bold text-[#94A3B8] uppercase font-mono mb-1">
+                          2. Semester *
+                        </label>
+                        <SearchableSelect
+                          disabled={!selectedClassId}
+                          disabledText="Select Course first"
+                          options={semesterOptions}
+                          value={selectedSemester}
+                          onChange={(sem) => {
+                            setSelectedSemester(sem);
+                            setEnrollForm(prev => ({ ...prev, section_id: '' }));
+                            if (enrollErrors.semester) setEnrollErrors(prev => ({ ...prev, semester: null }));
+                          }}
+                          placeholder="-- Select Semester --"
+                          searchPlaceholder="Search semester..."
+                          error={enrollErrors.semester}
+                        />
+                      </div>
+
+                      {/* Step 3: Section */}
+                      <div>
+                        <label className="block text-xs font-bold text-[#94A3B8] uppercase font-mono mb-1">
+                          3. Section *
+                        </label>
+                        <SearchableSelect
+                          disabled={!selectedSemester}
+                          disabledText="Select Semester first"
+                          options={sectionOptions}
+                          value={enrollForm.section_id}
+                          onChange={(secId) => {
+                            setEnrollForm({ ...enrollForm, section_id: secId });
+                            if (enrollErrors.section) setEnrollErrors(prev => ({ ...prev, section: null }));
+                          }}
+                          placeholder="-- Select Section --"
+                          searchPlaceholder="Search section..."
+                          error={enrollErrors.section}
+                        />
+                      </div>
+                    </div>
                   </div>
                 )}
 

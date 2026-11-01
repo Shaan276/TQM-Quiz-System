@@ -831,6 +831,49 @@ const MIGRATIONS = [
 
       await dbRun('CREATE INDEX IF NOT EXISTS idx_college_req_status ON college_registration_requests(status);', [], db);
     }
+  },
+  {
+    version: 13,
+    name: '013_semester_separation',
+    up: async (db) => {
+      // 1. Add semester column to sections
+      const secCols = await dbAll('PRAGMA table_info(sections);', [], db);
+      const secColNames = secCols.map(c => c.name);
+      if (!secColNames.includes('semester')) {
+        await dbRun('ALTER TABLE sections ADD COLUMN semester INTEGER NOT NULL DEFAULT 1;', [], db);
+      }
+
+      // 2. Add semester column to student_enrollments
+      const enrCols = await dbAll('PRAGMA table_info(student_enrollments);', [], db);
+      const enrColNames = enrCols.map(c => c.name);
+      if (!enrColNames.includes('semester')) {
+        await dbRun('ALTER TABLE student_enrollments ADD COLUMN semester INTEGER DEFAULT 1;', [], db);
+      }
+
+      // 3. Add total_semesters to classes (default 8)
+      const clsCols = await dbAll('PRAGMA table_info(classes);', [], db);
+      const clsColNames = clsCols.map(c => c.name);
+      if (!clsColNames.includes('total_semesters')) {
+        await dbRun('ALTER TABLE classes ADD COLUMN total_semesters INTEGER NOT NULL DEFAULT 8;', [], db);
+      }
+
+      // 4. Update demo sections with distinct semesters and seed additional semester sections
+      await dbRun("UPDATE sections SET semester = 5 WHERE id = 'demo-sec-a' OR id = 'demo-sec-b';", [], db);
+
+      const ay = await dbGet(`SELECT id FROM academic_years WHERE organization_id = 'demo-org-uuid' LIMIT 1`, [], db);
+      const ayId = ay ? ay.id : 'demo-ay-2025-2026';
+
+      await dbRun(`
+        INSERT OR IGNORE INTO sections (id, class_id, academic_year_id, name, capacity, semester)
+        VALUES 
+          ('demo-sec-sem1-a', 'demo-class-btech', ?, 'Section A', 60, 1),
+          ('demo-sec-sem1-b', 'demo-class-btech', ?, 'Section B', 60, 1),
+          ('demo-sec-sem3-a', 'demo-class-btech', ?, 'Section A', 60, 3),
+          ('demo-sec-sem7-a', 'demo-class-btech', ?, 'Section A', 60, 7),
+          ('demo-sec-mba-sem1-a', 'demo-class-mba', ?, 'Section A', 40, 1),
+          ('demo-sec-mba-sem2-a', 'demo-class-mba', ?, 'Section A', 40, 2)
+      `, [ayId, ayId, ayId, ayId, ayId, ayId], db);
+    }
   }
 ];
 

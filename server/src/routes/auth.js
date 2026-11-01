@@ -124,18 +124,19 @@ router.post(
       if (isInstitutional && assignedRole === 'STUDENT' && req.body.sectionId) {
         try {
           const sec = await dbGet(`
-            SELECT s.id, s.academic_year_id, s.class_id, c.department_id, c.organization_id
+            SELECT s.id, s.academic_year_id, s.class_id, s.semester, c.department_id, c.organization_id
             FROM sections s
             JOIN classes c ON s.class_id = c.id
             WHERE s.id = ?
           `, [req.body.sectionId]);
 
           if (sec) {
+            const studentSemester = req.body.semester ? parseInt(req.body.semester, 10) : (sec.semester || 1);
             await dbRun(`
               INSERT OR REPLACE INTO student_enrollments 
-              (id, user_id, organization_id, academic_year_id, department_id, class_id, section_id, roll_number, status)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING')
-            `, [crypto.randomUUID(), userId, sec.organization_id, sec.academic_year_id, sec.department_id, sec.class_id, sec.id, req.body.rollNumber || null]);
+              (id, user_id, organization_id, academic_year_id, department_id, class_id, section_id, semester, roll_number, status)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING')
+            `, [crypto.randomUUID(), userId, sec.organization_id, sec.academic_year_id, sec.department_id, sec.class_id, sec.id, studentSemester, req.body.rollNumber || null]);
 
             const { notifyUsers } = require('../services/notificationService');
             const teachers = await dbAll(`SELECT DISTINCT teacher_id AS id FROM teacher_assignments WHERE section_id = ? AND is_active = 1`, [sec.id]);

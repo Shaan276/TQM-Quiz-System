@@ -144,7 +144,7 @@ router.get('/structure', authenticateToken, async (req, res, next) => {
       FROM sections s 
       JOIN classes c ON s.class_id = c.id 
       WHERE c.organization_id = ? AND s.is_archived = 0 
-      ORDER BY s.name ASC
+      ORDER BY s.semester ASC, s.name ASC
     `, [orgId]);
     const subjects = await dbAll(`SELECT * FROM subjects WHERE organization_id = ? AND is_archived = 0 ORDER BY name ASC`, [orgId]);
 
@@ -306,7 +306,7 @@ router.get('/colleges/:id/structure', async (req, res, next) => {
       FROM sections s 
       JOIN classes c ON s.class_id = c.id 
       WHERE c.organization_id = ? AND s.is_archived = 0 
-      ORDER BY s.name ASC
+      ORDER BY s.semester ASC, s.name ASC
     `, [orgId]);
     const subjects = await dbAll(`SELECT * FROM subjects WHERE organization_id = ? AND is_archived = 0 ORDER BY name ASC`, [orgId]);
 
@@ -391,22 +391,22 @@ router.post('/classes', authenticateToken, requireRole(['ORG_ADMIN', 'SUPER_ADMI
 // -------------------------------------------------------------
 router.post('/sections', authenticateToken, requireRole(['ORG_ADMIN', 'SUPER_ADMIN', 'ADMIN']), async (req, res, next) => {
   try {
-    const { class_id, academic_year_id, name, capacity = 60 } = req.body;
+    const { class_id, academic_year_id, name, capacity = 60, semester = 1 } = req.body;
 
     if (!class_id || !academic_year_id || !name) {
       return res.status(400).json({ success: false, error: { message: 'Class, academic year, and section name are required' } });
     }
 
-    const existing = await dbGet(`SELECT id FROM sections WHERE class_id = ? AND academic_year_id = ? AND name = ?`, [class_id, academic_year_id, name]);
+    const existing = await dbGet(`SELECT id FROM sections WHERE class_id = ? AND academic_year_id = ? AND name = ? AND semester = ?`, [class_id, academic_year_id, name, semester]);
     if (existing) {
-      return res.status(409).json({ success: false, error: { message: 'Section already exists for this class and academic year' } });
+      return res.status(409).json({ success: false, error: { message: 'Section already exists for this class, academic year, and semester' } });
     }
 
     const id = generateUUID();
     await dbRun(`
-      INSERT INTO sections (id, class_id, academic_year_id, name, capacity)
-      VALUES (?, ?, ?, ?, ?)
-    `, [id, class_id, academic_year_id, name.trim(), capacity]);
+      INSERT INTO sections (id, class_id, academic_year_id, name, capacity, semester)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `, [id, class_id, academic_year_id, name.trim(), capacity, parseInt(semester, 10) || 1]);
 
     const created = await dbGet(`SELECT * FROM sections WHERE id = ?`, [id]);
     res.status(201).json({ success: true, data: { ...created, section: created } });
@@ -748,7 +748,7 @@ router.post('/teachers/:userId/reject', authenticateToken, requireRole(['ORG_ADM
 router.post('/students/request-enrollment', authenticateToken, async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const { section_id, roll_number = null } = req.body;
+    const { section_id, semester = null, roll_number = null } = req.body;
 
     if (!section_id) {
       return res.status(400).json({ success: false, error: { message: 'section_id is required' } });
@@ -756,7 +756,7 @@ router.post('/students/request-enrollment', authenticateToken, async (req, res, 
 
     // Lookup section hierarchy
     const sec = await dbGet(`
-      SELECT s.id, s.name AS section_name, s.academic_year_id, s.class_id,
+      SELECT s.id, s.name AS section_name, s.academic_year_id, s.class_id, s.semester,
              c.name AS class_name, c.department_id, c.organization_id,
              d.name AS department_name
       FROM sections s
@@ -768,6 +768,8 @@ router.post('/students/request-enrollment', authenticateToken, async (req, res, 
     if (!sec) {
       return res.status(404).json({ success: false, error: { message: 'Selected section not found' } });
     }
+
+    const studentSemester = semester ? parseInt(semester, 10) : (sec.semester || 1);
 
     // Check if user already has an ACTIVE or PENDING enrollment for this academic year
     const existing = await dbGet(`
@@ -791,10 +793,10 @@ router.post('/students/request-enrollment', authenticateToken, async (req, res, 
       // If REJECTED or ARCHIVED, allow re-request
       await dbRun(`
         UPDATE student_enrollments
-        SET department_id = ?, class_id = ?, section_id = ?, roll_number = ?, status = 'PENDING',
+        SET department_id = ?, class_id = ?, section_id = ?, semester = ?, roll_number = ?, status = 'PENDING',
             approved_by = NULL, approved_at = NULL, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
-      `, [sec.department_id, sec.class_id, sec.id, roll_number, existing.id]);
+      `, [sec.department_id, sec.class_id, sec.id, studentSemester, roll_number, existing.id]);
 
       const updated = await dbGet(`SELECT * FROM student_enrollments WHERE id = ?`, [existing.id]);
       await notifyAdminsAndTeachers(sec, req.user);
@@ -807,9 +809,9 @@ router.post('/students/request-enrollment', authenticateToken, async (req, res, 
     const enrollmentId = generateUUID();
     await dbRun(`
       INSERT INTO student_enrollments (
-        id, user_id, organization_id, academic_year_id, department_id, class_id, section_id, roll_number, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING')
-    `, [enrollmentId, userId, sec.organization_id, sec.academic_year_id, sec.department_id, sec.class_id, sec.id, roll_number]);
+        id, user_id, organization_id, academic_year_id, department_id, class_id, section_id, semester, roll_number, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING')
+    `, [enrollmentId, userId, sec.organization_id, sec.academic_year_id, sec.department_id, sec.class_id, sec.id, studentSemester, roll_number]);
 
     // Ensure student organization is updated
     await dbRun(`UPDATE users SET organization_id = ? WHERE id = ?`, [sec.organization_id, userId]);

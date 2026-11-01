@@ -38,6 +38,7 @@ export default function RegisterView({ setActiveRoute }) {
   const [deptSearch, setDeptSearch] = useState('');
   const [selectedDeptId, setSelectedDeptId] = useState('');
   const [selectedClassId, setSelectedClassId] = useState('');
+  const [selectedSemester, setSelectedSemester] = useState('');
   const [selectedSectionId, setSelectedSectionId] = useState('');
   
   // Role Identifiers
@@ -85,6 +86,7 @@ export default function RegisterView({ setActiveRoute }) {
     setSelectedCollegeId(id);
     setSelectedDeptId('');
     setSelectedClassId('');
+    setSelectedSemester('');
     setSelectedSectionId('');
     if (fieldErrors.college) setFieldErrors(prev => ({ ...prev, college: null }));
     if (id) {
@@ -105,21 +107,37 @@ export default function RegisterView({ setActiveRoute }) {
     label: `${dept.name} (${dept.code})`
   }));
 
-  const classOptions = [
-    { value: '', label: '-- All Classes / Years --' },
-    ...(collegeStructure.classes || [])
-      .filter(c => c.department_id === selectedDeptId)
-      .map(cls => ({
-        value: cls.id,
-        label: `${cls.name} (${cls.code})`
-      }))
-  ];
+  // 1. Course Options (Program under selected Department)
+  const courseOptions = (collegeStructure.classes || [])
+    .filter(c => c.department_id === selectedDeptId)
+    .map(cls => ({
+      value: cls.id,
+      label: `${cls.name} (${cls.code})`
+    }));
 
-  const sectionOptions = (collegeStructure.sections || [])
-    .filter(s => !selectedClassId || s.class_id === selectedClassId)
+  // 2. Semester Options (1 to total_semesters for selected Course)
+  const selectedClass = (collegeStructure.classes || []).find(c => String(c.id) === String(selectedClassId));
+  const totalSemesters = selectedClass?.total_semesters || 8;
+  const semesterOptions = Array.from({ length: totalSemesters }, (_, i) => ({
+    value: String(i + 1),
+    label: `Semester ${i + 1}`,
+    sublabel: `Academic Term ${i + 1} of ${totalSemesters}`
+  }));
+
+  // 3. Section Options (Filtered by Course and Semester)
+  const matchedSections = (collegeStructure.sections || []).filter(s => {
+    if (s.class_id !== selectedClassId) return false;
+    if (selectedSemester && s.semester) {
+      return String(s.semester) === String(selectedSemester);
+    }
+    return true;
+  });
+
+  const sectionOptions = (matchedSections.length > 0 ? matchedSections : (collegeStructure.sections || []).filter(s => s.class_id === selectedClassId))
     .map(sec => ({
       value: sec.id,
-      label: `Section ${sec.name}`
+      label: `Section ${sec.name}`,
+      sublabel: sec.semester ? `Semester ${sec.semester}` : `Cohort Section`
     }));
 
   const validate = () => {
@@ -157,6 +175,12 @@ export default function RegisterView({ setActiveRoute }) {
       }
 
       if (instRole === 'STUDENT') {
+        if (!selectedClassId) {
+          errs.course = 'Please select your Course (Program).';
+        }
+        if (!selectedSemester) {
+          errs.semester = 'Please select your Semester.';
+        }
         if (!selectedSectionId) {
           errs.section = 'Please select your Cohort Section.';
         }
@@ -201,6 +225,7 @@ export default function RegisterView({ setActiveRoute }) {
         role: accountType === 'INSTITUTIONAL' ? instRole : 'STUDENT',
         organizationId: accountType === 'INSTITUTIONAL' ? selectedCollegeId : null,
         sectionId: (accountType === 'INSTITUTIONAL' && instRole === 'STUDENT') ? selectedSectionId : null,
+        semester: (accountType === 'INSTITUTIONAL' && instRole === 'STUDENT') ? parseInt(selectedSemester, 10) : null,
         studentId: (accountType === 'INSTITUTIONAL' && instRole === 'STUDENT') ? studentId.trim() : null,
         teacherId: (accountType === 'INSTITUTIONAL' && instRole === 'TEACHER') ? teacherId.trim() : null
       };
@@ -422,40 +447,75 @@ export default function RegisterView({ setActiveRoute }) {
                   </div>
                 )}
 
-                {/* If Student: Class & Section */}
+                {/* If Student: 1. Course, 2. Semester, 3. Section (Distinctly separated) */}
                 {instRole === 'STUDENT' && selectedDeptId && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 animate-in fade-in">
-                    <div>
-                      <label className="block text-xs font-semibold text-[#94A3B8] mb-1">
-                        3. Course / Year
-                      </label>
-                      <SearchableSelect
-                        options={classOptions}
-                        value={selectedClassId}
-                        onChange={(clsId) => {
-                          setSelectedClassId(clsId);
-                          setSelectedSectionId('');
-                        }}
-                        placeholder="-- All Classes / Years --"
-                        searchPlaceholder="Search course / class..."
-                      />
-                    </div>
+                  <div className="space-y-3 p-3.5 rounded-xl bg-[#080E1A] border border-[#17253D] animate-in fade-in">
+                    <p className="text-[11px] font-bold text-[#38BDF8] uppercase tracking-wider flex items-center gap-1.5 pb-1 border-b border-[#142035]">
+                      <GraduationCap size={13} />
+                      Academic Level (Course &rarr; Semester &rarr; Section)
+                    </p>
 
-                    <div>
-                      <label className="block text-xs font-semibold text-[#94A3B8] mb-1">
-                        4. Section / Cohort *
-                      </label>
-                      <SearchableSelect
-                        options={sectionOptions}
-                        value={selectedSectionId}
-                        onChange={(secId) => {
-                          setSelectedSectionId(secId);
-                          if (fieldErrors.section) setFieldErrors(prev => ({ ...prev, section: null }));
-                        }}
-                        placeholder="-- Select Section --"
-                        searchPlaceholder="Search section..."
-                        error={fieldErrors.section}
-                      />
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {/* Step 1: Course */}
+                      <div>
+                        <label className="block text-xs font-semibold text-[#94A3B8] mb-1">
+                          1. Course (Program) *
+                        </label>
+                        <SearchableSelect
+                          options={courseOptions}
+                          value={selectedClassId}
+                          onChange={(clsId) => {
+                            setSelectedClassId(clsId);
+                            setSelectedSemester('');
+                            setSelectedSectionId('');
+                            if (fieldErrors.course) setFieldErrors(prev => ({ ...prev, course: null }));
+                          }}
+                          placeholder="-- Select Course --"
+                          searchPlaceholder="Search course..."
+                          error={fieldErrors.course}
+                        />
+                      </div>
+
+                      {/* Step 2: Semester */}
+                      <div>
+                        <label className="block text-xs font-semibold text-[#94A3B8] mb-1">
+                          2. Semester *
+                        </label>
+                        <SearchableSelect
+                          disabled={!selectedClassId}
+                          disabledText="Select Course first"
+                          options={semesterOptions}
+                          value={selectedSemester}
+                          onChange={(sem) => {
+                            setSelectedSemester(sem);
+                            setSelectedSectionId('');
+                            if (fieldErrors.semester) setFieldErrors(prev => ({ ...prev, semester: null }));
+                          }}
+                          placeholder="-- Select Semester --"
+                          searchPlaceholder="Search semester..."
+                          error={fieldErrors.semester}
+                        />
+                      </div>
+
+                      {/* Step 3: Section */}
+                      <div>
+                        <label className="block text-xs font-semibold text-[#94A3B8] mb-1">
+                          3. Section *
+                        </label>
+                        <SearchableSelect
+                          disabled={!selectedSemester}
+                          disabledText="Select Semester first"
+                          options={sectionOptions}
+                          value={selectedSectionId}
+                          onChange={(secId) => {
+                            setSelectedSectionId(secId);
+                            if (fieldErrors.section) setFieldErrors(prev => ({ ...prev, section: null }));
+                          }}
+                          placeholder="-- Select Section --"
+                          searchPlaceholder="Search section..."
+                          error={fieldErrors.section}
+                        />
+                      </div>
                     </div>
                   </div>
                 )}
