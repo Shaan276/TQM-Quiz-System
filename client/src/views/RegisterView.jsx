@@ -31,6 +31,8 @@ export default function RegisterView({ setActiveRoute }) {
       errs.password = 'Password is required.';
     } else if (password.length < 8) {
       errs.password = 'Password must be at least 8 characters long.';
+    } else if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password) || !/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]/.test(password)) {
+      errs.password = 'Password must include uppercase, lowercase, a number, and a special symbol.';
     }
 
     if (!passwordConfirmation) {

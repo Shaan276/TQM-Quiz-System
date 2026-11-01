@@ -18,6 +18,50 @@ async function seedDemoAccounts(customDb = null) {
   const passwordHash = await bcrypt.hash(password, salt);
 
   const demoAccounts = [
+    // Primary Qubix Platform Accounts
+    {
+      id: 'qubix-admin-uuid',
+      email: 'admin@qubix.com',
+      name: 'Piyush SuperAdmin',
+      role: 'SUPER_ADMIN'
+    },
+    {
+      id: 'qubix-orgadmin-uuid',
+      email: 'orgadmin@qubix.com',
+      name: 'Jordan Taylor',
+      role: 'ORG_ADMIN'
+    },
+    {
+      id: 'qubix-teacher1-uuid',
+      email: 'teacher1@qubix.com',
+      name: 'Prof. Sarah Jenkins',
+      role: 'TEACHER'
+    },
+    {
+      id: 'qubix-teacher2-uuid',
+      email: 'teacher2@qubix.com',
+      name: 'Prof. Alan Turing',
+      role: 'TEACHER'
+    },
+    {
+      id: 'qubix-student1-uuid',
+      email: 'student1@qubix.com',
+      name: 'Alex Rivera',
+      role: 'STUDENT'
+    },
+    {
+      id: 'qubix-student2-uuid',
+      email: 'student2@qubix.com',
+      name: 'Grace Hopper',
+      role: 'STUDENT'
+    },
+    {
+      id: 'qubix-student3-uuid',
+      email: 'student3@qubix.com',
+      name: 'Leonardo Euler',
+      role: 'STUDENT'
+    },
+    // Compatibility aliases for automated test suites
     {
       id: 'demo-student-uuid',
       email: 'student@quizsystem.com',
@@ -48,15 +92,15 @@ async function seedDemoAccounts(customDb = null) {
     const existing = await dbGet(`SELECT id FROM users WHERE LOWER(email) = ?`, [acc.email], db);
     if (!existing) {
       await dbRun(
-        `INSERT INTO users (id, email, password_hash, name, role, is_verified) VALUES (?, ?, ?, ?, ?, 1)`,
+        `INSERT INTO users (id, email, password_hash, name, role, is_verified, approval_status, organization_id) VALUES (?, ?, ?, ?, ?, 1, 'APPROVED', 'demo-org-uuid')`,
         [acc.id, acc.email, passwordHash, acc.name, acc.role],
         db
       );
-      console.log(`[Seeds] Created demo account: ${acc.email} (${acc.role})`);
+      console.log(`[Seeds] Created Qubix account: ${acc.email} (${acc.role})`);
     } else {
-      // Ensure role is up-to-date and verified
+      // Ensure role is up-to-date, verified, and approved
       await dbRun(
-        `UPDATE users SET role = ?, is_verified = 1 WHERE LOWER(email) = ?`,
+        `UPDATE users SET role = ?, is_verified = 1, approval_status = 'APPROVED', organization_id = 'demo-org-uuid' WHERE LOWER(email) = ?`,
         [acc.role, acc.email],
         db
       );
@@ -272,19 +316,26 @@ async function seedDemoAccounts(customDb = null) {
       INSERT INTO organizations (id, name, code, type, dept_term, class_term)
       VALUES ('demo-org-uuid', 'Apex Institute of Technology & Management', 'AITM-TECH', 'COLLEGE', 'Department', 'Program')
     `, [], db);
+  }
 
-    // Update demo accounts to have organization_id
-    await dbRun(`UPDATE users SET organization_id = 'demo-org-uuid' WHERE id IN ('demo-student-uuid', 'demo-teacher-uuid', 'demo-orgadmin-uuid')`, [], db);
+  // Update demo accounts to have organization_id
+  await dbRun(`UPDATE users SET organization_id = 'demo-org-uuid' WHERE id IN ('demo-student-uuid', 'demo-teacher-uuid', 'demo-orgadmin-uuid', 'qubix-student1-uuid', 'qubix-teacher1-uuid', 'qubix-orgadmin-uuid')`, [], db);
 
+  const existingSec = await dbGet(`SELECT id FROM sections WHERE id = 'demo-sec-a'`, [], db);
+  if (!existingSec) {
     // 2. Academic Year
-    await dbRun(`
-      INSERT INTO academic_years (id, organization_id, name, start_date, end_date, is_current)
-      VALUES ('demo-ay-uuid', 'demo-org-uuid', '2025-2026', '2025-08-01', '2026-06-30', 1)
-    `, [], db);
+    let ay = await dbGet(`SELECT id FROM academic_years WHERE organization_id = 'demo-org-uuid' LIMIT 1`, [], db);
+    let ayId = ay ? ay.id : 'demo-ay-2025-2026';
+    if (!ay) {
+      await dbRun(`
+        INSERT OR IGNORE INTO academic_years (id, organization_id, name, start_date, end_date, is_current)
+        VALUES ('demo-ay-2025-2026', 'demo-org-uuid', '2025-2026', '2025-08-01', '2026-06-30', 1)
+      `, [], db);
+    }
 
     // 3. Departments
     await dbRun(`
-      INSERT INTO departments (id, organization_id, name, code, description)
+      INSERT OR IGNORE INTO departments (id, organization_id, name, code, description)
       VALUES 
         ('demo-dept-tqm', 'demo-org-uuid', 'Total Quality & Operations', 'TQM-OPS', 'Industrial Engineering and Quality Assurance'),
         ('demo-dept-cse', 'demo-org-uuid', 'Computer Science & Engineering', 'CSE', 'Software Systems and Data Science')
@@ -292,7 +343,7 @@ async function seedDemoAccounts(customDb = null) {
 
     // 4. Classes (Programs)
     await dbRun(`
-      INSERT INTO classes (id, organization_id, department_id, name, code)
+      INSERT OR IGNORE INTO classes (id, organization_id, department_id, name, code)
       VALUES 
         ('demo-class-btech', 'demo-org-uuid', 'demo-dept-tqm', 'B.Tech Operations & Quality', 'BTECH-OQ-Y3'),
         ('demo-class-mba', 'demo-org-uuid', 'demo-dept-tqm', 'MBA Quality Management', 'MBA-QM-Y1')
@@ -300,15 +351,15 @@ async function seedDemoAccounts(customDb = null) {
 
     // 5. Sections
     await dbRun(`
-      INSERT INTO sections (id, class_id, academic_year_id, name, capacity)
+      INSERT OR IGNORE INTO sections (id, class_id, academic_year_id, name, capacity)
       VALUES 
-        ('demo-sec-a', 'demo-class-btech', 'demo-ay-uuid', 'Section A', 60),
-        ('demo-sec-b', 'demo-class-btech', 'demo-ay-uuid', 'Section B', 60)
-    `, [], db);
+        ('demo-sec-a', 'demo-class-btech', ?, 'Section A', 60),
+        ('demo-sec-b', 'demo-class-btech', ?, 'Section B', 60)
+    `, [ayId, ayId], db);
 
     // 6. Subjects
     await dbRun(`
-      INSERT INTO subjects (id, organization_id, department_id, name, code, description)
+      INSERT OR IGNORE INTO subjects (id, organization_id, department_id, name, code, description)
       VALUES 
         ('demo-sub-tqm', 'demo-org-uuid', 'demo-dept-tqm', 'Total Quality Management', 'TQM-301', 'Deming 14 principles, Kaizen, Six Sigma, Pareto charts'),
         ('demo-sub-sqc', 'demo-org-uuid', 'demo-dept-tqm', 'Statistical Quality Control', 'SQC-302', 'Control charts, acceptance sampling, process capability')
@@ -316,39 +367,43 @@ async function seedDemoAccounts(customDb = null) {
 
     // 7. Student Enrollment (Alex Rivera in Section A)
     await dbRun(`
-      INSERT INTO student_enrollments (id, user_id, organization_id, academic_year_id, department_id, class_id, section_id, roll_number, status)
-      VALUES ('demo-enroll-student', 'demo-student-uuid', 'demo-org-uuid', 'demo-ay-uuid', 'demo-dept-tqm', 'demo-class-btech', 'demo-sec-a', '2410301049', 'ACTIVE')
-    `, [], db);
+      INSERT OR IGNORE INTO student_enrollments (id, user_id, organization_id, academic_year_id, department_id, class_id, section_id, roll_number, status)
+      VALUES 
+        ('demo-enroll-student', 'demo-student-uuid', 'demo-org-uuid', ?, 'demo-dept-tqm', 'demo-class-btech', 'demo-sec-a', '2410301049', 'ACTIVE'),
+        ('qubix-enroll-student1', 'qubix-student1-uuid', 'demo-org-uuid', ?, 'demo-dept-tqm', 'demo-class-btech', 'demo-sec-a', 'QUB-2026-001', 'ACTIVE')
+    `, [ayId, ayId], db);
 
     // 8. Teacher Allocation (Prof. Sarah Jenkins teaches TQM-301 to Section A)
     await dbRun(`
-      INSERT INTO teacher_assignments (id, teacher_id, organization_id, academic_year_id, department_id, subject_id, class_id, section_id, is_active)
-      VALUES ('demo-alloc-teacher', 'demo-teacher-uuid', 'demo-org-uuid', 'demo-ay-uuid', 'demo-dept-tqm', 'demo-sub-tqm', 'demo-class-btech', 'demo-sec-a', 1)
-    `, [], db);
+      INSERT OR IGNORE INTO teacher_assignments (id, teacher_id, organization_id, academic_year_id, department_id, subject_id, class_id, section_id, is_active)
+      VALUES 
+        ('demo-alloc-teacher', 'demo-teacher-uuid', 'demo-org-uuid', ?, 'demo-dept-tqm', 'demo-sub-tqm', 'demo-class-btech', 'demo-sec-a', 1),
+        ('qubix-alloc-teacher1', 'qubix-teacher1-uuid', 'demo-org-uuid', ?, 'demo-dept-tqm', 'demo-sub-tqm', 'demo-class-btech', 'demo-sec-a', 1)
+    `, [ayId, ayId], db);
 
-    // 9. Initial Assignment for Alex Rivera: Assign the sample TQM quiz to Section A
+    // 9. Initial Assignment for Alex Rivera & student1: Assign the sample TQM quiz to Section A
     const sampleQuiz = await dbGet(`SELECT id FROM quizzes WHERE title = 'TQM Quality Standards & Six Sigma'`, [], db);
     if (sampleQuiz) {
       const assignmentId = 'demo-assignment-tqm';
       await dbRun(`
-        INSERT INTO assignments (
+        INSERT OR IGNORE INTO assignments (
           id, organization_id, quiz_id, quiz_version, teacher_id, title, instructions,
           scope_type, target_sections, target_students, due_date, time_limit_sec, max_attempts, status
         ) VALUES (
-          ?, 'demo-org-uuid', ?, 1, 'demo-teacher-uuid', 'TQM Module 1 Midterm Assessment',
+          ?, 'demo-org-uuid', ?, 1, 'qubix-teacher1-uuid', 'TQM Module 1 Midterm Assessment',
           'Please complete this comprehensive TQM evaluation within 10 minutes. Ensure full screen is maintained.',
           'SECTION', '["demo-sec-a"]', '[]', DATETIME('now', '+7 days'), 600, 2, 'PUBLISHED'
         )
       `, [assignmentId, sampleQuiz.id], db);
 
-      // Snapshot recipient Alex Rivera
+      // Snapshot recipients
       await dbRun(`
-        INSERT INTO assignment_recipients (
+        INSERT OR IGNORE INTO assignment_recipients (
           id, assignment_id, student_id, section_id, source, status
-        ) VALUES (
-          'demo-recip-student', ?, 'demo-student-uuid', 'demo-sec-a', 'SECTION', 'ASSIGNED'
-        )
-      `, [assignmentId], db);
+        ) VALUES 
+          ('demo-recip-student', ?, 'demo-student-uuid', 'demo-sec-a', 'SECTION', 'ASSIGNED'),
+          ('qubix-recip-student1', ?, 'qubix-student1-uuid', 'demo-sec-a', 'SECTION', 'ASSIGNED')
+      `, [assignmentId, assignmentId], db);
     }
 
     console.log('[Seeds] Seeded Phase P6 Institutional hierarchy, student enrollment, teacher allocation, and scoped assignment.');

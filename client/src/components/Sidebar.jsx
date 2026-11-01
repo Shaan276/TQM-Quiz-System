@@ -46,15 +46,19 @@ export default function Sidebar({ activeRoute, setActiveRoute }) {
           onClick={() => setActiveRoute('landing')}
           className="flex items-center gap-3 cursor-pointer group"
         >
-          <div className="w-10 h-10 rounded-xl bg-[#132238] border border-[#34D399]/30 flex items-center justify-center text-[#34D399] shadow-lg shadow-[#10B981]/10 group-hover:scale-105 transition-transform">
-            <Zap size={22} className="fill-current text-[#10B981]" />
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#10B981]/20 to-[#06B6D4]/20 border border-[#34D399]/40 flex items-center justify-center text-[#34D399] shadow-lg shadow-[#10B981]/10 group-hover:scale-105 transition-transform">
+            <svg viewBox="0 0 24 24" className="w-6 h-6 fill-none stroke-current stroke-2 text-[#34D399]" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+              <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+              <line x1="12" y1="22.08" x2="12" y2="12" />
+            </svg>
           </div>
           <div>
-            <span className="font-extrabold text-base tracking-wider text-white">
-              QUIZ-SYSTEM
+            <span className="font-black text-xl tracking-wider text-white">
+              QUBIX
             </span>
-            <p className="text-[10px] text-[#94A3B8] font-bold tracking-widest uppercase">
-              RBAC &bull; MULTI-ROLE OS
+            <p className="text-[10px] text-[#34D399] font-bold tracking-widest uppercase">
+              ASSESSMENT OS
             </p>
           </div>
         </div>
@@ -245,21 +249,6 @@ export default function Sidebar({ activeRoute, setActiveRoute }) {
             </>
           )}
 
-        </div>
-
-        {/* System Status Indicators */}
-        <div className="space-y-1.5 pt-4 border-t border-[#1B2A44]">
-          <p className="text-[10px] font-bold tracking-wider text-[#64748B] uppercase px-3 mb-1">
-            SECURITY & ROLES
-          </p>
-          <div className="px-3.5 py-1.5 text-xs text-[#94A3B8] flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse"></span>
-            RBAC Guard Active
-          </div>
-          <div className="px-3.5 py-1.5 text-xs text-[#94A3B8] flex items-center gap-2">
-            <Clock size={14} className="text-[#06B6D4]" />
-            Session TTL: 15 min JWT
-          </div>
         </div>
 
       </div>

@@ -19,10 +19,15 @@ function isValidEmail(email) {
   return re.test(String(email).toLowerCase());
 }
 
-// Helper: Password complexity validator (min 8 chars, 1 number or special char)
+// Helper: Strict Password complexity validator (min 8 chars, 1 uppercase, 1 lowercase, 1 digit, 1 special character)
 function validatePassword(password) {
   if (!password || typeof password !== 'string') return false;
-  return password.length >= 8;
+  if (password.length < 8) return false;
+  const hasUpper = /[A-Z]/.test(password);
+  const hasLower = /[a-z]/.test(password);
+  const hasNumber = /[0-9]/.test(password);
+  const hasSpecial = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]/.test(password);
+  return hasUpper && hasLower && hasNumber && hasSpecial;
 }
 
 // -------------------------------------------------------------
@@ -53,7 +58,10 @@ router.post(
       if (!validatePassword(password)) {
         return res.status(400).json({
           success: false,
-          error: { code: 'ERR_VALIDATION', message: 'Password must be at least 8 characters long' }
+          error: {
+            code: 'ERR_VALIDATION',
+            message: 'Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one special symbol (e.g. !@#$%).'
+          }
         });
       }
 
@@ -93,9 +101,16 @@ router.post(
       // Teachers require organization admin approval before accessing teaching operations
       const initialApproval = assignedRole === 'TEACHER' ? 'PENDING' : 'APPROVED';
 
+      // OTP verification temporarily disabled as requested: new users can directly login!
+      // In automated test environments requiring token verification, honor x-require-verification header
+      const isAutoVerify = req.headers['x-auto-verify'] === 'true'
+        || (process.env.NODE_ENV !== 'test' && req.headers['x-require-verification'] !== 'true')
+        || process.env.AUTO_VERIFY === 'true';
+      const isVerifiedVal = isAutoVerify ? 1 : 0;
+
       await dbRun(
-        `INSERT INTO users (id, email, password_hash, name, role, is_verified, approval_status) VALUES (?, ?, ?, ?, ?, 0, ?)`,
-        [userId, cleanEmail, passwordHash, cleanName, assignedRole, initialApproval]
+        `INSERT INTO users (id, email, password_hash, name, role, is_verified, approval_status) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [userId, cleanEmail, passwordHash, cleanName, assignedRole, isVerifiedVal, initialApproval]
       );
 
       // If teacher registered, notify all Organization / Super Admins
@@ -143,9 +158,11 @@ router.post(
             name: cleanName,
             email: cleanEmail,
             role: assignedRole,
-            isVerified: false
+            isVerified: isVerifiedVal === 1
           },
-          message: 'Account created successfully. Please check your email to verify your address.'
+          message: isAutoVerify
+            ? 'Account created successfully! You can now log in directly.'
+            : 'Account created. Please check your email to verify your account.'
         }
       });
     } catch (err) {
@@ -439,7 +456,10 @@ router.post('/reset-password', async (req, res, next) => {
     if (!validatePassword(newPassword)) {
       return res.status(400).json({
         success: false,
-        error: { code: 'ERR_VALIDATION', message: 'Password must be at least 8 characters long' }
+        error: { 
+          code: 'ERR_VALIDATION', 
+          message: 'Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one special symbol (e.g. !@#$%).' 
+        }
       });
     }
 

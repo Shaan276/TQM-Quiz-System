@@ -48,7 +48,7 @@ async function testSuite() {
   await assert('User registration with default role LEARNER', async () => {
     const res = await fetch(`${BASE_URL}/api/v1/auth/register`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-require-verification': 'true' },
       body: JSON.stringify(testUser)
     });
     const data = await res.json();

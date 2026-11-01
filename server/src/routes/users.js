@@ -108,10 +108,19 @@ router.put('/change-password', authenticateToken, async (req, res, next) => {
       });
     }
 
-    if (newPassword.length < 8) {
+    const isStrong = newPassword.length >= 8 &&
+      /[A-Z]/.test(newPassword) &&
+      /[a-z]/.test(newPassword) &&
+      /[0-9]/.test(newPassword) &&
+      /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]/.test(newPassword);
+
+    if (!isStrong) {
       return res.status(400).json({
         success: false,
-        error: { code: 'ERR_VALIDATION', message: 'New password must be at least 8 characters long' }
+        error: { 
+          code: 'ERR_VALIDATION', 
+          message: 'New password must be at least 8 characters long and contain uppercase, lowercase, number, and a special symbol.' 
+        }
       });
     }
 

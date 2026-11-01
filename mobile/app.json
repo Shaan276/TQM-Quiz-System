@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "Qubix",
+    "slug": "qubix-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "backgroundColor": "#0B111D"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.qubix.assessment"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0B111D"
+      },
+      "package": "com.qubix.assessment",
+      "permissions": [
+        "INTERNET",
+        "ACCESS_NETWORK_STATE"
+      ]
+    }
+  }
+}

@@ -25,6 +25,8 @@ export default function ResetPasswordView({ setActiveRoute }) {
       errs.newPassword = 'New password is required.';
     } else if (newPassword.length < 8) {
       errs.newPassword = 'Password must be at least 8 characters long.';
+    } else if (!/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/[0-9]/.test(newPassword) || !/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]/.test(newPassword)) {
+      errs.newPassword = 'Password must include uppercase, lowercase, a number, and a special symbol.';
     }
     if (!newPasswordConfirmation) {
       errs.newPasswordConfirmation = 'Please confirm your new password.';
